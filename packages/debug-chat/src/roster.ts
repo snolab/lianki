@@ -115,7 +115,7 @@ export function rosterSection(
   const self = laneRole({ id: "main", name: "main" }, table);
   const head = `This is the developer's own thread. You are Li${self ? ` (${self})` : ""}; other agents (lanes) work here too. Present now:`;
   const rule =
-    "On a roll call, answer that you are here and name who is present; never say you cannot.";
+    "On a roll call, answer that you are here and name who is present. A line for one of them is theirs to answer.";
   const lines = entries.map((e) => {
     const tags = [e.mode && MODE_TEXT[e.mode], e.muted && "muted"].filter(Boolean).join(", ");
     const role = laneRole(e, table);

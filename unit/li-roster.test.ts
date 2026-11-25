@@ -131,7 +131,7 @@ describe("rosterSection", () => {
         "- coco (listening live): 界面与前端开发",
         "- 杰咪 (reads when named, muted): 功能开发",
         "- ext",
-        "On a roll call, answer that you are here and name who is present; never say you cannot.",
+        "On a roll call, answer that you are here and name who is present. A line for one of them is theirs to answer.",
       ].join("\n"),
     );
   });
@@ -150,7 +150,7 @@ describe("rosterSection", () => {
     const s = rosterSection(many);
     expect(s.length).toBeLessThanOrEqual(ROSTER_MAX_CHARS);
     expect(s).toMatch(/- \+\d+ more\n/);
-    expect(s).toContain("never say you cannot");
+    expect(s).toContain("A line for one of them is theirs to answer");
     const shown = s.split("\n").filter((l) => l.startsWith("- lane-number")).length;
     expect(s).toContain(`- +${16 - shown} more`);
   });
@@ -196,7 +196,7 @@ describe("the prompt: roster in the owner's thread only", () => {
     const sys = buildMessages(req, summary as never, 0, [{ id: "codex", role: "前端" }])[0].content;
     expect(sys).toContain("<roster>\nThis is the developer's own thread.");
     expect(sys).toContain("- coco /roster (listening live): 前端");
-    expect(sys).toContain("never say you cannot.\n</roster>");
+    expect(sys).toContain("A line for one of them is theirs to answer.\n</roster>");
   });
   it("his thread from an older hub (no roster): the block still says who is not here, and the rule", () => {
     const req = parsePartnerRequest({ ...raw(true), roster: undefined })!;

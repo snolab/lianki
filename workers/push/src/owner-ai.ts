@@ -16,6 +16,12 @@
 import { namesLane } from "../../../packages/debug-chat/src/lane-route";
 import type { SpeakerTag } from "../../../packages/debug-chat/src/wire";
 import {
+  OWNER_AGENT_NAMES,
+  OWNER_AGENT_NAMES_KEY,
+  OWNER_DEV_WORDS,
+  OWNER_DEV_WORDS_KEY,
+  OWNER_STUDY_WORDS,
+  OWNER_STUDY_WORDS_KEY,
   OWNER_LANE_ACTIVE_KEY,
   OWNER_LANE_ACTIVE_MAX,
   OWNER_LANE_ACTIVE_MS,
@@ -59,6 +65,36 @@ export function ownerLineWanted(l: OwnerLine): boolean {
   if (l.speaker && l.speaker.decision !== "me") return false;
   return !namesLane(l.text);
 }
+
+/**
+ * Does the line hold one of the words? Latin entries (letters, digits, spaces)
+ * as whole words, case-insensitive ("PR" not inside "print"); the others
+ * anywhere as written.
+ */
+export function holdsWord(text: string, list: readonly string[]): boolean {
+  const t = (typeof text === "string" ? text : "").toLowerCase();
+  return list.some((w) => {
+    const n = w.trim().toLowerCase();
+    if (!n) return false;
+    if (!/^[a-z0-9 ]+$/.test(n)) return t.includes(n);
+    for (let i = t.indexOf(n); i >= 0; i = t.indexOf(n, i + 1))
+      if (!/[a-z0-9]/.test(t[i - 1] ?? "") && !/[a-z0-9]/.test(t[i + n.length] ?? "")) return true;
+    return false;
+  });
+}
+
+/** Does the line name another agent: a lane (namesLane) or one of the extra names? */
+export function namesAgent(text: string, names: readonly string[] = OWNER_AGENT_NAMES): boolean {
+  return namesLane(text) || holdsWord(text, names);
+}
+
+/** Is the line a dev/ops request (code, deploy, billing…)? */
+export const isDevLine = (text: string, words: readonly string[] = OWNER_DEV_WORDS) =>
+  holdsWord(text, words);
+
+/** Is the line about study (today's goal, word lists, due cards, review, language)? */
+export const isStudyLine = (text: string, words: readonly string[] = OWNER_STUDY_WORDS) =>
+  holdsWord(text, words);
 
 /** Does the line hold one of the stop phrases (case-insensitive, anywhere)? */
 export function isStopLine(text: string, phrases: readonly string[] = OWNER_STOP_PHRASES): boolean {
@@ -104,6 +140,9 @@ type Conf = {
   laneActiveMs: number;
   stop: readonly string[];
   liNames: readonly string[];
+  agentNames: readonly string[];
+  devWords: readonly string[];
+  studyWords: readonly string[];
 };
 
 const ms = (v: unknown, max: number): number | undefined =>
@@ -155,7 +194,7 @@ export function isRollCall(text: string): boolean {
  * `wrangler tail lianki-push` shows whether the live object has the new code
  * (2026-11-16: a reply after the deploy matched the rules before it).
  */
-export const OWNER_AI_RULES = "2026-11-16.spoken";
+export const OWNER_AI_RULES = "2026-11-26.study-only";
 
 export class OwnerAi<P> {
   private pending?: { timer: unknown };
@@ -188,14 +227,18 @@ export class OwnerAi<P> {
     try {
       on = (await this.d.flag(PARTNER_OWNER_FLAG)) === true;
     } catch {}
-    const [delay, quiet, active, stop, liNames, spoken] = await Promise.all([
-      this.read(OWNER_REPLY_DELAY_KEY),
-      this.read(OWNER_QUIET_KEY),
-      this.read(OWNER_LANE_ACTIVE_KEY),
-      this.read(OWNER_STOP_PHRASES_KEY),
-      this.read(OWNER_LI_NAMES_KEY),
-      this.read(OWNER_SPOKEN_NEEDS_NAME_KEY),
-    ]);
+    const [delay, quiet, active, stop, liNames, spoken, agentNames, devWords, studyWords] =
+      await Promise.all([
+        this.read(OWNER_REPLY_DELAY_KEY),
+        this.read(OWNER_QUIET_KEY),
+        this.read(OWNER_LANE_ACTIVE_KEY),
+        this.read(OWNER_STOP_PHRASES_KEY),
+        this.read(OWNER_LI_NAMES_KEY),
+        this.read(OWNER_SPOKEN_NEEDS_NAME_KEY),
+        this.read(OWNER_AGENT_NAMES_KEY),
+        this.read(OWNER_DEV_WORDS_KEY),
+        this.read(OWNER_STUDY_WORDS_KEY),
+      ]);
     this.conf = {
       at: t,
       on,
@@ -205,6 +248,9 @@ export class OwnerAi<P> {
       laneActiveMs: ms(active, OWNER_LANE_ACTIVE_MAX) ?? OWNER_LANE_ACTIVE_MS,
       stop: words(stop) ?? OWNER_STOP_PHRASES,
       liNames: words(liNames) ?? OWNER_LI_NAMES,
+      agentNames: words(agentNames) ?? OWNER_AGENT_NAMES,
+      devWords: words(devWords) ?? OWNER_DEV_WORDS,
+      studyWords: words(studyWords) ?? OWNER_STUDY_WORDS,
     };
     return this.conf;
   }
@@ -269,6 +315,10 @@ export class OwnerAi<P> {
       return "stop";
     }
     if (!ownerLineWanted(l)) return l.speaker ? "voice-not-his" : "names-lane";
+    // Owner, 2026-11-26: another agent named, or a dev/ops request: that agent or the
+    // lanes handle it; Li only polishes the line (the hub's polish), never answers it.
+    if (namesAgent(l.text, conf.agentNames)) return "names-agent";
+    if (isDevLine(l.text, conf.devWords)) return "dev-request";
     // A spoken line: the room may be talking (2026-11-16: "あります。", "And here a few."
     // got a reply). Li is in the room, silent until named (partner.spokenNeedsName).
     const spoken = l.source === "stt";
@@ -283,6 +333,9 @@ export class OwnerAi<P> {
     const laneAt = this.d.laneAt?.() ?? 0;
     if (conf.laneActiveMs > 0 && laneAt > 0 && this.d.now() - laneAt < conf.laneActiveMs)
       return "lane-active";
+    // Li answers his line only about study (today's goal, word lists, due cards…);
+    // any other line it only polishes, and the agents present take it.
+    if (!isStudyLine(l.text, conf.studyWords)) return "off-topic";
     return null;
   }
 

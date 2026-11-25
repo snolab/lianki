@@ -2,6 +2,11 @@ import { HUB_RPC_LIMITS } from "./hub-rpc-config";
 import {
   CAP_WINDOW_HOURS,
   CAP_WINDOW_MAX,
+  OWNER_AGENT_NAMES,
+  OWNER_DEV_WORDS,
+  OWNER_STUDY_WORDS,
+  PARTNER_SYSTEM_PROMPT,
+  PARTNER_SYSTEM_PROMPT_MAX,
   OWNER_LANE_ACTIVE_MAX,
   OWNER_LANE_ACTIVE_MS,
   OWNER_LI_NAMES,
@@ -2093,6 +2098,38 @@ export const CONFIG = {
     audience: "server",
     description:
       "你在自己的线程里点名 / 报数时，Li 立刻（不调用模型）回的话。默认只报自己「Li 在」（你要求每个人亲自回答，不代答）。可选占位符：{n} = 除 Li 外在场几位，{names} = 他们的名字（「、」隔开，实时监听的在前）；用了 {names} 而没人在场时只说逗号前那段。",
+  },
+  "partner.otherAgentNames": {
+    default: [...OWNER_AGENT_NAMES] as string[],
+    schema: z.array(z.string().min(1).max(40)).max(200),
+    group: "chat",
+    audience: "server",
+    description:
+      "其他 agent 的名字（在聊天线名单之外再加）：你的一句话里出现其中任何一个（英文按整词、不分大小写），就是给那个 agent 的，Li 不回答，让它去处理。JSON 字符串数组。",
+  },
+  "partner.devWords": {
+    default: [...OWNER_DEV_WORDS] as string[],
+    schema: z.array(z.string().min(1).max(40)).max(300),
+    group: "chat",
+    audience: "server",
+    description:
+      "开发 / 运维的词（部署、代码、计费、Cloudflare…）：你的一句话里有其中任何一个，就交给开发通道，Li 只润色这句话、不回答。英文按整词、不分大小写。JSON 字符串数组。",
+  },
+  "partner.studyWords": {
+    default: [...OWNER_STUDY_WORDS] as string[],
+    schema: z.array(z.string().min(1).max(40)).max(300),
+    group: "chat",
+    audience: "server",
+    description:
+      "学习相关的词（今日目标、单词表、复习、到期、语法…）：你自己的线程里，Li 只回答含其中一个的话，或者直接叫 Li 的话；其他的话 Li 只润色、不回答。英文按整词、不分大小写。JSON 字符串数组。",
+  },
+  "partner.systemPrompt": {
+    default: PARTNER_SYSTEM_PROMPT as string,
+    schema: z.string().min(1).max(PARTNER_SYSTEM_PROMPT_MAX),
+    group: "chat",
+    audience: "server",
+    description:
+      "Li（学习伙伴模型）的规则，系统提示的固定部分（英文写给模型看）。规则：不列自己做不了什么、不拒绝，给最接近的可行办法，或者说这件事交给聊天里的哪位。改动在下一次回复时生效。",
   },
   // The Learning Partner AI's caps (docs/partner-ai.md, "Caps"): read by the
   // debug hub over DebugSessions.config.
