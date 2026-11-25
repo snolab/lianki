@@ -3,9 +3,11 @@
 # hold on a subset of the suites (a file is only partly exercised by the tests
 # that were picked), so the coverage gate runs on the full suite only — in CI on
 # merge groups and main, and whenever the selector falls back to the full suite.
-# The globals-guard preload must stay (#1085): besides failing a run that leaves a global behind, it
-# sets the fake owner hosts the suites read; without it polish-readback and tunnel-headers fail on
-# every push that selects them. react-dom-env goes first.
+#
+# The preload must stay: besides failing a run that leaves a global behind, it
+# sets the fake owner hosts (clone TTS, live-view origins) the suites read.
+# Without it unit/polish-readback.test.ts and unit/tunnel-headers.test.ts fail
+# on every push that selects them, while CI (full bunfig.toml) passes.
 [test]
 root = "unit"
 coverage = false
