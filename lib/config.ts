@@ -74,6 +74,7 @@ import { GUARD_MIN_SPEECH_MS, STT_GUARD } from "@lianki/debug-chat/stt-guard";
 import { SHORT_ANSWER, SHORT_ANSWER_RANGE } from "@lianki/debug-chat/short-answer";
 import { DEFAULT_PRESET_ROWS, presetListSchema, type ByokPresetRow } from "./byok/preset-data";
 import { DEFAULT_MIME_PREFS, parseMimePrefs } from "./meetings/core";
+import { ECHO_HALLUCINATIONS } from "./echo-reports";
 import {
   MEETING_TRANSCRIPTION_DEFAULTS,
   meetingTranscriptionSchema,
@@ -1061,6 +1062,56 @@ export const CONFIG = {
     description:
       "朗读回声（开关 voice.echo-reports）：hub 在内存里记住各设备读过的句子多久（毫秒），过了就忘。只在内存里，不写存储、不进日志、不给任何助手。",
   }),
+  // The play window (flag voice.echo-window; lib/echo-reports.ts echoWindowMatch, 2026-11-26).
+  "voice.echoWindowTailMs": int({
+    default: 2500,
+    min: 0,
+    max: 10_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "朗读时间窗（开关 voice.echo-window）：你的设备读完一句之后，再过多少毫秒内麦克风识别出来的话还算朗读回声（房间余音、语音检测的收尾）。越长越不容易漏掉回声，但你在 Li 刚读完时马上说的话也更容易被折叠（点「这是我说的」可以找回）。",
+  }),
+  "voice.echoWindowLeadMs": int({
+    default: 300,
+    min: 0,
+    max: 5000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "朗读时间窗（开关 voice.echo-window）：一句开始朗读之前，往前放宽多少毫秒也算在朗读中（设备之间的时钟误差、扬声器延迟）。",
+  }),
+  "voice.echoWindowShare": {
+    default: 0.5 as number,
+    schema: z.number().min(0.1).max(1),
+    min: 0.1,
+    max: 1,
+    unit: "0–1",
+    group: "voice",
+    audience: "server",
+    description:
+      "朗读时间窗（开关 voice.echo-window）：你说的一句话至少有多大比例的时间落在朗读中（含收尾），才不看内容直接当朗读回声。0.5 = 一半。调高：你说长句时 Li 正好开始读，更不容易被折叠；调低：更多回声被挡住。",
+  },
+  "voice.echoRecentMs": int({
+    default: 15_000,
+    min: 0,
+    max: 120_000,
+    unit: "ms",
+    group: "voice",
+    audience: "server",
+    description:
+      "朗读回声（开关 voice.echo-reports）：一句读完后多少毫秒内，按内容比对（任何语言，去掉标点、大小写和重音符号）和识别噪声短语（voice.echoHallucinations）仍然算回声。",
+  }),
+  "voice.echoHallucinations": {
+    default: [...ECHO_HALLUCINATIONS] as string[],
+    schema: z.array(z.string().min(1).max(120)).max(200),
+    group: "voice",
+    audience: "server",
+    description:
+      "识别噪声短语（开关 voice.echo-window）：语音识别把不是人声的声音（音乐、半听清的朗读声）常写成的固定句子，多是训练数据里的字幕署名，比如「明镜需要您的支持」「ご視聴ありがとうございました」。最近读过东西（voice.echoRecentMs 内）时，含有其中一句的话当朗读回声折叠。任何语言都直接加在这里。JSON 字符串数组。",
+  },
   "voice.echoShowMax": int({
     default: 50,
     min: 1,

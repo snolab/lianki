@@ -72,6 +72,8 @@ describe("registry", () => {
       "voice.echo-dedupe",
       // Pages report what they read aloud; echoes shown collapsed, owner "go" 2026-11-20 ~16:00 JST, audience owner.
       "voice.echo-reports",
+      // Spoken while his devices read aloud is an echo whatever the words, asked 2026-11-26 ~01:00 JST, audience owner.
+      "voice.echo-window",
       // The Mac tags our own TTS voices "self" (echo M4), approved 2026-11-21 ~01:10 JST, audience owner.
       "stt.self-voice",
       // His Mac's Whisper re-reads each run before its polish, asked 2026-11-15 03:17 JST, audience owner.

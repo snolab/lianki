@@ -29,6 +29,7 @@ import {
   srcHost,
 } from "./play-audio";
 import { isDesktop } from "./voice-bg";
+import { reportPlayed, reportPlaying } from "./play-report";
 
 export const LI_PLAY_KEY = "__lkLiPlay";
 export const LI_PLAY_V = 1;
@@ -240,10 +241,24 @@ export function createLiPlayer(env: LiPlayEnv): LiPlayer {
       return d;
     }
   };
+  /** The hub's time-only play report while a line's audio plays (undefined: not playing; "": none sent). */
+  let playRef: string | undefined;
   const emit = (next: Partial<PlayView>) => {
     v = { ...v, ...next };
     if (next.status && next.status !== "error" && next.status !== "paused" && next.status !== "blocked")
       if (!("why" in next)) v = { ...v, why: undefined };
+    // His mics on any device must know this plays (lib/echo-reports.ts, the play window).
+    if (v.status === "playing" && playRef === undefined)
+      playRef =
+        safe(
+          () => reportPlaying({ text: "", voice: "li-player", at: Date.now(), ...(current ? { line: current.id } : {}) }),
+          null,
+        ) ?? "";
+    else if (v.status !== "playing" && playRef !== undefined) {
+      const ref = playRef;
+      playRef = undefined;
+      if (ref) safe(() => reportPlayed(ref, Date.now()), undefined);
+    }
     for (const f of [...subs]) safe(() => f(v), undefined);
   };
   let sinkLog = env.log;

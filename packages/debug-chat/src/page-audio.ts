@@ -32,7 +32,8 @@ export type StartOpts = {
   always?: boolean;
   /**
    * Which voice reads it, for the hub's cross-device echo match
-   * (play-report.ts): "words", "reader"… Only sounds with `text` are reported.
+   * (play-report.ts): "words", "reader"… A sound with `text` is reported with
+   * its words; one with only `voice`, by time alone (the hub's play window).
    */
   voice?: string;
 };
@@ -120,7 +121,12 @@ export function createPageAudio(
         if (said.length > 50) said.shift();
       }
       // His other devices' mics may hear it: the hub is told (flag voice.echo-reports).
-      const ref = rec ? reportPlaying({ text: rec.text, voice: o.voice ?? "page", at: rec.start }) : null;
+      // A named sound with no words still tells the hub when (a time-only report); an
+      // unnamed one (his own mic monitored back, live-monitor.ts) never does.
+      const ref =
+        rec || o.voice
+          ? reportPlaying({ text: rec?.text ?? "", voice: o.voice ?? "page", at: rec?.start ?? now() })
+          : null;
       all.begin();
       if (o.always) forced.begin();
       let done = false;
@@ -129,8 +135,9 @@ export function createPageAudio(
         if (done) return;
         done = true;
         clearTimer(cap);
-        if (rec) rec.end = now();
-        if (ref && rec) reportPlayed(ref, rec.end!);
+        const ended = now();
+        if (rec) rec.end = ended;
+        if (ref) reportPlayed(ref, ended);
         if (o.always) forced.finish();
         all.finish();
       };

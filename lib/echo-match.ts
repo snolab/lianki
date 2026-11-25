@@ -29,9 +29,19 @@ export const ECHO_READ_WINDOW_MAX = 300_000;
 const NEEDLE_MAX = 600;
 const HAY_MAX = 4000;
 
-/** Letters and digits only, lower case: "表里 alive，只表示进程活着。" → "表里alive只表示进程活着". */
+/**
+ * Letters and digits only, lower case, accents and widths folded:
+ * "表里 alive，只表示进程活着。" → "表里alive只表示进程活着", "Sjáns" → "sjans".
+ * STT that guesses the language of a voice it half hears adds or drops
+ * accents freely (2026-11-26: Icelandic for a Chinese line), so marks never
+ * decide a match. Any script: NFKD splits a mark off its letter, then marks go.
+ */
 export function normalizeEcho(text: string): string {
-  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  return text
+    .normalize("NFKD")
+    .replace(/\p{M}+/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
 /** Levenshtein distance; `free` = the needle may start and end anywhere in `b` (semi-global). */

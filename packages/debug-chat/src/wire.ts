@@ -307,10 +307,12 @@ export type EchoMark = {
    * Which evidence (docs/echo-suppression.md, "The verdict"): "report" = a
    * page said it was playing these words then (lib/echo-reports.ts);
    * "landed" = the agent line or his line it copies landed lately; "self" =
-   * the Mac's voiceprint said it was our own TTS voice (signed). Absent on
-   * echoes kept before play reports.
+   * the Mac's voiceprint said it was our own TTS voice (signed); "window" =
+   * spoken while one of his pages played (or in its short tail), whatever
+   * the words; "noise" = a known STT hallucination while something played
+   * lately. Absent on echoes kept before play reports.
    */
-  layer?: "report" | "landed" | "self";
+  layer?: "report" | "landed" | "self" | "window" | "noise";
   /** The voice that played it (play-report.ts), with layer "report". */
   voice?: string;
   /** How long the utterance overlapped what played, ms, with layer "report". */
