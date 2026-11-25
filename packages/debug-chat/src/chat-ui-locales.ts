@@ -153,6 +153,8 @@ export type ChatExtra = {
   micFailed: string;
   endedElsewhere: string;
   rateLimited: string;
+  modelDownloadConfirm: string;
+  modelDownloadWaiting: string;
   sttServersTitle: string;
   sttServersBody: string;
   sttServersAgree: string;
@@ -291,6 +293,8 @@ export const EXTRA_CONTEXT: ChatExtra = {
   micFailed: `In ${CHAT}: small note by the mic button for any other failure of the mic or of speech recognition. Two short sentences: it failed, try again.`,
   endedElsewhere: `In ${CHAT}: a line above the chat box when the chat was closed from another open page of Lianki; it reconnects when the user comes back to this page.`,
   rateLimited: `In ${CHAT}: a line above the chat box when the user sent too many messages; the last one was not sent; {n} is how many minutes to wait. Keep {n}.`,
+  modelDownloadConfirm: "Browser confirmation before uncached wake-word model/runtime download on cellular, metered, Data Saver or unknown network (Safari cannot tell). {mb} is the approximate total megabytes, localized separately. Explain possible mobile-data charges; OK downloads this batch only, Cancel keeps normal cloud speech recognition. Do not claim Wi-Fi was detected when network information is absent.",
+  modelDownloadWaiting: "Mic tooltip after model download is declined or cancelled on a network change: no uncached model is downloading; ordinary speech recognition continues. Waiting for Wi-Fi or explicit download confirmation. Short status, no technical detail.",
   sttServersTitle: `In ${CHAT}: the heading of a small card shown once per device when the mic turns on and the user may use Lianki's own speech-to-text servers: they turn speech into text faster, while the user speaks. A short noun phrase.`,
   sttServersBody: `In ${CHAT}: the text of that card: the voice is sent to Lianki's speech servers, which write it out while the user speaks; the audio is not stored, only what the user sends is kept; free for now. Call them only 'Lianki's speech servers' (never a computer or a person). Two or three short sentences.`,
   sttServersAgree: `In ${CHAT}: the card's main button: agree and use Lianki's speech servers from now on, on this device. An imperative phrase.`,
@@ -678,6 +682,8 @@ export const OTHER_LEGACY: Record<Other, LegacyStrings> = {
 /** The strings that were inline in the chat's code, in all 16 locales. */
 export const EXTRA: Record<ChatLocale, ChatExtra> = {
   en: {
+    modelDownloadConfirm: "Download about {mb} MB for wake words? This connection may use mobile or metered data, or its type is unknown. Data charges may apply. Cancel to keep regular speech recognition without downloading.",
+    modelDownloadWaiting: "Model download paused; speech recognition continues. Use Wi-Fi or confirm the download.",
     miniAppLoading: "Loading mini app…",
     miniAppUnavailable: "Mini app unavailable",
     miniAppResize: "Resize mini app",
@@ -787,6 +793,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "This browser can't play this stream",
   },
   zh: {
+    modelDownloadConfirm: "下载约 {mb} MB 的唤醒词模型？当前可能是移动或计量网络，也可能无法识别网络类型，下载可能产生流量费用。取消后继续普通语音识别，不下载模型。",
+    modelDownloadWaiting: "模型下载已暂停，语音识别照常继续。请连接 Wi-Fi 或确认下载。",
     miniAppLoading: "正在加载迷你应用…",
     miniAppUnavailable: "迷你应用不可用",
     miniAppResize: "调整迷你应用高度",
@@ -895,6 +903,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "这个浏览器放不了这种直播",
   },
   hi: {
+    modelDownloadConfirm: "वेक-वर्ड के लिए लगभग {mb} MB डाउनलोड करें? यह मोबाइल या मीटर्ड डेटा हो सकता है, या नेटवर्क अज्ञात है। डेटा शुल्क लग सकता है। रद्द करने पर बिना डाउनलोड सामान्य वाक् पहचान जारी रहेगी।",
+    modelDownloadWaiting: "मॉडल डाउनलोड रुका है; वाक् पहचान जारी है। Wi-Fi या डाउनलोड की पुष्टि करें।",
     miniAppLoading: "मिनी ऐप लोड हो रहा है…",
     miniAppUnavailable: "मिनी ऐप उपलब्ध नहीं है",
     miniAppResize: "मिनी ऐप का आकार बदलें",
@@ -1003,6 +1013,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "यह ब्राउज़र यह स्ट्रीम नहीं चला सकता",
   },
   es: {
+    modelDownloadConfirm: "¿Descargar unos {mb} MB para palabras de activación? La conexión puede usar datos móviles o medidos, o ser desconocida. Puede haber cargos. Cancela para seguir reconociendo voz sin descargar.",
+    modelDownloadWaiting: "Descarga pausada; el reconocimiento continúa. Usa Wi-Fi o confirma la descarga.",
     miniAppLoading: "Cargando miniaplicación…",
     miniAppUnavailable: "Miniaplicación no disponible",
     miniAppResize: "Cambiar tamaño de la miniaplicación",
@@ -1111,6 +1123,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "Este navegador no puede reproducir esta emisión",
   },
   fr: {
+    modelDownloadConfirm: "Télécharger environ {mb} Mo pour les mots de réveil ? Cette connexion peut être mobile, limitée ou inconnue. Des frais peuvent s’appliquer. Annulez pour continuer la reconnaissance sans téléchargement.",
+    modelDownloadWaiting: "Téléchargement en pause ; la reconnaissance continue. Utilisez le Wi-Fi ou confirmez.",
     miniAppLoading: "Chargement de la mini-app…",
     miniAppUnavailable: "Mini-app indisponible",
     miniAppResize: "Redimensionner la mini-app",
@@ -1219,6 +1233,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "Ce navigateur ne peut pas lire ce flux",
   },
   ar: {
+    modelDownloadConfirm: "هل تريد تنزيل نحو {mb} ميغابايت لكلمات التنبيه؟ قد تكون الشبكة خلوية أو محدودة أو غير معروفة. قد تُفرض رسوم بيانات. الإلغاء يُبقي التعرف المعتاد دون تنزيل.",
+    modelDownloadWaiting: "تنزيل النموذج متوقف؛ التعرف على الكلام مستمر. استخدم Wi-Fi أو أكّد التنزيل.",
     miniAppLoading: "جارٍ تحميل التطبيق المصغر…",
     miniAppUnavailable: "التطبيق المصغر غير متاح",
     miniAppResize: "تغيير حجم التطبيق المصغر",
@@ -1327,6 +1343,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "لا يستطيع هذا المتصفح تشغيل هذا البث",
   },
   bn: {
+    modelDownloadConfirm: "জাগানোর শব্দের জন্য প্রায় {mb} MB ডাউনলোড করবেন? এটি মোবাইল বা মিটারযুক্ত ডেটা হতে পারে, অথবা নেটওয়ার্ক অজানা। ডেটা খরচ হতে পারে। বাতিল করলে ডাউনলোড ছাড়াই স্বাভাবিক শনাক্তকরণ চলবে।",
+    modelDownloadWaiting: "মডেল ডাউনলোড থামানো; কথা শনাক্তকরণ চলছে। Wi-Fi ব্যবহার করুন বা নিশ্চিত করুন।",
     miniAppLoading: "মিনি অ্যাপ লোড হচ্ছে…",
     miniAppUnavailable: "মিনি অ্যাপ উপলব্ধ নেই",
     miniAppResize: "মিনি অ্যাপের আকার পরিবর্তন করুন",
@@ -1435,6 +1453,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "এই ব্রাউজার এই স্ট্রিম চালাতে পারে না",
   },
   pt: {
+    modelDownloadConfirm: "Baixar cerca de {mb} MB para palavras de ativação? A conexão pode ser móvel, limitada ou desconhecida. Pode haver cobrança de dados. Cancele para continuar o reconhecimento sem baixar.",
+    modelDownloadWaiting: "Download pausado; o reconhecimento continua. Use Wi-Fi ou confirme o download.",
     miniAppLoading: "Carregando miniaplicativo…",
     miniAppUnavailable: "Miniaplicativo indisponível",
     miniAppResize: "Redimensionar miniaplicativo",
@@ -1543,6 +1563,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "Este navegador não consegue tocar esta transmissão",
   },
   ru: {
+    modelDownloadConfirm: "Скачать около {mb} МБ для слов активации? Сеть может быть мобильной, с оплатой трафика или неизвестной. Возможны расходы. Отмена сохранит обычное распознавание без загрузки.",
+    modelDownloadWaiting: "Загрузка модели приостановлена; распознавание продолжается. Используйте Wi-Fi или подтвердите загрузку.",
     miniAppLoading: "Загрузка мини-приложения…",
     miniAppUnavailable: "Мини-приложение недоступно",
     miniAppResize: "Изменить размер мини-приложения",
@@ -1651,6 +1673,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "Этот браузер не может воспроизвести этот поток",
   },
   ur: {
+    modelDownloadConfirm: "بیداری کے الفاظ کے لیے تقریباً {mb} MB ڈاؤن لوڈ کریں؟ نیٹ ورک موبائل، میٹرڈ یا نامعلوم ہو سکتا ہے۔ ڈیٹا چارجز لگ سکتے ہیں۔ منسوخ کرنے پر عام شناخت بغیر ڈاؤن لوڈ جاری رہے گی۔",
+    modelDownloadWaiting: "ماڈل ڈاؤن لوڈ رکا ہے؛ آواز کی شناخت جاری ہے۔ Wi-Fi استعمال کریں یا تصدیق کریں۔",
     miniAppLoading: "منی ایپ لوڈ ہو رہی ہے…",
     miniAppUnavailable: "منی ایپ دستیاب نہیں",
     miniAppResize: "منی ایپ کا سائز بدلیں",
@@ -1759,6 +1783,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "یہ براؤزر یہ اسٹریم نہیں چلا سکتا",
   },
   id: {
+    modelDownloadConfirm: "Unduh sekitar {mb} MB untuk kata pemicu? Jaringan mungkin seluler, berkuota, atau tidak diketahui. Biaya data mungkin berlaku. Batalkan untuk tetap mengenali suara tanpa mengunduh.",
+    modelDownloadWaiting: "Unduhan model dijeda; pengenalan suara berlanjut. Gunakan Wi-Fi atau konfirmasikan unduhan.",
     miniAppLoading: "Memuat aplikasi mini…",
     miniAppUnavailable: "Aplikasi mini tidak tersedia",
     miniAppResize: "Ubah ukuran aplikasi mini",
@@ -1867,6 +1893,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "Browser ini tidak bisa memutar siaran ini",
   },
   de: {
+    modelDownloadConfirm: "Etwa {mb} MB für Aktivierungswörter herunterladen? Das Netz ist möglicherweise mobil, getaktet oder unbekannt. Datenkosten können entstehen. Abbrechen behält die normale Spracherkennung ohne Download bei.",
+    modelDownloadWaiting: "Modelldownload pausiert; Spracherkennung läuft weiter. WLAN nutzen oder Download bestätigen.",
     miniAppLoading: "Mini-App wird geladen…",
     miniAppUnavailable: "Mini-App nicht verfügbar",
     miniAppResize: "Größe der Mini-App ändern",
@@ -1975,6 +2003,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "Dieser Browser kann diesen Stream nicht abspielen",
   },
   ja: {
+    modelDownloadConfirm: "ウェイクワード用に約 {mb} MB をダウンロードしますか？モバイル回線、従量制回線、または種類不明のネットワークです。通信料金が発生する場合があります。キャンセルすると通常の音声認識を続け、ダウンロードしません。",
+    modelDownloadWaiting: "モデルのダウンロードを停止中。音声認識は続行します。Wi-Fi に接続するかダウンロードを確認してください。",
     miniAppLoading: "ミニアプリを読み込み中…",
     miniAppUnavailable: "ミニアプリを利用できません",
     miniAppResize: "ミニアプリの高さを変更",
@@ -2083,6 +2113,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "このブラウザではこの配信を再生できません",
   },
   sw: {
+    modelDownloadConfirm: "Pakua takriban MB {mb} kwa maneno ya kuamsha? Mtandao unaweza kuwa wa simu, wenye kipimo au usiojulikana. Gharama za data zinaweza kutokea. Ghairi kuendelea kutambua sauti bila kupakua.",
+    modelDownloadWaiting: "Upakuaji wa modeli umesitishwa; utambuzi wa sauti unaendelea. Tumia Wi-Fi au thibitisha upakuaji.",
     miniAppLoading: "Inapakia programu ndogo…",
     miniAppUnavailable: "Programu ndogo haipatikani",
     miniAppResize: "Badilisha ukubwa wa programu ndogo",
@@ -2191,6 +2223,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "Kivinjari hiki hakiwezi kucheza mtiririko huu",
   },
   mr: {
+    modelDownloadConfirm: "जागृत शब्दांसाठी सुमारे {mb} MB डाउनलोड करायचे? नेटवर्क मोबाइल, मोजलेले किंवा अज्ञात असू शकते. डेटा शुल्क लागू शकते. रद्द केल्यास डाउनलोडविना सामान्य आवाज ओळख सुरू राहील.",
+    modelDownloadWaiting: "मॉडेल डाउनलोड थांबले; आवाज ओळख सुरू आहे. Wi-Fi वापरा किंवा डाउनलोडची पुष्टी करा.",
     miniAppLoading: "मिनी ॲप लोड होत आहे…",
     miniAppUnavailable: "मिनी ॲप उपलब्ध नाही",
     miniAppResize: "मिनी ॲपचा आकार बदला",
@@ -2299,6 +2333,8 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
     playNoStream: "हा ब्राउझर हा प्रवाह वाजवू शकत नाही",
   },
   ko: {
+    modelDownloadConfirm: "호출어용 약 {mb} MB를 다운로드할까요? 모바일, 종량제 또는 종류를 알 수 없는 네트워크일 수 있어 데이터 요금이 발생할 수 있습니다. 취소하면 다운로드 없이 일반 음성 인식을 계속합니다.",
+    modelDownloadWaiting: "모델 다운로드 일시 중지; 음성 인식은 계속됩니다. Wi-Fi를 사용하거나 다운로드를 확인하세요.",
     miniAppLoading: "미니 앱 불러오는 중…",
     miniAppUnavailable: "미니 앱을 사용할 수 없습니다",
     miniAppResize: "미니 앱 크기 조절",
