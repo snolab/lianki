@@ -68,7 +68,14 @@ describe("echoWindowMatch: time is a precondition, the words decide (owner, 2026
   });
 
   it("a garbled echo of the played line above the cut folds, with its score as sim", () => {
-    const hit = win([rep({ from: 1000, to: 7000 })], { from: 2000, to: 4500, known: true }, {}, 9000, "phone", GARBLED);
+    const hit = win(
+      [rep({ from: 1000, to: 7000 })],
+      { from: 2000, to: 4500, known: true },
+      {},
+      9000,
+      "phone",
+      GARBLED,
+    );
     expect(hit).toMatchObject({ voice: "device", of: "line1", overlapMs: 2500, samePage: true });
     expect(hit!.sim).toBeGreaterThanOrEqual(conf.matchMin);
     expect(hit!.sim).toBeLessThan(0.6); // the report layer alone would have let it through
@@ -77,13 +84,25 @@ describe("echoWindowMatch: time is a precondition, the words decide (owner, 2026
   it("another person speaking during playback is not folded", () => {
     for (const other of ["我们明天去公园散步吧", "Can you pass me the salt?", "一百二十"])
       expect(
-        win([rep({ from: 1000, to: 7000 })], { from: 2000, to: 4500, known: true }, {}, 9000, "phone", other),
+        win(
+          [rep({ from: 1000, to: 7000 })],
+          { from: 2000, to: 4500, known: true },
+          {},
+          9000,
+          "phone",
+          other,
+        ),
       ).toBeUndefined();
   });
 
   it("a sound with no text opens a window but can fold nothing", () => {
     expect(
-      win([rep({ from: 1000, to: 7000, text: undefined, voice: "li-player" })], { from: 2000, to: 4500, known: true }, {}, 9000),
+      win(
+        [rep({ from: 1000, to: 7000, text: undefined, voice: "li-player" })],
+        { from: 2000, to: 4500, known: true },
+        {},
+        9000,
+      ),
     ).toBeUndefined();
   });
 
@@ -95,24 +114,26 @@ describe("echoWindowMatch: time is a precondition, the words decide (owner, 2026
   });
 
   it("the tail counts: spoken just after the sound ended", () => {
-    const hit = win([rep({ from: 1000, to: 5000 })], { from: 5500, to: 7000, known: true }, {}, 9000);
+    const hit = win(
+      [rep({ from: 1000, to: 5000 })],
+      { from: 5500, to: 7000, known: true },
+      {},
+      9000,
+    );
     expect(hit?.sim).toBe(0.75);
   });
 
   it("past the tail the window does not apply", () => {
     expect(
-      win(
-        [rep({ from: 1000, to: 5000 })],
-        { from: 8000, to: 9000, known: true },
-        conf,
-        9500,
-      ),
+      win([rep({ from: 1000, to: 5000 })], { from: 8000, to: 9000, known: true }, conf, 9500),
     ).toBeUndefined();
   });
 
   it("a long instruction that Li started reading into near its end stays his", () => {
     // 20 s of speech, a sound starts 2 s before it ends: 2.0 s + no tail inside = 10 %.
-    expect(win([rep({ from: 18_000 })], { from: 0, to: 20_000, known: true }, {}, 20_500)).toBeUndefined();
+    expect(
+      win([rep({ from: 18_000 })], { from: 0, to: 20_000, known: true }, {}, 20_500),
+    ).toBeUndefined();
   });
 
   it("joins several sounds without counting their overlap twice", () => {
