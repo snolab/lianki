@@ -422,8 +422,9 @@ import {
   type ReplyState,
   STATE_TREE_SENDER_DEFAULT,
   STATE_TREE_SENDER_KEY,
+  LANE_TABLE_KEY,
+  whoShown,
 } from "../../../lib/eta-reply";
-import { agentLabel } from "../../../lib/progress";
 import {
   CLIPS_GONE_MS,
   CLIPS_HIDDEN_MS,
@@ -3054,7 +3055,13 @@ export class DebugHub {
    */
   private async etaWords(
     reply: boolean,
-  ): Promise<{ sender: string; reply: Partial<Record<ReplyState, string>> }> {
+  ): Promise<{ sender: string; reply: Partial<Record<ReplyState, string>>; lanes: unknown }> {
+    // The lane table (chat.lanes), for the lanes' display names; unreadable: the built-ins.
+    let lanes: unknown = [];
+    try {
+      const v = this.sessions?.config ? await this.sessions.config(LANE_TABLE_KEY) : undefined;
+      if (Array.isArray(v)) lanes = v;
+    } catch {}
     const read = async (key: string) => {
       try {
         const v = this.sessions?.config ? await this.sessions.config(key) : undefined;
@@ -3064,9 +3071,10 @@ export class DebugHub {
         return undefined;
       }
     };
-    const out: { sender: string; reply: Partial<Record<ReplyState, string>> } = {
+    const out: { sender: string; reply: Partial<Record<ReplyState, string>>; lanes: unknown } = {
       sender: (await read(STATE_TREE_SENDER_KEY)) ?? STATE_TREE_SENDER_DEFAULT,
       reply: {},
+      lanes,
     };
     if (reply)
       for (const s of REPLY_STATES) {
@@ -3105,8 +3113,8 @@ export class DebugHub {
     const line: ChatMessage & { thread: string } = {
       id: crypto.randomUUID().slice(0, 8),
       from: "agent",
-      label: reply ? agentLabel(ping.assignee ?? "agent") : words.sender,
-      text: etaLineText(ping, this.now(), words.reply),
+      label: reply ? whoShown(ping.assignee ?? "agent", words.lanes) : words.sender,
+      text: etaLineText(ping, this.now(), words.reply, words.lanes),
       at: this.now(),
       thread: OWNER_THREAD,
       to: ROOT_NODE,

@@ -4877,7 +4877,7 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
     const nudge = chats(owner).at(-1) as Record<string, any>;
     expect(nudge.quiet).toBe(true);
     expect(nudge.eta).toMatchObject({ kind: "blocked", lane: "codex" });
-    expect(nudge.text).toContain("@codex: Rebase: x (/words/swipe) is blocked on you: 合并 #812");
+    expect(nudge.text).toContain("@coco: Rebase: x (/words/swipe) is blocked on you: 合并 #812");
     await post(s, { ...ping, title: "DNS: apex", kind: "blocked", lane: "owner", reason: "批准" });
     const his = chats(owner).at(-1) as Record<string, any>;
     expect(his.quiet).toBeUndefined();
@@ -4904,15 +4904,16 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
     expect(nudge.label).toBe("状态树提醒");
     expect(nudge.agentId).toBe("eta");
     expect(nudge.eta).toMatchObject({ kind: "blocked", lane: "codex", agent: "coco" });
-    expect(nudge.text).toStartWith("@coco (codex): R键重播: 中文 (/words/swipe) is blocked on you");
-    expect(nudge.text).toContain("agy cannot go on until you act; then tell agy.");
-    // The reply, from the ack or the report: the agent's own name, quoting the task and the reminder.
-    await post(s, { ...r, assignee: "coco@codex", kind: "reply", state: "doing", min: 20 });
+    expect(nudge.text).toStartWith("@coco: R键重播: 中文 (/words/swipe) is blocked on you");
+    expect(nudge.text).toContain("哈基米 cannot go on until you act; then tell 哈基米.");
+    // The reply, from the ack or the report: the lane's display name, quoting the task and the reminder.
+    await post(s, { ...r, assignee: "agy", kind: "reply", state: "doing", min: 20 });
     const reply = chats(owner).at(-1) as Record<string, any>;
-    expect(reply.label).toBe("coco (codex)");
-    expect(reply.agentId).toBe("coco@codex");
+    expect(reply.label).toBe("哈基米");
+    // The machine-readable id stays the lane's.
+    expect(reply.agentId).toBe("agy");
     expect(reply.quiet).toBe(true);
-    expect(reply.text).toBe("coco (codex)：收到「R键重播」，处理中（ETA 20 分钟）");
+    expect(reply.text).toBe("哈基米：收到「R键重播」，处理中（ETA 20 分钟）");
     expect(reply.eta).toMatchObject({ kind: "reply", re: nudge.id });
     // A reply names who replies.
     expect((await post(s, { ...r, kind: "reply", assignee: undefined })).status).toBe(400);
