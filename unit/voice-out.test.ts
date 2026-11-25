@@ -244,7 +244,14 @@ class El {
   }
 }
 
-function rig(o: { ctx?: boolean; wireThrows?: boolean; fail?: "http" | "network" } = {}) {
+function rig(
+  o: {
+    ctx?: boolean;
+    wireThrows?: boolean;
+    fail?: "http" | "network";
+    privateOffline?: boolean;
+  } = {},
+) {
   const el = new El();
   const calls: unknown[][] = [];
   const gain = {
@@ -271,6 +278,8 @@ function rig(o: { ctx?: boolean; wireThrows?: boolean; fail?: "http" | "network"
   const out = createCloudOut({
     fetch: async (u) => {
       fetched.push(u);
+      if (o.privateOffline && u.startsWith("https://tts.example.invalid"))
+        throw new Error("private network offline");
       if (o.fail === "network") throw new Error("offline");
       return {
         ok: o.fail !== "http",
@@ -294,6 +303,35 @@ function rig(o: { ctx?: boolean; wireThrows?: boolean; fail?: "http" | "network"
 }
 
 describe("voice-out: createCloudOut", () => {
+  it("a phone without private-network access retries its chosen local voice through the authenticated origin", async () => {
+    await withGlobals(
+      {
+        localStorage: {
+          getItem: (key: string) =>
+            key === "lk:agent-local-tts" ? "https://tts.example.invalid" : null,
+        },
+      },
+      async () => {
+        setLocalTtsFallbacks(DEFAULT_LOCAL_TTS_FALLBACKS);
+        try {
+          const r = rig({ privateOffline: true });
+          r.out.play({ text: "你好。", lang: "zh", voice: "sweet", at: 0, volume: 1 }, r.ev);
+          await tick();
+          expect(r.fetched).toHaveLength(2);
+          expect(r.fetched[1]).toBe(
+            "/api/words/tts?lang=zh&text=%E4%BD%A0%E5%A5%BD%E3%80%82&store=0&localVoice=xiaobei",
+          );
+          r.el.onloadedmetadata?.();
+          await tick();
+          expect(r.el.plays).toBe(1);
+          r.el.onended?.();
+          expect(r.events).toContain("end");
+        } finally {
+          setLocalTtsFallbacks({});
+        }
+      },
+    );
+  });
   it("configured local Chinese skips the retired cloud model while English keeps Aura", async () => {
     await withGlobals(
       {

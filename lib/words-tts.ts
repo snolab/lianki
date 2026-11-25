@@ -72,6 +72,7 @@ export type WordsTtsDeps = {
   ): { allowed: boolean; retryAfterMs: number };
   isConfigured(): boolean;
   speechModel(): string;
+  generatedVoice?: string;
   speech(opts: {
     text: string;
     lang: string;
@@ -105,6 +106,7 @@ export async function wordsTts(
     return json({ error: `text: 1–${MAX_TTS_TEXT} characters` }, 400);
   let store = storeParam(params);
   const speaker = speakerParam(params, lang);
+  const generatedVoice = deps.generatedVoice ?? "melotts";
   const keep = () => (store ? CACHE_HEADERS : NO_STORE_HEADERS);
 
   // A recording is in the language's one voice: not for a lane's own speaker.
@@ -136,7 +138,7 @@ export async function wordsTts(
       return new Response(Buffer.from(cached), {
         headers: {
           "Content-Type": sniffAudioType(Buffer.from(cached)),
-          "X-Voice": speaker ? AURA_VOICE : "melotts-cached",
+          "X-Voice": speaker ? AURA_VOICE : `${generatedVoice}-cached`,
           ...keep(),
         },
       });
@@ -166,13 +168,13 @@ export async function wordsTts(
   if (!deps.isConfigured()) return json({ error: "Speech is not configured" }, 503);
 
   try {
-    let voiced = speaker ? AURA_VOICE : "melotts";
+    let voiced = speaker ? AURA_VOICE : generatedVoice;
     const gen = () =>
       speaker
         ? deps.speech({ text, lang, speaker, signal }).catch((err) => {
             // Never silence: the language's one voice instead.
             deps.log("words.tts.aura", err);
-            voiced = "melotts";
+            voiced = generatedVoice;
             return deps.speech({ text, lang, signal });
           })
         : deps.speech({ text, lang, signal });
@@ -184,7 +186,7 @@ export async function wordsTts(
     } else said = await gen();
     const { audio, contentType } = said;
     // A fallback clip is not kept under the speaker's key.
-    if (store && voiced === (speaker ? AURA_VOICE : "melotts"))
+    if (store && voiced === (speaker ? AURA_VOICE : generatedVoice))
       try {
         await deps.putCachedTTS(key, audio, { lang, textLength: text.length, source: "words" });
       } catch (err) {

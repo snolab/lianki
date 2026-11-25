@@ -414,7 +414,11 @@ export function createCloudOut(d: {
           setTimer(() => no(new Error(`clone timeout ${ms} ms`)), ms);
           d.fetch(url).then(ok, no);
         })
-      : d.fetch(url);
+      : local
+        ? d.fetch(url).catch(() =>
+            d.fetch(`${ttsUrl(text, base)}&localVoice=${encodeURIComponent(local.heard.name)}`),
+          )
+        : d.fetch(url);
     const p = got.then(async (r) => {
       if (!r.ok)
         throw new Error(`http ${r.status}${r.headers.get("X-Voice") ? ` ${r.headers.get("X-Voice")}` : ""}`);

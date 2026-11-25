@@ -54,6 +54,17 @@ describe("storeParam", () => {
 });
 
 describe("wordsTts", () => {
+  test("a local development voice has its own cache identity and truthful source", async () => {
+    const { d, puts } = deps({
+      speechModel: () => "local:xiaoxiao",
+      generatedVoice: "local:xiaoxiao",
+    });
+    const first = await call("lang=zh&text=你好", d);
+    expect(first.headers.get("X-Voice")).toBe("local:xiaoxiao");
+    expect(puts).toHaveLength(1);
+    const cached = await call("lang=zh&text=你好", d);
+    expect(cached.headers.get("X-Voice")).toBe("local:xiaoxiao-cached");
+  });
   test("login and text length are checked first", async () => {
     const { d } = deps();
     expect((await call("lang=en&text=hi", d, null)).status).toBe(401);
