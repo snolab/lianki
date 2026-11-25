@@ -243,6 +243,12 @@ export type ChatMessage = {
   ask?: Ask;
   /** Its answer, stamped by the hub from a tap on a page (ask.ts). */
   answer?: AskAnswer;
+  /**
+   * Stamped by the hub only: the thread's owner deleted this line
+   * (lib/chat-redact.ts). `text` is the placeholder REDACTED_TEXT; a page
+   * shows its own word for it. Nothing else of the line is kept.
+   */
+  redacted?: { at: number };
 };
 
 /** The hub telling pages and listeners that an ask was answered by a tap. */
@@ -273,6 +279,18 @@ export type WithdrawnEvent = {
   askId: string;
   thread: string;
   withdrawnAt: number;
+};
+
+/**
+ * The hub telling pages and listeners a line was deleted by its thread's owner
+ * (lib/chat-redact.ts): `message` is all that is left of it (the placeholder).
+ */
+export type RedactedEvent = {
+  type: "redacted";
+  id: string;
+  thread: string;
+  seq?: number;
+  message: ChatMessage;
 };
 
 /** A message updated by a WithdrawnEvent; any other message is returned as is. */

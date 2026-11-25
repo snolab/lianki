@@ -20,6 +20,8 @@ import {
   isDerivedLogId,
   parseChatLogLine,
 } from "./chat-log-line";
+import { REDACTED_TEXT, REDACT_AUDIT_KIND, REDACT_ID } from "./chat-redact";
+import { audit } from "./security/audit-log";
 
 /** The slice of D1 used here (the real binding, or lib/d1/testDb.ts). */
 export type ChatLogStmt = {
@@ -107,8 +109,42 @@ export async function chatLogOp(
   const req = raw as Partial<ChatLogRequest> | null;
   if (!req || typeof req !== "object" || typeof req.thread !== "string")
     return { ok: false, error: "bad request" };
-  if (!["put", "update", "split", "backfill", "drop"].includes(req.op as string))
+  if (!["put", "update", "split", "backfill", "drop", "redact"].includes(req.op as string))
     return { ok: false, error: "bad op" };
+  if (req.op === "redact") {
+    const r = req as Partial<Extract<ChatLogRequest, { op: "redact" }>>;
+    const given: unknown[] = Array.isArray(r.ids) ? r.ids : [];
+    const ids = given.filter(
+      (x): x is string => typeof x === "string" && (REDACT_ID.test(x) || isDerivedLogId(x)),
+    );
+    if (!ids.length || ids.length !== given.length || ids.length > CHAT_LOG_MAX_LINES)
+      return { ok: false, error: "bad redact" };
+    if (typeof r.actor !== "string" || !r.actor || (r.via !== "page" && r.via !== "api"))
+      return { ok: false, error: "redact needs who" };
+    const users = await accountsOf(db, req.thread);
+    const stmts = users.flatMap((user) =>
+      ids.map((id) =>
+        db
+          .prepare(
+            `UPDATE chat_line SET text = ?, ask = 0, answer = NULL WHERE user_id = ? AND id = ?`,
+          )
+          .bind(REDACTED_TEXT, user, id),
+      ),
+    );
+    if (stmts.length) await db.batch(stmts);
+    // Who, which line, when (at_ms), how: never a word of it.
+    await audit(
+      db,
+      {
+        kind: REDACT_AUDIT_KIND,
+        actor: r.actor,
+        subject: ids[0],
+        detail: `${r.via} thread=${req.thread}`,
+      },
+      (opts.now ?? Date.now)(),
+    );
+    return { ok: true, written: stmts.length };
+  }
   if (req.op === "drop") {
     const given: unknown[] = Array.isArray(req.ids) ? req.ids : [];
     const ids = given.filter((x): x is string => typeof x === "string" && isDerivedLogId(x));

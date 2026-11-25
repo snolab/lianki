@@ -41,6 +41,9 @@ export const errorLine = (exit: number, message: string) =>
     exit,
   });
 
+/** The page where his signed-in session confirms a deletion (lianki-dev redact). */
+export const REDACT_PAGE = "https://lianki.com/chat/history";
+
 export const SUBCOMMANDS = [
   "say",
   "reply",
@@ -54,6 +57,7 @@ export const SUBCOMMANDS = [
   "lanes",
   "serve",
   "ui",
+  "redact",
   "progress",
   "whoami",
   "doctor",
@@ -81,6 +85,7 @@ export const USAGE: Record<Sub | "main", string> = {
   lanes     the lanes manager: every agent on Lianki and its repos joins the chat (全员入群)
   serve     hold an eval session (eval.ts serve)
   ui        change his chat's view, shown as it happens: ui fullscreen --on|--off
+  redact    the owner deletes one of his chat lines: redact --id <id> (his signed-in page confirms)
   progress  report to the state tree (progress.ts)
   whoami    lane, checkout, hub, which grant and token are present
   doctor    what is missing here, one line each
@@ -205,6 +210,17 @@ ${EXITS}`,
   stdout: the hub's {"type":"ui-done",…,"delivered"} (with --json, as "data").
 ${GLOBAL}
 ${EXITS}`,
+  redact: `usage: lianki-dev redact --id <msgId> [--no-open]
+  Deletes one line of his chat everywhere it is kept: the chat on every
+  device, the account's history and Li's memory of the conversation
+  (docs/chat-history.md, "Deleting a line"). The owner's own command: it
+  sends nothing itself. It opens ${REDACT_PAGE}?redact=<id> in his
+  browser, where his signed-in lianki.com session shows the line and asks;
+  only his tap on the red "Delete for everyone" deletes it. --no-open: print
+  the link only. Refused with --as / LIANKI_LANE: a lane never deletes.
+  stdout: the link (with --json, as "data": {"id","url"}).
+${GLOBAL}
+${EXITS}`,
   progress: `usage: lianki-dev progress --task "<text>" --status <status> [--path /a/b] [--pct 40] [--eta 15m] [--done] [--pr N] …
        lianki-dev progress show | grant --node <id> --agent <name> [--ttl 8h] | resolve --id <id> [--note "…"]
   The state tree's live progress (progress.ts; every flag of
@@ -225,6 +241,33 @@ ${GLOBAL}
 ${EXITS}`,
   help: `usage: lianki-dev help [<command>]`,
 };
+
+/**
+ * `lianki-dev redact --id <id> [--no-open]` → the confirm link, or why not.
+ * Never a lane's: deleting is his alone, through his own session.
+ */
+export function redactArgs(
+  rest: string[],
+  g: Global,
+): { id: string; url: string; open: boolean } | Error {
+  if (g.lane)
+    return new Error(
+      `a lane never deletes chat lines (lane: ${g.lane}); this is the owner's command`,
+    );
+  let id: string | undefined;
+  let open = true;
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i]!;
+    const m = /^--id(?:=(.*))?$/s.exec(a);
+    if (m) id = m[1] ?? rest[++i];
+    else if (a === "--no-open") open = false;
+    else if (!a.startsWith("-") && id === undefined) id = a;
+    else return new Error(`unknown option: ${a}`);
+  }
+  if (!id) return new Error("redact needs --id <msgId>");
+  if (!/^[A-Za-z0-9_.:-]{1,64}$/.test(id)) return new Error(`not a line id: ${id}`);
+  return { id, url: `${REDACT_PAGE}?redact=${encodeURIComponent(id)}`, open };
+}
 
 export type Global = {
   lane?: string;

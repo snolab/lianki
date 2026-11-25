@@ -96,7 +96,11 @@ export type AuditKind =
   // An agent's audio line (`say --play`; lib/play-check.ts): every one the hub
   // posts. Actor: the token's account, or "grant"; subject: the src's host
   // only (never the URL); detail: the kind and the token's name or the sender.
-  | "chat.play";
+  | "chat.play"
+  // A chat line deleted by its thread's owner (lib/chat-redact.ts): actor the
+  // account, subject the line id, detail the way (page / api) and the thread.
+  // Never the text.
+  | "chat.redact";
 
 export type AuditEntry = {
   kind: AuditKind;

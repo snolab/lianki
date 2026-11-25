@@ -9,6 +9,8 @@ import { dayRange, dayRows, plainText } from "@/lib/chat-history-view";
 import { VirtualList } from "@/app/components/VirtualList";
 import { useInfiniteList } from "@/app/components/useInfiniteList";
 import type { ChatHistoryLine, LaneFilter } from "@/lib/chat-log";
+import { REDACTED_TEXT } from "@/lib/chat-redact";
+import { chatExtra } from "@lianki/debug-chat/chat-ui-locales";
 
 export type HistoryLabels = {
   title: string;
@@ -72,8 +74,13 @@ export default function HistoryClient(p: {
   locale: string;
   initialQ: string;
   initialLane: string;
+  /** A line to delete everywhere (`?redact=<id>`): asked once, with a confirm. */
+  redact?: string;
 }) {
   const L = p.labels;
+  /** The chat's own words for a deleted line and its confirm (chat-ui-locales.ts). */
+  const ux = chatExtra(p.locale);
+  const [redactId, setRedactId] = useState(p.redact);
   const router = useRouter();
   const [q, setQ] = useState(p.initialQ);
   const [lane, setLane] = useState<LaneFilter | "">(isFilter(p.initialLane) ? p.initialLane : "");
@@ -146,6 +153,34 @@ export default function HistoryClient(p: {
     }
   };
 
+  /**
+   * Delete a line everywhere the chat keeps it (POST /api/chat/redact; lib/chat-redact.ts):
+   * the hub, every device and this history read the placeholder after.
+   */
+  const redactLine = async (id: string) => {
+    setDelError(false);
+    try {
+      const r = await fetch("/api/chat/redact", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!r.ok) throw new Error(String(r.status));
+      setLines((prev) =>
+        prev.map((l) =>
+          l.id === id || l.id === `${id}.merged` || l.id === `${id}.summary`
+            ? { ...l, text: REDACTED_TEXT, ask: false, answer: null }
+            : l,
+        ),
+      );
+      setRedactId(undefined);
+      router.replace("/chat/history", { scroll: false });
+    } catch {
+      setDelError(true);
+    }
+  };
+  const asked = redactId ? lines.find((l) => l.id === redactId) : undefined;
+
   const filtered = !!q.trim() || !!lane;
   const rows = dayRows(lines, (l) => l.id);
 
@@ -191,6 +226,45 @@ export default function HistoryClient(p: {
           </button>
         ))}
       </div>
+      {redactId && (
+        <div
+          role="alertdialog"
+          aria-labelledby="chat-redact-title"
+          data-testid="chat-history-redact"
+          className="mb-4 rounded-xl border border-[oklch(0.55_0.198_22.3)] p-3"
+        >
+          <p id="chat-redact-title" className="m-0 font-semibold">
+            {ux.redactLine} <code className="font-mono text-sm">{redactId}</code>
+          </p>
+          {asked && (
+            <p className={`m-0 mt-1 line-clamp-3 text-sm break-words ${muted}`}>
+              {asked.text === REDACTED_TEXT ? ux.lineRedacted : asked.text}
+            </p>
+          )}
+          <p className="m-0 mt-2 text-sm">{ux.redactHint}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              data-testid="chat-history-redact-yes"
+              className={`${chip} ${chipOn}`}
+              onClick={() => void redactLine(redactId)}
+            >
+              {ux.redactConfirm}
+            </button>
+            <button
+              type="button"
+              data-testid="chat-history-redact-no"
+              className={`${chip} ${chipOff}`}
+              onClick={() => {
+                setRedactId(undefined);
+                router.replace("/chat/history", { scroll: false });
+              }}
+            >
+              {ux.redactCancel}
+            </button>
+          </div>
+        </div>
+      )}
       {delError && (
         <p role="alert" className={`mb-3 ${bad}`}>
           {L.deleteFailed}
@@ -274,7 +348,13 @@ export default function HistoryClient(p: {
                     </button>
                   </div>
                   <p className="text-[15px] leading-relaxed break-words whitespace-pre-wrap">
-                    {l.from === "agent" ? plainText(l.text) : l.text}
+                    {l.text === REDACTED_TEXT ? (
+                      <span className={muted}>{ux.lineRedacted}</span>
+                    ) : l.from === "agent" ? (
+                      plainText(l.text)
+                    ) : (
+                      l.text
+                    )}
                   </p>
                   {l.answer && (
                     <p className={`mt-0.5 text-sm ${muted}`}>

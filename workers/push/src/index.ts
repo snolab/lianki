@@ -67,6 +67,9 @@
  *   POST /internal/chat-backfill The main Worker's /api/chat/history, for the
  *                              owner: the owner thread's stored history into
  *                              the owners' accounts in D1, once (debug.ts).
+ *   POST /internal/chat-redact The main Worker's /api/chat/redact (his
+ *                              session, same origin, his own thread): one
+ *                              line deleted everywhere the hub keeps it.
  *   POST /internal/spend-alert The main Worker, when a spend counter passed a
  *                              step (lib/payments/spend-alert.ts): one line in
  *                              the owner's thread (debug.ts).
@@ -100,7 +103,7 @@ import {
 } from "../../../lib/smart-refresh";
 import { explicitVersionNews } from "../../../lib/version-publish";
 import { SPEND_ALERT_PATH } from "../../../lib/payments/spend-alert-config";
-import { CHAT_BACKFILL_PATH, EVAL_TOKEN_HEADER, IDENTITY_HEADERS } from "./debug";
+import { CHAT_BACKFILL_PATH, CHAT_REDACT_PATH, EVAL_TOKEN_HEADER, IDENTITY_HEADERS } from "./debug";
 import { CHAT_PATH, REVOKED_PATH } from "./token-chat";
 import { AVATAR_PATH } from "../../../packages/debug-chat/src/svg-avatar";
 import {
@@ -489,6 +492,7 @@ export default {
         url.pathname === "/internal/signed-out" ||
         url.pathname === REVOKED_PATH ||
         url.pathname === CHAT_BACKFILL_PATH ||
+        url.pathname === CHAT_REDACT_PATH ||
         url.pathname === SPEND_ALERT_PATH) &&
       isInternal(url)
     )

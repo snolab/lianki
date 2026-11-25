@@ -255,6 +255,7 @@ import type {
   AudioSyncPeersEvent,
   AudioSyncSignalEvent,
   PolishDueEvent,
+  RedactedEvent,
   SpeakerTag,
   SttScene,
   SttTag,
@@ -357,6 +358,13 @@ import {
   PARTNER_STABLE_FLAG,
 } from "../../../lib/partner-ai-config";
 import { advanceWindow, parseWindow } from "../../../lib/partner-window";
+import {
+  REDACT_ID,
+  type RedactVia,
+  lineTexts,
+  redactMessage,
+  redactWindow,
+} from "../../../lib/chat-redact";
 import {
   type HourBuckets,
   addToBucket,
@@ -639,6 +647,11 @@ type SessionsRpc = {
 };
 /** POST, from the main Worker over its binding: the owner thread's history into D1, once. */
 export const CHAT_BACKFILL_PATH = "/internal/chat-backfill";
+/**
+ * The main Worker's /api/chat/redact (a signed-in, same-origin owner of the
+ * thread), over its PUSH binding: delete one line (DebugHub.redact).
+ */
+export const CHAT_REDACT_PATH = "/internal/chat-redact";
 /** How long the hub trusts its read of PARTNER_AI_FLAG (as lib/flags-store.ts's FLAG_CACHE_MS). */
 const AI_FLAG_CACHE_MS = 30_000;
 /** The AI's spinner is re-sent this often while the model works (the page's BUSY_MS is 12 s). */
@@ -1654,7 +1667,8 @@ export class DebugHub {
    * may take any of his kept lines).
    */
   private async editable(depth: number = EDITABLE_LINES) {
-    const kept = await this.keptChat(OWNER_THREAD, CHAT_HISTORY);
+    // A deleted line is nobody's to polish, merge or summarise again.
+    const kept = (await this.keptChat(OWNER_THREAD, CHAT_HISTORY)).filter(([, x]) => !x.redacted);
     // A line already inside a summary is not one of his lines any more: the summary is.
     const own = kept.filter(([, x]) => x.from === "owner" && !x.collapsedInto);
     return { kept, recent: own.slice(0, depth) };
@@ -2755,6 +2769,144 @@ export class DebugHub {
     if (!told) send(ws, out);
   }
 
+  /**
+   * The thread's owner deletes one of its lines (lib/chat-redact.ts;
+   * docs/chat-history.md, "Deleting a line"). Every copy the hub keeps is
+   * cleared: the stored line (its key is replaced, so the old value is gone),
+   * the lines merged or summarised into it, the echoes of it, the account's
+   * D1 history (with one audit row), and Li's frozen window `ai:win:<thread>`.
+   * Pages and listeners hear {type:"redacted"} and update the line in place.
+   * Who may call it is the caller's business: his own page (redactFromPage)
+   * or the session API (redactApi). Never a controller, a token or MCP.
+   */
+  async redact(
+    thread: string,
+    id: string,
+    actor: string,
+    via: RedactVia,
+  ): Promise<{ ok: true; ids: string[] } | { ok: false; error: string }> {
+    if (!REDACT_ID.test(id)) return { ok: false, error: "bad id" };
+    const rows = await this.ctx.storage.list<ChatMessage>({ prefix: threadKeys(thread).prefix });
+    const hit = [...rows].find(([, m]) => m.id === id);
+    if (!hit) return { ok: false, error: "no such line" };
+    const t = this.now();
+    const [, line] = hit;
+    // The lines a merge or a summary folded into it hold its words too.
+    const members = [...rows].filter(([, m]) => m.collapsedInto === id && m.id !== id);
+    const texts = [...new Set([line, ...members.map(([, m]) => m)].flatMap(lineTexts))];
+    const changed: ChatMessage[] = [];
+    for (const [k, m] of [hit, ...members]) {
+      if (m.redacted) continue;
+      const next = { ...redactMessage(m, t), thread } as ChatMessage & { thread: string };
+      next.seq = await this.writeLine(k, next);
+      changed.push(next);
+    }
+    const ids = [id, ...members.map(([, m]) => m.id)];
+    // The account's history: the line, its derived passage or summary line, its members.
+    await this.chatLog({
+      op: "redact",
+      thread,
+      ids: [...new Set([...ids, `${id}.merged`, `${id}.summary`])],
+      actor,
+      via,
+    });
+    // Echoes kept aside (his other device heard it, or our read-aloud did): copies of it.
+    if (thread === OWNER_THREAD) {
+      const index = (await this.ctx.storage.get<string[]>(ECHO_INDEX)) ?? [];
+      const gone: string[] = [];
+      for (const eid of index) {
+        const e = await this.ctx.storage.get<ChatMessage>(echoKey(eid));
+        if (
+          ids.includes(eid) ||
+          (e?.echo?.of && ids.includes(e.echo.of)) ||
+          (e && lineTexts(e).some((x) => texts.includes(x)))
+        )
+          gone.push(eid);
+      }
+      if (gone.length) {
+        for (const eid of gone) await this.ctx.storage.delete(echoKey(eid));
+        await this.ctx.storage.put(
+          ECHO_INDEX,
+          index.filter((x) => !gone.includes(x)),
+        );
+        this.toOwnerPages({ type: "echo-gone", ids: gone });
+      }
+      // A reply Li was about to write would read it: dropped (the next line schedules anew).
+      this.ownerAi.cancel();
+    }
+    // Li's frozen window: the placeholder in its place (one prompt-cache miss).
+    const winKey = `ai:win:${thread}`;
+    const stored = await this.ctx.storage.get(winKey);
+    if (stored !== undefined) {
+      const w = parseWindow(stored);
+      if (!w) await this.ctx.storage.delete(winKey);
+      else {
+        let next = w;
+        for (const x of ids) next = redactWindow(next, x, texts);
+        await this.ctx.storage.put(winKey, next);
+      }
+    }
+    for (const message of changed) {
+      const out: RedactedEvent = {
+        type: "redacted",
+        id: message.id,
+        thread,
+        ...(message.seq !== undefined ? { seq: message.seq } : {}),
+        message,
+      };
+      for (const { ws } of this.pages(thread)) send(ws, out);
+      for (const { ws } of this.listeners()) send(ws, out);
+    }
+    // Ids and the way only: never a word of the line (wrangler tail).
+    console.log(JSON.stringify({ msg: "debug.redact", thread, id, via, lines: changed.length }));
+    return { ok: true, ids };
+  }
+
+  /**
+   * His page's "Delete this line": a full lianki.com page of the thread's own
+   * account (the cookie and the origin checked in index.ts). Never an embedded
+   * page (another site's frame), never a box, and in the owner's thread only a
+   * page that carries his sign-in session.
+   */
+  private async redactFromPage(ws: Socket, page: PageAtt, id: string) {
+    const refuse = (reason: string) => send(ws, { type: "redact-refused", id, reason });
+    if (page.embed || page.box) return refuse("only a lianki.com page of this account");
+    const owner = page.thread === OWNER_THREAD;
+    if (owner && !page.user) return refuse("only a signed-in page of the owner");
+    const actor = owner ? page.user! : page.thread;
+    const r = await this.redact(page.thread, id, actor, "page");
+    if (!r.ok) return refuse(r.error);
+    send(ws, { type: "redact-done", id });
+  }
+
+  /**
+   * POST /internal/chat-redact {thread, id, actor}: the main Worker's
+   * /api/chat/redact, which has checked the session, the origin and that the
+   * thread is the caller's own. Reached only over its PUSH binding.
+   */
+  private async redactApi(req: Request): Promise<Response> {
+    if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+    let body: { thread?: unknown; id?: unknown; actor?: unknown };
+    try {
+      body = (await req.json()) as typeof body;
+    } catch {
+      return Response.json({ error: "bad json" }, { status: 400 });
+    }
+    const { thread, id, actor } = body;
+    if (
+      typeof thread !== "string" ||
+      (thread !== OWNER_THREAD && !isUserId(thread)) ||
+      typeof id !== "string" ||
+      typeof actor !== "string" ||
+      !isUserId(actor)
+    )
+      return Response.json({ error: "expected {thread, id, actor}" }, { status: 400 });
+    const r = await this.redact(thread, id, actor, "api");
+    if (!r.ok)
+      return Response.json({ error: r.error }, { status: r.error === "no such line" ? 404 : 400 });
+    return Response.json({ ok: true, ids: r.ids });
+  }
+
   /** The live node grants (`ngrant:`), lapsed ones dropped as they are met. */
   private async nodeGrants(): Promise<NodeGrant[]> {
     const t = this.now();
@@ -2810,6 +2962,7 @@ export class DebugHub {
     }
     if (url.pathname === BOX_CLOSED_PATH) return this.boxClosedApi(req);
     if (url.pathname === CHAT_BACKFILL_PATH) return this.backfillApi(req);
+    if (url.pathname === CHAT_REDACT_PATH) return this.redactApi(req);
     const control = url.pathname.endsWith("/control");
     let who: Identity | undefined;
     if (!control) {
@@ -4605,6 +4758,7 @@ export class DebugHub {
     }
     if (m.type === "passage-end") return this.passageEnd(page, m.recheck);
     if (m.type === "unmerge") return this.unmerge(ws, page, m.id);
+    if (m.type === "redact") return this.redactFromPage(ws, page, m.id);
     // A tap on an ask card: stamped here, never by the page or an agent.
     if (m.type === "answer") return this.answer(ws, page, m.askId, m.choices);
     // A sleeping eval grant (listed to the owner's pages only): End, or add a page.

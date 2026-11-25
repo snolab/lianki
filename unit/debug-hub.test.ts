@@ -5281,3 +5281,208 @@ it("PTT recheck never changes the primary text covered by a signed speaker proof
   });
   expect((await s.hub.history()).find((m) => m.id === "ptt-altered")).not.toHaveProperty("speaker");
 });
+
+describe("DebugHub redact: the thread's owner deletes a line (lib/chat-redact.ts)", () => {
+  const SECRET = "https://lianki.com/x?token=lk_SECRET123";
+  const SESSION = "a".repeat(64);
+  type Req = { op: string; thread: string; ids?: string[]; actor?: string; via?: string };
+  const rig = () => {
+    const reqs: Req[] = [];
+    const SESSIONS = {
+      live: async () => "live",
+      chatLog: async (r: Req) => {
+        reqs.push(structuredClone(r));
+        return { ok: true, written: 1 };
+      },
+    };
+    const s = setup({ SESSIONS });
+    /** His own lianki.com page: the cookie identity, with its sign-in session. */
+    const own = async (label = "/words pwa iPhone") => {
+      const ws = new FakeSocket();
+      s.sockets.push(ws);
+      await s.hub.connectPage(
+        ws,
+        new URL(`https://lianki.com/api/version/debug?label=${encodeURIComponent(label)}`),
+        { userId: "own1", email: "o@x.com", owner: true, session: SESSION, sessionUntil: 9e15 },
+      );
+      return ws;
+    };
+    const stored = () => JSON.stringify([...s.storage.store.entries()]);
+    return { ...s, reqs, own, stored };
+  };
+
+  it("his page deletes his line: text, raw, D1, Li's window and every page", async () => {
+    const s = rig();
+    const phone = await s.own();
+    const mac = await s.own("/words Macintosh");
+    await s.msg(phone, { type: "chat", id: "4d87d0ca", text: SECRET, source: "stt" });
+    // Polished: the first text stays as `raw`.
+    const c = s.controller("main lane");
+    await s.msg(phone, { type: "allow", pair: s.pairOf(phone), scope: "chat" });
+    await s.msg(c, { type: "edit", id: "4d87d0ca", text: `${SECRET} (polished)` });
+    // Li's frozen window holds it (lib/partner-window.ts).
+    s.storage.store.set("ai:win:owner", {
+      v: 1,
+      items: [
+        { role: "user", text: SECRET },
+        { role: "user", text: `(correction: the earlier line "${SECRET}" now reads: x)` },
+        { role: "assistant", text: "fine" },
+      ],
+      seen: { "4d87d0ca": SECRET, other: "fine" },
+    });
+    expect(s.stored()).toContain("SECRET123");
+
+    await s.msg(phone, { type: "redact", id: "4d87d0ca" });
+
+    expect(phone.last("redact-done")).toEqual({ type: "redact-done", id: "4d87d0ca" });
+    // Nowhere in the hub's storage any more: the ring, raw, the edit, the window.
+    expect(s.stored()).not.toContain("SECRET123");
+    const line = (await s.hub.history()).find((m) => m.id === "4d87d0ca")!;
+    expect(line.text).toBe("(deleted)");
+    expect(line.redacted).toBeTruthy();
+    expect(line).not.toHaveProperty("raw");
+    expect(line).not.toHaveProperty("edited");
+    expect(line).not.toHaveProperty("source");
+    const win = s.storage.store.get("ai:win:owner") as { items: { text: string }[] };
+    expect(win.items.map((i) => i.text)).toEqual(["(deleted)", "(deleted)", "fine"]);
+    // D1: one redact op, by his account, from the page.
+    expect(s.reqs.at(-1)).toMatchObject({
+      op: "redact",
+      thread: "owner",
+      actor: "own1",
+      via: "page",
+    });
+    expect(s.reqs.at(-1)!.ids).toContain("4d87d0ca");
+    expect(JSON.stringify(s.reqs.at(-1))).not.toContain("SECRET");
+    // Every page and the listener hear it, with only the placeholder.
+    for (const ws of [phone, mac, c]) {
+      const ev = ws.last("redacted") as { id: string; message: ChatMessage };
+      expect(ev.id).toBe("4d87d0ca");
+      expect(ev.message.text).toBe("(deleted)");
+      expect(JSON.stringify(ev)).not.toContain("SECRET");
+    }
+    // A later polish finds no line to change.
+    await s.msg(c, { type: "edit", id: "4d87d0ca", text: SECRET });
+    expect(s.stored()).not.toContain("SECRET123");
+  });
+
+  it("POST /internal/chat-redact (the session API) deletes it the same way", async () => {
+    const s = rig();
+    const phone = await s.own();
+    await s.msg(phone, { type: "chat", id: "m1", text: SECRET });
+    const res = await s.hub.fetch(
+      new Request("https://lianki-push/internal/chat-redact", {
+        method: "POST",
+        body: JSON.stringify({ thread: "owner", id: "m1", actor: "own1" }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(s.stored()).not.toContain("SECRET123");
+    expect(s.reqs.at(-1)).toMatchObject({ op: "redact", via: "api", actor: "own1" });
+    const missing = await s.hub.fetch(
+      new Request("https://lianki-push/internal/chat-redact", {
+        method: "POST",
+        body: JSON.stringify({ thread: "owner", id: "nope", actor: "own1" }),
+      }),
+    );
+    expect(missing.status).toBe(404);
+  });
+
+  it("another account cannot: a friend's page reaches only its own thread", async () => {
+    const s = rig();
+    const phone = await s.own();
+    await s.msg(phone, { type: "chat", id: "m1", text: SECRET });
+    const f = await s.friend("f1", "f1@x.com");
+    await s.msg(f, { type: "redact", id: "m1" });
+    expect(f.last("redact-refused")).toMatchObject({ id: "m1", reason: "no such line" });
+    expect(s.stored()).toContain("SECRET123");
+    // Nor through the API in its own thread's name.
+    const res = await s.hub.fetch(
+      new Request("https://lianki-push/internal/chat-redact", {
+        method: "POST",
+        body: JSON.stringify({ thread: "f1", id: "m1", actor: "f1" }),
+      }),
+    );
+    expect(res.status).toBe(404);
+    expect(s.stored()).toContain("SECRET123");
+  });
+
+  it("an embedded page, or an owner page without his session, is refused", async () => {
+    const s = rig();
+    const phone = await s.own();
+    await s.msg(phone, { type: "chat", id: "m1", text: SECRET });
+    const framed = s.page("/x"); // no identity: no sign-in session
+    await framed.ready;
+    await s.msg(framed, { type: "redact", id: "m1" });
+    expect(framed.last("redact-refused")).toBeTruthy();
+    const embed = new FakeSocket();
+    s.sockets.push(embed);
+    await s.hub.connectPage(
+      embed,
+      new URL("https://lianki.com/api/version/debug?label=x&frame=foreign"),
+      { userId: "own1", email: "o@x.com", owner: true, session: SESSION, sessionUntil: 9e15 },
+    );
+    await s.msg(embed, { type: "redact", id: "m1" });
+    expect(embed.last("redact-done")).toBeUndefined();
+    expect(s.stored()).toContain("SECRET123");
+  });
+
+  it("a lane (an approved controller) cannot: there is no redact for it", async () => {
+    const s = rig();
+    const phone = await s.own();
+    const c = s.controller("main lane");
+    await s.msg(phone, { type: "allow", pair: s.pairOf(phone), scope: "chat" });
+    await s.msg(phone, { type: "chat", id: "m1", text: SECRET });
+    await s.msg(c, { type: "redact", id: "m1" });
+    expect(s.stored()).toContain("SECRET123");
+    expect(s.reqs.some((r) => r.op === "redact")).toBe(false);
+  });
+
+  it("an API token (a lane's, or MCP's) cannot: the token chat has no such op", async () => {
+    const s = rig();
+    const phone = await s.own();
+    await s.msg(phone, { type: "chat", id: "m1", text: SECRET });
+    for (const client of [undefined, "mcp/1.0 chat"]) {
+      const res = await s.hub.fetch(
+        new Request("https://lianki.com/api/version/chat", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer lk_${"0".repeat(64)}`,
+            ...(client ? { "x-lianki-client": client } : {}),
+          },
+          body: JSON.stringify({ op: "redact", id: "m1" }),
+        }),
+      );
+      expect(res.status).toBe(400);
+    }
+    expect(s.stored()).toContain("SECRET123");
+  });
+
+  it("a merged passage: its member lines and the echoes of it go too", async () => {
+    const s = rig();
+    const phone = await s.own();
+    await s.msg(phone, { type: "chat", id: "p1", text: SECRET });
+    // A member folded into it, and an echo of it kept aside.
+    s.storage.store.set("msg:000000000099", {
+      id: "p2",
+      from: "owner",
+      label: "x",
+      text: `${SECRET} again`,
+      at: 1_000_001,
+      collapsedInto: "p1",
+    });
+    s.storage.store.set("echo:e1", {
+      id: "e1",
+      from: "owner",
+      label: "x",
+      text: SECRET,
+      at: 1_000_002,
+      echo: { at: 1, by: "auto", reason: "echo", kind: "x", of: "p1", sim: 1, layer: "landed" },
+    });
+    s.storage.store.set("echo:index", ["e1"]);
+    await s.msg(phone, { type: "redact", id: "p1" });
+    expect(s.stored()).not.toContain("SECRET123");
+    expect(s.storage.store.get("echo:index")).toEqual([]);
+    expect(s.reqs.at(-1)!.ids).toEqual(expect.arrayContaining(["p1", "p2", "p1.merged"]));
+  });
+});
