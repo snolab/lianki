@@ -29,7 +29,9 @@ import {
   lineOf,
   briefBullet,
   chunkLines,
+  DEFAULT_DEBOUNCE_MS,
   makeDeliverer,
+  parseDebounceMs,
   reconnectWait,
   RECONNECT_RESET_MS,
   urgentLine,
@@ -246,6 +248,7 @@ describe("brief hand-offs and busy-time batching (owner, 2026-11-14)", () => {
       async () => busy,
       () => {},
       5,
+      0,
     );
     await d.add(line("b1", "第一句"));
     await d.add(line("b2", "第二句"));
@@ -319,6 +322,7 @@ describe("brief hand-offs and busy-time batching (owner, 2026-11-14)", () => {
       async () => busy,
       () => {},
       5,
+      0,
     );
     for (const l of lines) await d2.add(l);
     expect(sent).toEqual([]);
@@ -633,6 +637,7 @@ describe("makeDeliverer logs", () => {
       async () => busy,
       (v) => void logs.push(v),
       1,
+      0,
     );
     await d.add({ id: "q1", thread: "owner", from: "owner", text: "今天学了什么" });
     expect(logs.map((l) => l.type)).toEqual(["held"]);
@@ -654,5 +659,48 @@ describe("makeDeliverer without a log", () => {
     );
     expect(await d.add({ id: "q2", thread: "owner", from: "owner", text: "codex，在吗" })).toBe(0);
     expect(sent).toHaveLength(1);
+  });
+});
+
+describe("makeDeliverer debounce", () => {
+  it("coalesces non-urgent lines within debounceMs and delivers urgent lines immediately", async () => {
+    expect(DEFAULT_DEBOUNCE_MS).toBe(1_500);
+    expect(parseDebounceMs(undefined)).toBe(DEFAULT_DEBOUNCE_MS);
+    expect(parseDebounceMs("0")).toBe(0);
+    expect(parseDebounceMs("2000")).toBe(2_000);
+    expect(parseDebounceMs("-1")).toBeInstanceOf(Error);
+    expect(parseDebounceMs("abc")).toBeInstanceOf(Error);
+
+    const sent: { body: string; interrupt: boolean }[] = [];
+    const d = makeDeliverer(
+      { lane: "agy", repo: "/r" },
+      async (body, interrupt) => {
+        sent.push({ body, interrupt });
+        return 0;
+      },
+      async () => false,
+      undefined,
+      10,
+      25,
+    );
+
+    // Non-urgent lines wait for the debounce window and coalesce into one batch.
+    await d.add({ id: "d1", thread: "owner", from: "owner", text: "第一句" });
+    await d.add({ id: "d2", thread: "owner", from: "owner", text: "第二句" });
+    expect(sent).toHaveLength(0);
+    expect(d.pending()).toBe(2);
+
+    await Bun.sleep(45);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.interrupt).toBe(false);
+    expect(sent[0]!.body).toContain("第一句");
+    expect(sent[0]!.body).toContain("第二句");
+    expect(d.pending()).toBe(0);
+
+    // Urgent line (naming the lane) flushes immediately without waiting for debounce.
+    await d.add({ id: "d3", thread: "owner", from: "owner", text: "agy，立刻看" });
+    expect(sent).toHaveLength(2);
+    expect(sent[1]!.interrupt).toBe(true);
+    expect(sent[1]!.body).toContain("agy，立刻看");
   });
 });
