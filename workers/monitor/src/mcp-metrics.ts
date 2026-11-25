@@ -14,6 +14,7 @@ export type McpMonitorEnv = SlackEnv & {
 /** Bounded isolate-local window. AE is the durable source for account-wide queries. */
 export function createMcpRecorder() {
   let samples: { at: number; value: number }[] = [];
+  let queue: Promise<unknown> = Promise.resolve();
   let config: { at: number; threshold: number; minimum: number } | undefined;
   async function settings(env: McpMonitorEnv, now: number) {
     if (config && now - config.at < WINDOW_MS) return config;
@@ -43,7 +44,7 @@ export function createMcpRecorder() {
     };
     return config;
   }
-  return async (env: McpMonitorEnv, input: unknown, now = Date.now()) => {
+  async function record(env: McpMonitorEnv, input: unknown, now: number) {
     const metric = parseMcpMetric(input);
     if (!metric) return { accepted: false };
     env.METRICS.writeDataPoint({
@@ -96,6 +97,13 @@ export function createMcpRecorder() {
       `🐢 MCP 实时消息投递变慢：最近 10 分钟 ${samples.length} 次实时投递，p95 ${secs(p95)}，超过 ${secs(cfg.threshold)}。正常空等与历史补读不计入告警。`,
     );
     return { accepted: true };
+  }
+  // Concurrent RPCs must not all pass config/KV awaits before any records its
+  // alert. Serializing also prevents duplicate config reads in this isolate.
+  return (env: McpMonitorEnv, input: unknown, now = Date.now()) => {
+    const next = queue.then(() => record(env, input, now));
+    queue = next.catch(() => undefined);
+    return next;
   };
 }
 export const recordMcp = createMcpRecorder();

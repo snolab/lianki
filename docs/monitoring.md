@@ -49,13 +49,13 @@ projection against the observed main-Worker CPU total for the UTC day. It uses
 `cpuTime`, never request wall time or a WebSocket's lifetime. The projection
 uses the calendar month's length and at least one elapsed hour to avoid a
 midnight spike. The running total resumes from `cpu:<UTC date>` in existing KV,
-writes at most once a minute on a later request, and expires after three days.
+writes at most once a minute per isolate on a later request, and expires after three days.
 KV races between isolates and eviction before a flush can lose increments;
 this is a warning signal, not a bill or an exact global accounting ledger.
 
 All three thresholds use the existing private config binding and a ten-minute
 cache, with code defaults on failure. Alerts use the existing Slack path and
-thirty-minute KV suppression. No polling, cron, D1 writes, new credential, or
+thirty-minute KV suppression (best effort across isolates). No polling, cron, D1 writes, new credential, or
 per-request durable write is added. Counter failures do not suppress existing
 reliability alerts. Only already-grouped path labels and numeric totals enter
 these counters; no body, identity, raw URL, or credential is retained.
@@ -103,7 +103,10 @@ The monitor logs one allowlisted `mcp.metrics` aggregate per request and
 keeps at most 256 live delivery samples for ten minutes in isolate memory.
 Once at least `mcp.waitMinSamples` (default 20) exist, p95 above
 `mcp.waitP95AlertMs` (default 5,000 ms) alerts through the existing Slack path,
-at most once per 30 minutes through KV. Both keys are live config read via
+at most once per 30 minutes in one isolate, with best-effort KV suppression
+across isolates. Concurrent records are serialized before config and alert
+state reads, so simultaneous slow waits cannot duplicate an isolate's alert.
+Both keys are live config read via
 `DebugSessions.config` over the existing private binding, cached ten minutes
 and falling back to code defaults. There is no cron, polling or D1 write per
 wait. The alert window is isolate-local; AE is the source for account-wide

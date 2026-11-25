@@ -129,6 +129,29 @@ describe("private MCP recorder", () => {
     expect(flags.size).toBe(0);
     expect(configCalls).toHaveLength(4);
   });
+  test("simultaneous slow waits share config and emit just one alert in this isolate", async () => {
+    const { env, configCalls } = setup({ "mcp.waitMinSamples": 5 });
+    const put = spyOn(env.STATE, "put");
+    const record = createMcpRecorder();
+    await Promise.all(Array.from({ length: 5 }, () => record(env, wait(), 1000)));
+    expect(put.mock.calls.filter(([key]) => key === "alerted:mcp-latency")).toHaveLength(1);
+    expect(
+      log.mock.calls.filter(([message]) => String(message).includes('"msg":"monitor.alert"')),
+    ).toHaveLength(1);
+    expect(configCalls).toEqual(["mcp.waitP95AlertMs", "mcp.waitMinSamples"]);
+    put.mockRestore();
+  });
+  test("a rejected record does not poison the following RPC queue", async () => {
+    const { env, points } = setup();
+    const record = createMcpRecorder();
+    const write = spyOn(env.METRICS, "writeDataPoint").mockImplementationOnce(() => {
+      throw new Error("metrics unavailable");
+    });
+    await expect(record(env, request(), 1000)).rejects.toThrow("metrics unavailable");
+    await expect(record(env, request(), 1001)).resolves.toEqual({ accepted: true });
+    expect(points).toHaveLength(1);
+    write.mockRestore();
+  });
 });
 describe("MCP producer", () => {
   test("capability URL never crosses the RPC binding and raw tails stay unused", async () => {
