@@ -165,7 +165,6 @@ line below.
    bun scripts/ci/check-worker-exports.ts
    bunx wrangler deploy -c workers/monitor/wrangler.jsonc   # if workers/monitor changed
    bunx wrangler deploy                                     # lianki, always
-   bun scripts/dev/broadcast-version.ts --build <data-build> --shell-changed  # if only the chat changed: smart refresh misses its chunk (/chat/smart-refresh-chat-chunk)
    bunx wrangler deploy -c workers/push/wrangler.jsonc      # if workers/push changed
    bunx wrangler deploy -c workers/voice/wrangler.jsonc     # if workers/voice changed
    bunx wrangler deploy -c workers/mcp/wrangler.jsonc       # if workers/mcp changed
@@ -177,6 +176,16 @@ line below.
    dependency Worker's new code is not live until that Worker is deployed
    too. Then check `curl -s https://lianki.com/en | grep -o 'data-build="[^"]*"'`
    shows your commit.
+
+   **Manual, only if the change touched just the chat** (smart refresh misses
+   its chunk, /chat/smart-refresh-chat-chunk): after every Worker above is
+   out, broadcast the new version yourself. The build id is the 20-character
+   prefix that `data-build` shows:
+
+   ```bash
+   LIANKI_BUILD_SHA=$(git rev-parse HEAD)
+   bun scripts/dev/broadcast-version.ts --build "${LIANKI_BUILD_SHA:0:20}" --shell-changed
+   ```
 6. **Land it by PR**: a **PR straight to `prod`** with the same commits,
    merged by a person, so CI runs on prod and Deploy Worker redeploys the
    same code; then to `main` (the next daily run also opens the back-merge PR
