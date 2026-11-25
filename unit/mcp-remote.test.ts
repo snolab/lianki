@@ -185,7 +185,7 @@ describe("capability URL authentication", () => {
       expect(response.status).toBe(400);
       expect(await response.text()).not.toContain(TOKEN);
     }
-    for (const separator of ["%2f", "%2F", "%5c"]) {
+    for (const separator of ["%2f", "%2F", "%5c", "%252f", "%255c", "%25252f", "%invalid"]) {
       const response = await handle(new Request(`${ORIGIN}/mcp${separator}${TOKEN}`), env);
       expect(response.status).toBe(400);
     }

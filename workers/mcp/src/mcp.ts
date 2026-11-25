@@ -261,7 +261,7 @@ async function dispatch(
 export async function handle(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const basePath = url.pathname === MCP_PATH || url.pathname === `${MCP_PATH}/`;
-  const credentialPath = !basePath && /^\/mcp(?:\/|%2f|%5c)/i.test(url.pathname);
+  const credentialPath = !basePath && /^\/mcp(?:\/|%)/i.test(url.pathname);
   // Keep unrelated app routes, but never forward a possible credential path.
   if (!basePath && !credentialPath) return env.MAIN.fetch(req);
   const pathToken = credentialPath
