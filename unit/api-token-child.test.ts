@@ -182,6 +182,49 @@ describe("minting", () => {
   });
 });
 
+describe("the route's edges", () => {
+  test("list, bad requests, refused callers", async () => {
+    const a = await mint({ name: "子1" });
+    const l = (await (await childApi(req("GET"), deps)).json()) as { children: { id: string }[] };
+    expect(l.children.map((c) => c.id)).toEqual([a.body.id as string]);
+    expect((await childApi(req("PUT", {}), deps)).status).toBe(405);
+    const bare = new Request("https://lianki.com/api/token/child", { method: "GET" });
+    expect((await childApi(bare, deps)).status).toBe(401);
+    expect((await childApi(req("GET", undefined, "lk_" + "0".repeat(64)), deps)).status).toBe(401);
+    const bad = new Request("https://lianki.com/api/token/child", {
+      method: "POST",
+      headers: { authorization: `Bearer ${parent}`, "content-type": "application/json" },
+      body: "not json",
+    });
+    expect((await childApi(bad, deps)).status).toBe(400);
+    expect((await childApi(req("DELETE", { id: "f".repeat(64) }), deps)).status).toBe(404);
+    expect((await childApi(req("DELETE", { id: "nope" }), deps)).status).toBe(404);
+    deps.siteOwner = async () => {
+      throw new Error("d1");
+    };
+    expect((await childApi(req("GET"), deps)).status).toBe(403);
+  });
+
+  test("an expired parent cannot mint; one ending within minutes cannot either", async () => {
+    db.raw()
+      .prepare("UPDATE api_tokens SET expires_at = ? WHERE token_hash = ?")
+      .run(new Date(now + 2 * MIN).toISOString(), parentId);
+    expect((await mint({ name: "子1" })).status).toBe(400);
+    db.raw()
+      .prepare("UPDATE api_tokens SET expires_at = ? WHERE token_hash = ?")
+      .run(new Date(now - MIN).toISOString(), parentId);
+    expect((await mint({ name: "子1" })).status).toBe(401);
+  });
+
+  test("a full name over the token limit and a bad ttl are refused", async () => {
+    const long = await mintParent(["chat:read", MINT_CHILD], 7, "x".repeat(35));
+    expect((await mint({ name: "abcdefgh" }, long.token)).status).toBe(400);
+    expect((await mint({ name: "子1", ttlMinutes: "2h" })).status).toBe(400);
+    expect((await mint({ name: "子1", ttlMinutes: 1 })).status).toBe(400);
+    expect((await mint({ name: "子1", scopes: [] })).status).toBe(400);
+  });
+});
+
 describe("revocation", () => {
   test("revoking the parent deletes its children, closes their sockets and logs each", async () => {
     const a = await mint({ name: "子1" });
