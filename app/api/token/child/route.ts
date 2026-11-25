@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  * flag tokens.child (off: 404). D1 only.
  */
 async function handle(req: Request) {
-  if (dbBackend() !== "d1") return Response.json({ error: "Not available" }, { status: 503 });
+  if (dbBackend() !== "d1") return Response.json({ error: "not-available" }, { status: 503 });
   const db = () => getD1() as unknown as D1Like & AuditDb;
   return childApi(req, {
     db,
