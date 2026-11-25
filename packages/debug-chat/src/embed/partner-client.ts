@@ -58,6 +58,16 @@ type WsLike = {
   onerror: ((e: unknown) => void) | null;
 };
 
+/** Errors must remain visible even while the page-chat mode notice is active. */
+export function partnerWarning(
+  state: Pick<PartnerState, "sendFailed" | "warning" | "chatOnly">,
+  copy: { sendFailed: string; chatOnly: string },
+  note?: string,
+): string | undefined {
+  return (state.sendFailed ? copy.sendFailed : undefined) ?? state.warning ?? note ??
+    (state.chatOnly ? copy.chatOnly : undefined);
+}
+
 export type PartnerDeps = {
   /** wss://lianki.com/api/version/debug */
   url: string;

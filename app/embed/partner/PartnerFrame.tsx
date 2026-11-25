@@ -5,7 +5,11 @@ import { portableChatPath } from "@/lib/portable-chat-url";
 import { DebugChat } from "@lianki/debug-chat/DebugChat";
 import { CHAT_STRINGS_EN, type ChatStrings } from "@lianki/debug-chat/wire";
 import { type Guest, startFrameGuest } from "@lianki/debug-chat/embed/frame-guest";
-import { type PartnerClient, createPartnerClient } from "@lianki/debug-chat/embed/partner-client";
+import {
+  type PartnerClient,
+  createPartnerClient,
+  partnerWarning,
+} from "@lianki/debug-chat/embed/partner-client";
 
 /**
  * The Learning Partner inside a lianki.com frame on another site
@@ -140,12 +144,14 @@ function Chat({
           ? { href: portableChatPath(guest.origin), label: advancedText, newTab: true }
           : undefined
       }
-      warning={
-        (s.chatOnly ? chatOnlyText : undefined) ??
-        note ??
-        (s.sendFailed ? (strings?.sendFailed ?? CHAT_STRINGS_EN.sendFailed) : undefined) ??
-        s.warning
-      }
+      warning={partnerWarning(
+        s,
+        {
+          sendFailed: strings?.sendFailed ?? CHAT_STRINGS_EN.sendFailed,
+          chatOnly: chatOnlyText,
+        },
+        note,
+      )}
       viewer={s.viewer}
       agentAvatar="/icon-192.png"
       strings={strings}
