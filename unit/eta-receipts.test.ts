@@ -16,6 +16,7 @@ import {
   waitsOnOwner,
 } from "@/lib/progress";
 import { ETA_HEARD_PATH, compactSpan, etaLineText, parseEtaPing } from "@/lib/eta-ping";
+import { whoShown } from "@/lib/eta-reply";
 import { NUDGE_DEFAULTS, backoffDelayMs, nudgeRules } from "@/lib/eta-nudge";
 import { parseProgressArgs, settleDoneKind } from "@/scripts/dev/progress-args";
 import { roadmapSections } from "@/lib/roadmap-tree";
@@ -351,7 +352,7 @@ describe("blocked (someone can act now) vs paused (an outside event)", () => {
     expect(ping).toMatchObject({ kind: "blocked", lane: "codex", agent: "coco", n: 1 });
     expect(parseEtaPing(ping)).toMatchObject({ lane: "codex", agent: "coco" });
     expect(etaLineText(ping as never)).toBe(
-      "@coco (codex): Swipe: drag it (/w/r) is blocked on you: 中文 TTS 修复. agy cannot go on until you act; then tell agy.",
+      "@coco: Swipe: drag it (/w/r) is blocked on you: 中文 TTS 修复. 哈基米 cannot go on until you act; then tell 哈基米.",
     );
     // A non-ASCII agent name, and an owning sub-agent shown the same way.
     await h.write({ id: "/w/q", agent: "coco@codex", status: "blocked", who: "哈基米@claude" });
@@ -359,7 +360,7 @@ describe("blocked (someone can act now) vs paused (an outside event)", () => {
     const q = h.pings.at(-1)!;
     expect(q).toMatchObject({ lane: "claude", agent: "哈基米" });
     expect(etaLineText(q as never)).toBe(
-      "@哈基米 (claude): Swipe: drag it (/w/q) is blocked on you. coco (codex) cannot go on until you act; then tell coco (codex).",
+      "@哈基米 (小克): Swipe: drag it (/w/q) is blocked on you. coco cannot go on until you act; then tell coco.",
     );
   });
 
@@ -374,7 +375,7 @@ describe("blocked (someone can act now) vs paused (an outside event)", () => {
     expect(h.replies).toHaveLength(1);
     expect(h.replies[0]).toMatchObject({ id: "/w/e", state: "ack", assignee: "coco@codex" });
     expect(parseEtaPing(h.replies[0])).toMatchObject({ kind: "reply", state: "ack" });
-    expect(etaLineText(h.replies[0] as never)).toBe("coco (codex)：收到「Swipe」，处理中");
+    expect(etaLineText(h.replies[0] as never)).toBe("coco：收到「Swipe」，处理中");
     // Already answered: the later report (with its reason and new time) adds no second reply.
     await h.write({ id: "/w/e", agent: "coco@codex", eta: "20m", late: "CI 慢" });
     expect(h.replies).toHaveLength(1);
@@ -388,14 +389,22 @@ describe("blocked (someone can act now) vs paused (an outside event)", () => {
     await h.write({ id: "/w/n", agent: "agy", status: "doing", eta: "20m" });
     expect(h.replies.at(-1)).toMatchObject({ state: "doing", min: 20, assignee: "agy" });
     expect(etaLineText(h.replies.at(-1) as never)).toBe(
-      "agy：收到「Swipe」，处理中（ETA 20 分钟）",
+      "哈基米：收到「Swipe」，处理中（ETA 20 分钟）",
     );
+    // A renamed lane (config chat.lanes) reads by its live name; an unknown id stays the id.
+    const rows = [{ id: "agy", name: "咪宝" }];
+    expect(etaLineText(h.replies.at(-1) as never, Date.now(), {}, rows)).toBe(
+      "咪宝：收到「Swipe」，处理中（ETA 20 分钟）",
+    );
+    expect(whoShown("otoji-main", rows)).toBe("otoji-main");
+    expect(whoShown("main")).toBe("main");
+    expect(whoShown("coco@agy", rows)).toBe("coco (咪宝)");
     // Done after a fresh reminder: "已处理".
     await h.write({ id: "/w/d", agent: "agy", eta: "5m" });
     h.tick(5 * MIN);
     await h.hub.alarm();
     await h.write({ id: "/w/d", agent: "agy", status: "done", verified: "test" });
-    expect(etaLineText(h.replies.at(-1) as never)).toBe("agy：「Swipe」已处理");
+    expect(etaLineText(h.replies.at(-1) as never)).toBe("哈基米：「Swipe」已处理");
     // No reminder out: a plain report answers nothing.
     await h.write({ id: "/w/z", agent: "agy", pct: 10 });
     expect(h.replies).toHaveLength(3);
