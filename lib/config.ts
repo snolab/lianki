@@ -82,7 +82,7 @@ import { GUARD_MIN_SPEECH_MS, STT_GUARD } from "@lianki/debug-chat/stt-guard";
 import { SHORT_ANSWER, SHORT_ANSWER_RANGE } from "@lianki/debug-chat/short-answer";
 import { DEFAULT_PRESET_ROWS, presetListSchema, type ByokPresetRow } from "./byok/preset-data";
 import { DEFAULT_MIME_PREFS, parseMimePrefs } from "./meetings/core";
-import { ECHO_HALLUCINATIONS } from "./echo-reports";
+import { ECHO_HALLUCINATIONS, ECHO_WINDOW_MATCH_MIN } from "./echo-reports";
 import {
   MEETING_TRANSCRIPTION_DEFAULTS,
   meetingTranscriptionSchema,
@@ -1134,7 +1134,18 @@ export const CONFIG = {
     group: "voice",
     audience: "server",
     description:
-      "朗读时间窗（开关 voice.echo-window）：你说的一句话至少有多大比例的时间落在朗读中（含收尾），才不看内容直接当朗读回声。0.5 = 一半。调高：你说长句时 Li 正好开始读，更不容易被折叠；调低：更多回声被挡住。",
+      "朗读时间窗（开关 voice.echo-window）：你说的一句话至少有多大比例的时间落在朗读中（含收尾），才算「朗读时说的」，改用较低的内容门槛 voice.echoWindowMatchMin 比对。只看时间从不折叠。0.5 = 一半。调高：你说长句时 Li 正好开始读，更不容易被折叠；调低：更多回声被挡住。",
+  },
+  "voice.echoWindowMatchMin": {
+    default: ECHO_WINDOW_MATCH_MIN as number,
+    schema: z.number().min(0.2).max(1),
+    min: 0.2,
+    max: 1,
+    unit: "0–1",
+    group: "voice",
+    audience: "server",
+    description:
+      "朗读时间窗（开关 voice.echo-window）：朗读中或刚读完时，麦克风识别出来的话要有多少和刚才读出来的句子对得上（去掉标点、大小写、重音和全角半角，按字比较），才当朗读回声折叠。时间对上只是放低门槛（平时是 voice.echoPlaySimilarity），内容对不上的从不折叠：朗读时别人或你自己说的别的话照常发出。越低越容易把你的话误当回声；越高越容易漏掉识别走样的回声。",
   },
   "voice.echoRecentMs": int({
     default: 15_000,

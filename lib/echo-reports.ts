@@ -25,8 +25,14 @@ export const ECHO_SHOW_MAX = 50;
 export const ECHO_WINDOW_TAIL_MS = 2500;
 /** Play window: before a sound's reported start (clock error, output latency). */
 export const ECHO_WINDOW_LEAD_MS = 300;
-/** Play window: this share of the utterance inside a play window makes it an echo, whatever its words. */
+/** Play window: this share of the utterance must lie inside a play window before the window's lower text cut applies. */
 export const ECHO_WINDOW_SHARE = 0.5;
+/**
+ * Play window: inside it, this much of the line must match what played
+ * (`inside`, folded) to fold it; the cut outside the window is
+ * ECHO_PLAY_SIMILARITY. Time alone never folds (owner, 2026-11-26 05:20 JST).
+ */
+export const ECHO_WINDOW_MATCH_MIN = 0.45;
 /** A report that ended this long before the utterance still counts for the text and the STT-noise match. */
 export const ECHO_RECENT_MS = 15_000;
 /**
@@ -345,23 +351,31 @@ function playWindow(
 }
 
 /**
- * The play window (owner, 2026-11-26 00:30–00:55 JST): a voice line spoken
- * while one of his pages was playing Lianki audio, or within the short tail
- * after it, is an echo whatever its words, because heard-back TTS often comes
- * back from STT as words that share nothing with what played ("明镜需要您的支持",
- * Icelandic for a Chinese line). At least `share` of the utterance's span
- * must lie inside the union of the windows, so a long instruction of his that
- * Li started reading into near its end stays his. Only a span the hub knows
- * (`known`) is judged: a guessed one says nothing about "while".
+ * The play window: a precondition and a threshold relaxer, never a fold on
+ * its own (owner, 2026-11-26 05:20 JST: "用你已经说出来的话进行对比"). A voice
+ * line `text` spoken while one of his pages was playing Lianki audio, or
+ * within the short tail after it, is an echo only when its words match what
+ * those sounds said (`inside`, the same fuzzy match as the report layer:
+ * accents and widths folded, n-grams for longer lines) at least `matchMin`,
+ * a lower cut than the report layer's because the time agrees too. A sound
+ * with no text (say --play, a stream) opens a window but can fold nothing:
+ * there is nothing to compare. At least `share` of the utterance's span must
+ * lie inside the union of the windows, so a long instruction of his that Li
+ * started reading into near its end stays his. Only a span the hub knows
+ * (`known`) is judged: a guessed one says nothing about "while". Lines
+ * shorter than `minChars` never match. Words that share nothing with what
+ * played (Whisper's subtitle credits) are left to the hallucination list.
  */
 export function echoWindowMatch(
+  text: string,
   reports: readonly PlayReport[],
   span: { from: number; to: number; known?: boolean },
-  conf: { leadMs: number; tailMs: number; share: number },
+  conf: { leadMs: number; tailMs: number; share: number; matchMin: number; minChars: number },
   hubNow: number,
   page?: string,
 ): ReportHit | undefined {
   if (span.known === false || !reports.length) return undefined;
+  if (normalizeEcho(text).length < conf.minChars) return undefined;
   const wins = reports
     .map((r) => ({ r, w: playWindow(r, conf, hubNow) }))
     .filter(({ w }) => w.from <= span.to && w.to >= span.from)
@@ -384,14 +398,23 @@ export function echoWindowMatch(
   if (curTo > curFrom) covered += curTo - curFrom;
   const share = len > 0 ? covered / len : 1;
   if (share < conf.share) return undefined;
-  // Which sound it was: the one overlapping the utterance longest.
-  const over = (w: { from: number; to: number }) =>
-    Math.max(0, Math.min(w.to, span.to) - Math.max(w.from, span.from));
+  // The words decide: what these sounds said must hold enough of the line.
+  const heard = wins.map(({ r }) => r);
+  const sim = inside(text, heard);
+  if (sim < conf.matchMin) return undefined;
+  // Which sound it was: the one that alone holds the most of it (ties: the latest).
   let top = wins[0]!;
-  for (const x of wins) if (over(x.w) >= over(top.w)) top = x;
+  let topSim = -1;
+  for (const x of wins) {
+    const s = inside(text, [x.r]);
+    if (s >= topSim) {
+      top = x;
+      topSim = s;
+    }
+  }
   const of = top.r.ref.includes("#") ? top.r.ref.slice(0, top.r.ref.lastIndexOf("#")) : undefined;
   return {
-    sim: Math.round(share * 1000) / 1000,
+    sim: Math.round(sim * 1000) / 1000,
     voice: top.r.voice,
     ...(of ? { of } : {}),
     overlapMs: Math.round(covered),
@@ -471,8 +494,9 @@ export type EchoVerdict = {
  *    an agent line or a polish read back → read-aloud; his line from his
  *    other device → other-device, hidden;
  * 3. the play window (echoWindowMatch, flag voice.echo-window): spoken while
- *    one of his pages played, whatever the words → read-aloud (layer
- *    "window"), with the same strong-"me" exception as 1;
+ *    one of his pages played and its words match what played at the lower
+ *    window cut → read-aloud (layer "window"), with the same strong-"me"
+ *    exception as 1;
  * 4. a known STT hallucination while something played lately (`noise`) →
  *    read-aloud (layer "noise"), the same exception;
  * 5. else none: it is his line.

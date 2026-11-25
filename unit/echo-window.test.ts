@@ -1,119 +1,172 @@
 /**
  * The play window (lib/echo-reports.ts echoWindowMatch, flag voice.echo-window):
  * a voice line spoken while one of his pages played Lianki audio, or in the
- * short tail after, is an echo whatever its words. Replays the transcripts
- * of 2026-11-26 00:30–00:55 JST, when Whisper on his phone turned read-aloud
- * into words that share nothing with what played.
+ * short tail after, is an echo only when its words match what played at the
+ * window's lower cut (owner, 2026-11-26 05:20 JST: time alone never folds).
  */
 import { describe, expect, it } from "bun:test";
 import { containedSimilarity, normalizeEcho } from "@/lib/echo-match";
 import {
   ECHO_HALLUCINATIONS,
+  ECHO_WINDOW_MATCH_MIN,
   PLAY_OPEN_MAX_MS,
   type PlayReport,
   PlayStore,
   echoHallucinated,
+  echoReportMatch,
   echoVerdict,
   echoWindowMatch,
   openEnd,
   parsePlayFrame,
 } from "@/lib/echo-reports";
 
-const conf = { leadMs: 300, tailMs: 2500, share: 0.5 };
+const conf = { leadMs: 300, tailMs: 2500, share: 0.5, matchMin: 0.45, minChars: 2 };
+/** What the reports below read aloud, and an echo of it as STT wrote it back. */
+const SAID =
+  "先放一个占位首页，通过 GitHub Actions 自动部署，然后再看要不要换成 Cloudflare Pages。";
+const HEARD = "先放一个占位手页通过GitHub自动布署"; // 0.75 inside SAID
+/** A worse garble: 0.593, under the report layer's 0.6 but over the window's 0.45. */
+const GARBLED = "先放一个站位手页，通过给他把阿克森自动部署，然后再看要不要换";
+/** A reply that shares a few words with his 2713e7d1 question (scores 0.328; that night's was 0.308). */
+const PLAYED_2713 = "为什么 Tampermonkey 可以，ScriptCat 不可以，我先查一下。";
 const rep = (o: Partial<PlayReport> & { from: number }): PlayReport => ({
   page: "phone",
   ref: "line1#1",
   voice: "device",
+  text: SAID,
   synced: true,
   seen: o.from,
   ...o,
 });
+const win = (
+  reports: PlayReport[],
+  span: { from: number; to: number; known?: boolean },
+  c: Partial<typeof conf>,
+  hubNow: number,
+  page?: string,
+  text = HEARD,
+) => echoWindowMatch(text, reports, span, { ...conf, ...c }, hubNow, page);
 
-describe("echoWindowMatch", () => {
-  it("an utterance inside a play is an echo whatever its words", () => {
-    const hit = echoWindowMatch(
-      [rep({ from: 1000, to: 7000, text: "MCP metrics 超时" })],
+describe("echoWindowMatch: time is a precondition, the words decide (owner, 2026-11-26 05:20 JST)", () => {
+  it("his real question 2713e7d1 during playback is his: 0.308 is under the window cut", () => {
+    // The transcript as posted that night; what played shared a few words with it.
+    const HIS =
+      "Temper monkey跟Squid cat有什么区别?为什么Temper monkey可以,Squid cat不可以?我觉得应该是没有区别的。";
+    const PLAYED = PLAYED_2713;
+    const r = [rep({ from: 0, to: 20_000, text: PLAYED })];
+    const span = { from: 5000, to: 18_000, known: true };
+    const report = echoReportMatch(HIS, r, span, {
+      similarity: 0,
+      minChars: 2,
+      slackMs: 1500,
+    });
+    expect(report?.sim).toBeGreaterThan(0.25);
+    expect(report!.sim).toBeLessThan(conf.matchMin);
+    expect(win(r, span, {}, 21_000, "phone", HIS)).toBeUndefined();
+    // Even the night's own score: under the window cut, so his.
+    expect(0.308).toBeLessThan(ECHO_WINDOW_MATCH_MIN);
+  });
+
+  it("a garbled echo of the played line above the cut folds, with its score as sim", () => {
+    const hit = win(
+      [rep({ from: 1000, to: 7000 })],
       { from: 2000, to: 4500, known: true },
-      conf,
+      {},
       9000,
       "phone",
+      GARBLED,
     );
-    expect(hit).toMatchObject({
-      sim: 1,
-      voice: "device",
-      of: "line1",
-      overlapMs: 2500,
-      samePage: true,
-    });
+    expect(hit).toMatchObject({ voice: "device", of: "line1", overlapMs: 2500, samePage: true });
+    expect(hit!.sim).toBeGreaterThanOrEqual(conf.matchMin);
+    expect(hit!.sim).toBeLessThan(0.6); // the report layer alone would have let it through
+  });
+
+  it("another person speaking during playback is not folded", () => {
+    for (const other of ["我们明天去公园散步吧", "Can you pass me the salt?", "一百二十"])
+      expect(
+        win(
+          [rep({ from: 1000, to: 7000 })],
+          { from: 2000, to: 4500, known: true },
+          {},
+          9000,
+          "phone",
+          other,
+        ),
+      ).toBeUndefined();
+  });
+
+  it("a sound with no text opens a window but can fold nothing", () => {
+    expect(
+      win(
+        [rep({ from: 1000, to: 7000, text: undefined, voice: "li-player" })],
+        { from: 2000, to: 4500, known: true },
+        {},
+        9000,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("the cut is configurable (voice.echoWindowMatchMin)", () => {
+    const r = [rep({ from: 1000, to: 7000 })];
+    const span = { from: 2000, to: 4500, known: true };
+    expect(win(r, span, { matchMin: 0.9 }, 9000)).toBeUndefined();
+    expect(win(r, span, { matchMin: 0.7 }, 9000)?.sim).toBe(0.75);
   });
 
   it("the tail counts: spoken just after the sound ended", () => {
-    const hit = echoWindowMatch(
+    const hit = win(
       [rep({ from: 1000, to: 5000 })],
       { from: 5500, to: 7000, known: true },
-      conf,
+      {},
       9000,
     );
-    expect(hit?.sim).toBe(1);
+    expect(hit?.sim).toBe(0.75);
   });
 
-  it("past the tail it is his", () => {
+  it("past the tail the window does not apply", () => {
     expect(
-      echoWindowMatch(
-        [rep({ from: 1000, to: 5000 })],
-        { from: 8000, to: 9000, known: true },
-        conf,
-        9500,
-      ),
+      win([rep({ from: 1000, to: 5000 })], { from: 8000, to: 9000, known: true }, conf, 9500),
     ).toBeUndefined();
   });
 
   it("a long instruction that Li started reading into near its end stays his", () => {
     // 20 s of speech, a sound starts 2 s before it ends: 2.0 s + no tail inside = 10 %.
     expect(
-      echoWindowMatch([rep({ from: 18_000 })], { from: 0, to: 20_000, known: true }, conf, 20_500),
+      win([rep({ from: 18_000 })], { from: 0, to: 20_000, known: true }, {}, 20_500),
     ).toBeUndefined();
   });
 
   it("joins several sounds without counting their overlap twice", () => {
-    const hit = echoWindowMatch(
+    const hit = win(
       [rep({ from: 0, to: 2000, ref: "a#1" }), rep({ from: 1000, to: 3000, ref: "b#2" })],
       { from: 0, to: 10_000, known: true },
-      { ...conf, tailMs: 0, leadMs: 0 },
+      { tailMs: 0, leadMs: 0 },
       12_000,
     );
     expect(hit).toBeUndefined(); // 3 s of 10 s
-    const both = echoWindowMatch(
+    const both = win(
       [rep({ from: 0, to: 4000, ref: "a#1" }), rep({ from: 3000, to: 6000, ref: "b#2" })],
       { from: 0, to: 10_000, known: true },
-      { ...conf, tailMs: 0, leadMs: 0 },
+      { tailMs: 0, leadMs: 0 },
       12_000,
     );
-    expect(both).toMatchObject({ sim: 0.6, overlapMs: 6000 });
+    expect(both).toMatchObject({ overlapMs: 6000 });
   });
 
   it("a sound with no end yet is open until now", () => {
-    expect(
-      echoWindowMatch([rep({ from: 1000 })], { from: 3000, to: 4000, known: true }, conf, 4000)
-        ?.sim,
-    ).toBe(1);
+    expect(win([rep({ from: 1000 })], { from: 3000, to: 4000, known: true }, {}, 4000)?.sim).toBe(
+      0.75,
+    );
   });
 
   it("an unsynced page gets twice the margins", () => {
     const r = rep({ from: 1000, to: 5000, synced: false });
-    expect(echoWindowMatch([r], { from: 9000, to: 10_000, known: true }, conf, 11_000)?.sim).toBe(
-      1,
-    );
+    expect(win([r], { from: 9000, to: 10_000, known: true }, {}, 11_000)?.sim).toBe(0.75);
   });
 
   it("a guessed span says nothing about 'while'", () => {
     expect(
-      echoWindowMatch(
-        [rep({ from: 0, to: 9000 })],
-        { from: 1000, to: 2000, known: false },
-        conf,
-        9000,
-      ),
+      win([rep({ from: 0, to: 9000 })], { from: 1000, to: 2000, known: false }, {}, 9000),
     ).toBeUndefined();
   });
 });
@@ -178,7 +231,7 @@ describe("echoVerdict with the window", () => {
 });
 
 describe("time-only play reports", () => {
-  it("a frame with no words is kept and opens the window", () => {
+  it("a frame with no words is kept, but has nothing to compare: it folds nothing", () => {
     const f = parsePlayFrame(
       JSON.stringify({ type: "playing", ref: "p1", voice: "li-player", from: 1000, synced: true }),
     );
@@ -188,16 +241,16 @@ describe("time-only play reports", () => {
     store.note("phone", { type: "played", ref: "p1", to: 4000, synced: true }, 4000, 120_000);
     const over = store.overlapping({ from: 2000, to: 3000 }, 1500, 5000);
     expect(over).toHaveLength(1);
-    expect(echoWindowMatch(over, { from: 2000, to: 3000, known: true }, conf, 5000)?.voice).toBe(
-      "li-player",
-    );
+    expect(win(over, { from: 2000, to: 3000, known: true }, {}, 5000)).toBeUndefined();
   });
 });
 
 describe("long sounds: a lease renewed while playing (review of #1108)", () => {
+  // A long read-aloud stream with its text, so the window has words to compare.
   const stream = {
     type: "playing" as const,
     ref: "stream",
+    text: SAID,
     voice: "li-player",
     from: 1000,
     synced: true as const,
@@ -211,7 +264,7 @@ describe("long sounds: a lease renewed while playing (review of #1108)", () => {
     const recent = store.overlapping({ from: span.from - 15_000, to: span.to }, 1500, 143_000);
     expect(recent).toHaveLength(1);
     expect(recent[0]!.from).toBe(1000); // the start never moves
-    expect(echoWindowMatch(recent, span, conf, 143_000, "phone")?.sim).toBe(1);
+    expect(win(recent, span, {}, 143_000, "phone")?.sim).toBe(0.75);
   });
   it("the probe case: speech at 71–72 s of a stream renewed at 61 s is caught", () => {
     const store = new PlayStore();
@@ -219,7 +272,7 @@ describe("long sounds: a lease renewed while playing (review of #1108)", () => {
     store.note("phone", { ...stream, renew: true }, 61_000, 120_000);
     const span = { from: 71_000, to: 72_000, known: true };
     const recent = store.overlapping({ from: span.from - 15_000, to: span.to }, 1500, 73_000);
-    expect(echoWindowMatch(recent, span, conf, 73_000, "phone")?.sim).toBe(1);
+    expect(win(recent, span, {}, 73_000, "phone")?.sim).toBe(0.75);
   });
   it("with no renewal (a lost page) the lease ends it: 30 s after the last renewal", () => {
     expect(openEnd({ from: 0, renewed: 100_000 }, 500_000)).toBe(130_000);
@@ -253,6 +306,7 @@ describe("an early renewal then a lost page (review of #1110)", () => {
     const stream = {
       type: "playing" as const,
       ref: "s",
+      text: SAID,
       voice: "li-player",
       from: 0,
       synced: true as const,
@@ -262,6 +316,6 @@ describe("an early renewal then a lost page (review of #1110)", () => {
     const span = { from: 55_000, to: 56_000, known: true };
     const recent = store.overlapping({ from: span.from - 15_000, to: span.to }, 1500, 57_000);
     // 50 s + 2.5 s tail ends before 55 s.
-    expect(echoWindowMatch(recent, span, conf, 57_000, "phone")).toBeUndefined();
+    expect(win(recent, span, {}, 57_000, "phone")).toBeUndefined();
   });
 });

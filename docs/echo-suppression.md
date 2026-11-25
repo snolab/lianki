@@ -73,11 +73,24 @@ nothing caught them.
 **The fix** (flag **`voice.echo-window`**, on by default, audience owner,
 <https://lianki.com/dev/flags#voice.echo-window>):
 
-- **Time alone.** A voice line is an echo, whatever its words, when at least
+- **Time is a precondition, never a fold on its own** (owner, 2026-11-26
+  05:20 JST: 「用你已经说出来的话进行对比，然后你就可以发现哪些是回声了。而不是…你在说话的时候，
+  我其他所有人都说的话都当成回声」. The first build folded any line spoken
+  during playback whatever its words, and folded his real question 2713e7d1,
+  word match 0.308.) A voice line is in the window when at least
   `voice.echoWindowShare` (0.5) of its span lies inside a play window of any
   of his pages: from `voice.echoWindowLeadMs` (300 ms) before a sound starts
   to `voice.echoWindowTailMs` (2500 ms) after it ends (twice both for an
-  unsynced page). On the page that played: always. From another of his
+  unsynced page). In the window it is an echo only when its words match what
+  those sounds said at least `voice.echoWindowMatchMin` (0.45; the report
+  layer's cut outside the window is `voice.echoPlaySimilarity`, 0.6), with
+  the report layer's fuzzy match (`inside`: accents and widths folded, n-grams
+  for longer lines) and `voice.echoMinChars`. Anything else spoken during
+  playback, by him or anyone in the room, is posted. A sound with no text
+  opens a window but folds nothing. Garbled echoes that share no words with
+  what played (Whisper's subtitle credits, a wrong language) are left to the
+  hallucination list below, or to "This was me" the other way round: they
+  get through. On the page that played: always. From another of his
   devices: only for a line from the cloud recogniser with no voiceprint tag
   (the path that hallucinates and has no self print). A line from the Mac's
   own STT on another device is left to the words and the self print, so
@@ -90,7 +103,9 @@ nothing caught them.
 - **Time-only reports.** A sound with no text still reports `playing`/`played`
   with no words: `li-player` (`say --play` files and streams, voice
   `li-player`), and `pageAudio().start({voice})` with no text. An unnamed
-  `start()` (live-monitor playing his own mic back) never reports.
+  `start()` (live-monitor playing his own mic back) never reports. Since the
+  window needs a text match, such a report counts only for the hallucination
+  list's "played lately"; it can never fold a line by itself.
 - **Any language, fuzzily.** `normalizeEcho` (`lib/echo-match.ts`) folds
   accents and widths (NFKD, marks dropped). Text matching against reports
   reaches back `voice.echoRecentMs` (15 s) past the slack.
@@ -109,10 +124,13 @@ nothing caught them.
   "played" ends it; a closed page lets the lease run out.
 - Order in `echoVerdict`: self, report, landed, window, noise.
 
-Known cost: his own words on the device that is reading aloud, or on another
-device using cloud STT, are folded too while it reads (unless the Mac signs
-them as his). One tap on "This was me" restores them. A replay of that night
-(every agent line assumed read on the phone) folded no Mac line.
+Known cost, since the 05:20 change: a heard-back line that STT turned into
+words unlike what played, and that is on no hallucination list, is posted as
+his (it was folded by time alone before). Of that night's replay only the
+subtitle credit stays folded. Add recurring garble to
+`voice.echoHallucinations`. The flag off also turns the hallucination list
+off (both are gated on `voice.echo-window`); the report, landed and self
+layers do not depend on it.
 
 Tests: `unit/echo-window.test.ts` and `unit/debug-hub-echo-reports.test.ts`,
 "the play window: 2026-11-26 replay" (that night's transcripts).
