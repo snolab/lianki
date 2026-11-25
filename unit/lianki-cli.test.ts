@@ -1118,3 +1118,84 @@ test("publish scope refusals carry only a public approval link", async () => {
     }
   }
 });
+
+// After "no command ever printed a token": `create` prints a child's secret on
+// purpose, once, for the lane to hand to its subagent.
+describe("token child: a lane's subagents", () => {
+  const CHILD = "lk_" + "c".repeat(64); // fixture
+  const ID = "d".repeat(64);
+  const server: Record<string, Handler> = {
+    "POST /api/token/child": (c) =>
+      json({
+        token: CHILD,
+        id: ID,
+        name: `claude·${c.body.name}`,
+        scopes: c.body.scopes ?? ["chat:read", "chat:write"],
+        expiresAt: "2026-11-25T02:00:00.000Z",
+        ttl: c.body.ttlMinutes,
+      }),
+    "GET /api/token/child": () =>
+      json({
+        children: [
+          {
+            id: ID,
+            name: "claude·子1",
+            scopes: ["chat:read"],
+            expiresAt: "2026-11-25T02:00:00.000Z",
+          },
+        ],
+      }),
+    "DELETE /api/token/child": () => json({ ok: true }),
+  };
+
+  test("create prints the secret alone on stdout and sends name, scopes and ttl", async () => {
+    const h = harness({ env, server });
+    const r = await h.run(
+      "token",
+      "child",
+      "create",
+      "--name",
+      "子1",
+      "--scopes",
+      "chat:read,chat:write",
+      "--ttl",
+      "2h",
+    );
+    expect(r.code).toBe(0);
+    expect(r.out).toBe(CHILD);
+    expect(r.err).toContain("claude·子1");
+    const call = h.calls.find((c) => c.path === "/api/token/child")!;
+    expect(call.auth).toBe(`Bearer ${TOKEN}`);
+    expect(call.body).toEqual({
+      name: "子1",
+      scopes: ["chat:read", "chat:write"],
+      ttlMinutes: 120,
+    });
+    const j = await h.run("token", "child", "create", "--name", "子2", "--ttl", "90m", "--json");
+    expect(envelope(j.out).data.ttl).toBe(90);
+    expect((await h.run("token", "child", "create", "--name", "x", "--ttl", "soon")).code).toBe(1);
+    expect((await h.run("token", "child", "create", "--name", " ")).code).toBe(1);
+  });
+
+  test("list and revoke (by a prefix from list)", async () => {
+    const h = harness({ env, server });
+    expect((await h.run("token", "child", "list")).out).toContain("claude·子1");
+    const r = await h.run("token", "child", "revoke", ID.slice(0, 16));
+    expect(r.code).toBe(0);
+    expect(h.calls.at(-1)).toMatchObject({ method: "DELETE", body: { id: ID } });
+    expect((await h.run("token", "child", "revoke", ID)).code).toBe(0);
+    expect((await h.run("token", "child", "revoke", "e".repeat(16))).code).toBe(3);
+    expect((await h.run("token", "child", "revoke", "zz")).code).toBe(1);
+    const none = harness({
+      env,
+      server: { ...server, "GET /api/token/child": () => json({ children: [] }) },
+    });
+    expect((await none.run("token", "child", "list")).out).toBe("no child tokens");
+  });
+
+  test("ttlMinutes", () => {
+    expect(cliMod.ttlMinutes("2h")).toBe(120);
+    expect(cliMod.ttlMinutes("45")).toBe(45);
+    expect(() => cliMod.ttlMinutes("0")).toThrow();
+  });
+});

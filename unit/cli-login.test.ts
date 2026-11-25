@@ -620,6 +620,48 @@ describe("/api/cli-login/token", async () => {
     expect((await self(`Bearer ${j.token}`)).status).toBe(401);
   });
 
+  test("logout revokes the token's child tokens with it, each in the audit log", async () => {
+    const { createToken } = await import("@/lib/api-tokens");
+    const p = await createToken(
+      db(),
+      { userId: "u1", email: "u1@example.com" },
+      { name: "claude", scopes: ["chat:read"], expiresAt: new Date(Date.now() + 86_400_000) },
+    );
+    const childHash = "c".repeat(64); // fixture row, no real secret
+    await db()
+      .prepare(
+        "INSERT INTO api_tokens (token_hash, email, name, created_at, user_id, scopes, expires_at, parent_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind(
+        childHash,
+        "u1@example.com",
+        "claude·子1",
+        new Date().toISOString(),
+        "u1",
+        '["chat:read"]',
+        new Date(Date.now() + 3_600_000).toISOString(),
+        p.id,
+      )
+      .run();
+    const r = await DELETE(
+      new Request("https://lianki.com/api/cli-login/token", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${p.token}` },
+      }),
+    );
+    expect(r.status).toBe(200);
+    expect(
+      await db()
+        .prepare("SELECT token_hash FROM api_tokens WHERE token_hash = ?")
+        .bind(childHash)
+        .first(),
+    ).toBeNull();
+    const audit = await db()
+      .prepare("SELECT detail FROM security_audit WHERE kind = 'api-token.child-revoke'")
+      .first<{ detail: string }>();
+    expect(audit?.detail).toContain("claude·子1");
+  });
+
   test("is rate-limited per IP", async () => {
     for (let i = 0; i < EXCHANGES_PER_IP.max; i++)
       expect((await post({ code: "x", code_verifier: "y" }, "203.0.113.9")).status).toBe(400);

@@ -21,6 +21,9 @@ import { FLAGS } from "../lib/flags";
 import { childIndex, childLane, childShownName } from "../packages/debug-chat/src/child-lane";
 import { lineAvatar } from "../packages/debug-chat/src/avatar-rules";
 import type { ChatMessage } from "../packages/debug-chat/src/wire";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { LineTag, childAvatar } from "../packages/debug-chat/src/LaneMark";
 
 // Fixtures only: fake accounts, fake tokens.
 const now = Date.parse("2026-11-25T00:00:00Z");
@@ -394,6 +397,26 @@ describe("labels", () => {
     expect(childLane("·x")).toBeNull();
     expect(childIndex("子1")).toBe("1");
     expect(childIndex("reviewer")).toMatch(/^[1-9]$/);
+  });
+
+  test("the drawn child mark and the name tag", () => {
+    const svg = renderToStaticMarkup(childAvatar("claude", "1")!);
+    expect(svg).toContain('data-testid="debug-chat-child-mark"');
+    expect(svg).toContain('data-index="1"');
+    expect(svg).toContain("oklch(");
+    expect(renderToStaticMarkup(childAvatar("codex", "12")!)).toContain(">12<");
+    const tag = renderToStaticMarkup(
+      createElement(LineTag, {
+        m: { via: "token", tokenLane: "claude·子1", label: "小克·子1" },
+      }),
+    );
+    expect(tag).toContain("小克·子1");
+    expect(tag).toContain('data-parent="小克"');
+    const plain = renderToStaticMarkup(
+      createElement(LineTag, { m: { via: "token", tokenLane: "helper" } }),
+    );
+    expect(plain).toContain("helper");
+    expect(plain).not.toContain("data-parent");
   });
 
   test("a child line's avatar is its lane's mark with an index, named 「小克·子1」", () => {
