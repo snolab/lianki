@@ -31,6 +31,11 @@ export type PillChatLocale = (typeof PILL_CHAT_LOCALES)[number];
 
 export type PillChatStrings = {
   liTitle: string;
+  chatOnly: string;
+  advanced: string;
+  directTitle: string;
+  openChat: string;
+  returnSite: string;
   promptTitle: string;
   promptBody: string;
   promptWarn: string;
@@ -50,6 +55,16 @@ export type PillChatStrings = {
 };
 
 export const PILL_CHAT_CONTEXT: Record<keyof PillChatStrings, string> = {
+  chatOnly:
+    "Banner for portable Li running in a website page realm: only conversation/history is available. Code execution, pairing, tokens, settings, payments and other private data require a separate confirmation on lianki.com. Keep lianki.com unchanged; this does not grant those capabilities.",
+  advanced:
+    "Link beside the chat-only banner. Opens the first-party Li chat page on lianki.com with a safe return-to-source link, where advanced actions may be requested and confirmed. Keep lianki.com unchanged.",
+  directTitle:
+    "Heading and browser title of the first-party /chat destination reached from portable Li. The feature is named portable Li (Chinese: 随身Li); Li stays unchanged.",
+  openChat:
+    "Button on /chat that opens the existing Li conversation widget and focuses its input. This is a UI action, not a permission grant.",
+  returnSite:
+    "Optional link back to the website the user came from; {host} is its validated origin without credentials, query or fragment. The link never redirects automatically. Preserve {host}.",
   liTitle:
     "Tooltip and screen-reader label of the small 'Li' button on the userscript's floating pill on any website: opens Li, the Learning Partner chat. Li is a product name: keep it as is.",
   promptTitle:
@@ -87,6 +102,12 @@ export const PILL_CHAT_CONTEXT: Record<keyof PillChatStrings, string> = {
 
 export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
   en: {
+    chatOnly:
+      "Chat only on this website. Advanced features require your confirmation on lianki.com.",
+    advanced: "Advanced features on lianki.com",
+    directTitle: "Chat with Li",
+    openChat: "Open Li chat",
+    returnSite: "Return to {host}",
     liTitle: "Chat with Li",
     promptTitle: "Allow Li chat on {host}?",
     promptBody:
@@ -107,6 +128,11 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "Chat on lianki.com",
   },
   zh: {
+    chatOnly: "随身Li在此仅聊天。高级功能请到 lianki.com 确认。",
+    advanced: "到 lianki.com 使用高级功能",
+    directTitle: "随身Li聊天",
+    openChat: "打开 Li 聊天",
+    returnSite: "返回 {host}",
     liTitle: "和 Li 聊天",
     promptTitle: "允许在 {host} 上使用 Li 聊天吗？",
     promptBody:
@@ -127,6 +153,11 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "去 lianki.com 聊天",
   },
   hi: {
+    chatOnly: "इस वेबसाइट पर केवल चैट। उन्नत सुविधाओं के लिए lianki.com पर आपकी पुष्टि आवश्यक है।",
+    advanced: "lianki.com पर उन्नत सुविधाएँ",
+    directTitle: "Li से चैट",
+    openChat: "Li चैट खोलें",
+    returnSite: "{host} पर लौटें",
     liTitle: "Li से चैट करें",
     promptTitle: "{host} पर Li चैट की अनुमति दें?",
     promptBody:
@@ -147,6 +178,12 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "lianki.com पर चैट करें",
   },
   es: {
+    chatOnly:
+      "Solo chat en este sitio. Las funciones avanzadas requieren tu confirmación en lianki.com.",
+    advanced: "Funciones avanzadas en lianki.com",
+    directTitle: "Chatea con Li",
+    openChat: "Abrir chat de Li",
+    returnSite: "Volver a {host}",
     liTitle: "Chatear con Li",
     promptTitle: "¿Permitir el chat de Li en {host}?",
     promptBody:
@@ -167,6 +204,12 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "Chatear en lianki.com",
   },
   fr: {
+    chatOnly:
+      "Chat uniquement sur ce site. Les fonctions avancées demandent votre confirmation sur lianki.com.",
+    advanced: "Fonctions avancées sur lianki.com",
+    directTitle: "Discuter avec Li",
+    openChat: "Ouvrir le chat Li",
+    returnSite: "Retour à {host}",
     liTitle: "Discuter avec Li",
     promptTitle: "Autoriser le chat Li sur {host} ?",
     promptBody:
@@ -188,6 +231,11 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "Discuter sur lianki.com",
   },
   ar: {
+    chatOnly: "الدردشة فقط على هذا الموقع. تتطلب الميزات المتقدمة تأكيدك على lianki.com.",
+    advanced: "الميزات المتقدمة على lianki.com",
+    directTitle: "الدردشة مع Li",
+    openChat: "فتح دردشة Li",
+    returnSite: "العودة إلى {host}",
     liTitle: "الدردشة مع Li",
     promptTitle: "هل تسمح بدردشة Li على {host}؟",
     promptBody:
@@ -208,6 +256,11 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "الدردشة على lianki.com",
   },
   bn: {
+    chatOnly: "এই ওয়েবসাইটে শুধু চ্যাট। উন্নত সুবিধার জন্য lianki.com-এ আপনার নিশ্চিতকরণ প্রয়োজন।",
+    advanced: "lianki.com-এ উন্নত সুবিধা",
+    directTitle: "Li-এর সাথে চ্যাট",
+    openChat: "Li চ্যাট খুলুন",
+    returnSite: "{host}-এ ফিরুন",
     liTitle: "Li-এর সঙ্গে চ্যাট করুন",
     promptTitle: "{host}-এ Li চ্যাটের অনুমতি দেবেন?",
     promptBody:
@@ -228,6 +281,11 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "lianki.com-এ চ্যাট করুন",
   },
   pt: {
+    chatOnly: "Apenas chat neste site. Os recursos avançados exigem sua confirmação em lianki.com.",
+    advanced: "Recursos avançados em lianki.com",
+    directTitle: "Converse com Li",
+    openChat: "Abrir chat do Li",
+    returnSite: "Voltar a {host}",
     liTitle: "Conversar com Li",
     promptTitle: "Permitir o chat do Li em {host}?",
     promptBody:
@@ -248,6 +306,12 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "Conversar no lianki.com",
   },
   ru: {
+    chatOnly:
+      "На этом сайте доступен только чат. Для расширенных функций нужно подтверждение на lianki.com.",
+    advanced: "Расширенные функции на lianki.com",
+    directTitle: "Чат с Li",
+    openChat: "Открыть чат Li",
+    returnSite: "Вернуться на {host}",
     liTitle: "Чат с Li",
     promptTitle: "Разрешить чат Li на {host}?",
     promptBody:
@@ -268,6 +332,11 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "Общаться на lianki.com",
   },
   ur: {
+    chatOnly: "اس ویب سائٹ پر صرف چیٹ۔ اعلیٰ خصوصیات کے لیے lianki.com پر آپ کی تصدیق درکار ہے۔",
+    advanced: "lianki.com پر اعلیٰ خصوصیات",
+    directTitle: "Li سے چیٹ",
+    openChat: "Li چیٹ کھولیں",
+    returnSite: "{host} پر واپس جائیں",
     liTitle: "Li سے چیٹ کریں",
     promptTitle: "کیا {host} پر Li چیٹ کی اجازت دیں؟",
     promptBody:
@@ -288,6 +357,11 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "lianki.com پر چیٹ کریں",
   },
   id: {
+    chatOnly: "Hanya chat di situs ini. Fitur lanjutan memerlukan konfirmasi Anda di lianki.com.",
+    advanced: "Fitur lanjutan di lianki.com",
+    directTitle: "Chat dengan Li",
+    openChat: "Buka chat Li",
+    returnSite: "Kembali ke {host}",
     liTitle: "Ngobrol dengan Li",
     promptTitle: "Izinkan obrolan Li di {host}?",
     promptBody:
@@ -308,6 +382,12 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "Ngobrol di lianki.com",
   },
   de: {
+    chatOnly:
+      "Auf dieser Website nur Chat. Erweiterte Funktionen benötigen deine Bestätigung auf lianki.com.",
+    advanced: "Erweiterte Funktionen auf lianki.com",
+    directTitle: "Mit Li chatten",
+    openChat: "Li-Chat öffnen",
+    returnSite: "Zurück zu {host}",
     liTitle: "Mit Li chatten",
     promptTitle: "Li-Chat auf {host} erlauben?",
     promptBody:
@@ -329,6 +409,11 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "Auf lianki.com chatten",
   },
   ja: {
+    chatOnly: "このサイトではチャットのみ利用できます。高度な機能は lianki.com で確認が必要です。",
+    advanced: "lianki.com で高度な機能を使う",
+    directTitle: "Li とチャット",
+    openChat: "Li チャットを開く",
+    returnSite: "{host} に戻る",
     liTitle: "Li とチャット",
     promptTitle: "{host} で Li チャットを許可しますか？",
     promptBody:
@@ -350,6 +435,12 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "lianki.com でチャット",
   },
   sw: {
+    chatOnly:
+      "Gumzo pekee kwenye tovuti hii. Vipengele vya juu vinahitaji uthibitisho wako kwenye lianki.com.",
+    advanced: "Vipengele vya juu kwenye lianki.com",
+    directTitle: "Zungumza na Li",
+    openChat: "Fungua gumzo la Li",
+    returnSite: "Rudi kwenye {host}",
     liTitle: "Ongea na Li",
     promptTitle: "Ruhusu gumzo la Li kwenye {host}?",
     promptBody:
@@ -370,6 +461,11 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "Ongea kwenye lianki.com",
   },
   mr: {
+    chatOnly: "या वेबसाइटवर फक्त चॅट. प्रगत सुविधांसाठी lianki.com वर तुमची पुष्टी आवश्यक आहे.",
+    advanced: "lianki.com वर प्रगत सुविधा",
+    directTitle: "Li सोबत चॅट",
+    openChat: "Li चॅट उघडा",
+    returnSite: "{host} वर परत जा",
     liTitle: "Li शी गप्पा मारा",
     promptTitle: "{host} वर Li चॅटला परवानगी द्यायची?",
     promptBody:
@@ -390,6 +486,11 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     openLianki: "lianki.com वर चॅट करा",
   },
   ko: {
+    chatOnly: "이 사이트에서는 채팅만 가능합니다. 고급 기능은 lianki.com에서 확인이 필요합니다.",
+    advanced: "lianki.com에서 고급 기능 사용",
+    directTitle: "Li와 채팅",
+    openChat: "Li 채팅 열기",
+    returnSite: "{host}(으)로 돌아가기",
     liTitle: "Li와 채팅",
     promptTitle: "{host}에서 Li 채팅을 허용할까요?",
     promptBody:

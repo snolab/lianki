@@ -31,6 +31,8 @@ const ON_PURPOSE = 4000;
 
 export type PartnerState = {
   live: boolean;
+  /** Server-stamped from the signed page-chat audience; not the parent's claim. */
+  chatOnly?: true;
   listeners: number;
   messages: ChatMessage[];
   viewer?: Sender;
@@ -55,6 +57,16 @@ type WsLike = {
   onclose: ((e: { code: number }) => void) | null;
   onerror: ((e: unknown) => void) | null;
 };
+
+/** Errors must remain visible even while the page-chat mode notice is active. */
+export function partnerWarning(
+  state: Pick<PartnerState, "sendFailed" | "warning" | "chatOnly">,
+  copy: { sendFailed: string; chatOnly: string },
+  note?: string,
+): string | undefined {
+  return (state.sendFailed ? copy.sendFailed : undefined) ?? state.warning ?? note ??
+    (state.chatOnly ? copy.chatOnly : undefined);
+}
 
 export type PartnerDeps = {
   /** wss://lianki.com/api/version/debug */
@@ -119,7 +131,10 @@ export function createPartnerClient(d: PartnerDeps): PartnerClient {
     if (msg.type === "me" && msg.sender && typeof msg.sender === "object")
       return set({ viewer: msg.sender as Sender });
     if (msg.type === "state")
-      return set({ listeners: typeof msg.listeners === "number" ? msg.listeners : 0 });
+      return set({
+        listeners: typeof msg.listeners === "number" ? msg.listeners : 0,
+        chatOnly: msg.chatOnly === true ? true : undefined,
+      });
     if (msg.type === "history" && Array.isArray(msg.messages))
       return set({ messages: trim(msg.messages as ChatMessage[]) });
     if (msg.type === "busy" && typeof msg.label === "string")

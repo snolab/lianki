@@ -90,6 +90,7 @@ import {
   DEBUG_ORIGIN,
   DEV_BRIDGE_HEADER,
   EMBED_HEADER,
+  PAGE_CHAT_HEADER,
   SUB_ORIGIN_HEADER,
   SUB_THREAD_HEADER,
   SUB_THREADS_PATH,
@@ -98,6 +99,7 @@ import {
   liChatTicket,
   offersPartner,
   partnerTicket,
+  pageChatTicket,
 } from "./auth";
 import {
   FINGERPRINTS_HEADER,
@@ -307,6 +309,7 @@ export default {
       for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
       headers.delete(DEV_BRIDGE_HEADER);
       headers.delete(EMBED_HEADER);
+      headers.delete(PAGE_CHAT_HEADER);
       headers.delete(SUB_THREAD_HEADER);
       headers.delete(SUB_ORIGIN_HEADER);
       headers.delete(BOX_HEADER);
@@ -354,12 +357,15 @@ export default {
           exp: number;
           cid?: string;
           sub?: string;
+          owner?: boolean;
+          chatOnly?: true;
           ho?: string;
           th?: string;
         } | null =
           (await partnerTicket(req, env.PARTNER_TICKET_PUB)) ??
           (await boxChatTicket(req, env.PARTNER_TICKET_PUB)) ??
-          (await liChatTicket(req, env.PARTNER_TICKET_PUB));
+          (await liChatTicket(req, env.PARTNER_TICKET_PUB)) ??
+          (await pageChatTicket(req, env.PARTNER_TICKET_PUB));
         if (!t) return new Response("forbidden", { status: 403 });
         const headers = new Headers(req.headers);
         for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
@@ -374,7 +380,13 @@ export default {
           headers.set(SUB_THREAD_HEADER, t.th);
           headers.set(SUB_ORIGIN_HEADER, t.ho);
         }
-        if (t.sub) {
+        headers.delete(PAGE_CHAT_HEADER);
+        if (t.chatOnly && t.sub) {
+          headers.set(IDENTITY_HEADERS.user, t.sub);
+          headers.set(IDENTITY_HEADERS.email, "");
+          headers.set(IDENTITY_HEADERS.owner, t.owner ? "1" : "0");
+          headers.set(PAGE_CHAT_HEADER, "1");
+        } else if (t.sub) {
           headers.set(IDENTITY_HEADERS.user, t.sub);
           headers.set(IDENTITY_HEADERS.email, "");
           headers.set(IDENTITY_HEADERS.owner, "0");
@@ -395,6 +407,7 @@ export default {
       headers.delete(DEV_BRIDGE_HEADER);
       // A lianki.com page is never an embedded one, nor a box, whatever it sends.
       headers.delete(EMBED_HEADER);
+      headers.delete(PAGE_CHAT_HEADER);
       headers.delete(SUB_THREAD_HEADER);
       headers.delete(SUB_ORIGIN_HEADER);
       headers.delete(BOX_HEADER);
@@ -492,6 +505,7 @@ export default {
       for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
       headers.delete(DEV_BRIDGE_HEADER);
       headers.delete(EMBED_HEADER);
+      headers.delete(PAGE_CHAT_HEADER);
       headers.delete(SUB_THREAD_HEADER);
       headers.delete(SUB_ORIGIN_HEADER);
       headers.delete("cookie");

@@ -10,7 +10,14 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { stubGlobals } from "./support/globals";
 import { DebugHub, type Socket, type Storage } from "@/workers/push/src/debug";
 import push, { type Env } from "@/workers/push/src/index";
-import { EMBED_HEADER, liChatTicket, partnerTicket } from "@/workers/push/src/auth";
+import {
+  EMBED_HEADER,
+  PAGE_CHAT_HEADER,
+  SUB_THREAD_HEADER,
+  SUB_ORIGIN_HEADER,
+  liChatTicket,
+  partnerTicket,
+} from "@/workers/push/src/auth";
 import { liTicket, type LiTicketDeps } from "@/lib/li-ticket-route";
 import { pillChatAccess, pillChatState } from "@/lib/pill-chat-route";
 import {
@@ -513,5 +520,141 @@ describe("DebugHub: an account ticket page is chat-only in its own thread", () =
     expect(sockets.at(-1)!.closed).toBeUndefined();
     expect((real.last("state") as { pending: unknown }).pending).toBeTruthy();
     expect(t.sent.filter((m) => m.type === "state").every((m) => m.pending === null)).toBe(true);
+  });
+});
+
+describe("page-realm chat attachment: advanced capabilities stay on first-party pages", () => {
+  let restore = () => {};
+  beforeEach(() => {
+    restore = stubGlobals({
+      WebSocketPair: class {
+        0 = new FakeSocket();
+        1 = new FakeSocket();
+      },
+    });
+  });
+  afterEach(() => restore());
+  const setup = () => {
+    const sockets: FakeSocket[] = [];
+    const storage = fakeStorage();
+    const hub = new DebugHub(
+      {
+        acceptWebSocket: (w) => sockets.push(w as FakeSocket),
+        getWebSockets: () => sockets,
+        storage,
+      },
+      undefined,
+      () => NOW,
+    );
+    let n = 0;
+    const limited = async (extra: Record<string, string> = {}) => {
+      const r = await hub.fetch(
+        new Request("https://lianki.com/api/version/debug?label=example.test", {
+          headers: {
+            "x-debug-user": "account_owner",
+            "x-debug-owner": "1",
+            [EMBED_HEADER]:
+              "page-only-" + String(++n).padStart(8, "0") + "." + String(NOW / 1000 + 60),
+            [PAGE_CHAT_HEADER]: "1",
+            [SUB_THREAD_HEADER]: "abcdefghijklmnopqrstuv",
+            [SUB_ORIGIN_HEADER]: "https://example.test",
+            ...extra,
+          },
+        }),
+      );
+      return { r, ws: sockets.at(-1)! };
+    };
+    const owner = async () => {
+      await hub.fetch(
+        new Request("https://lianki.com/api/version/debug?label=first-party", {
+          headers: { "x-debug-user": "account_owner", "x-debug-owner": "1" },
+        }),
+      );
+      return sockets.at(-1)!;
+    };
+    const msg = (w: FakeSocket, m: unknown) => hub.webSocketMessage(w, JSON.stringify(m));
+    return { hub, sockets, storage, limited, owner, msg };
+  };
+  it("mandatory site binding, minimal state and no session/eval authority survive attachment", async () => {
+    const s = setup();
+    expect((await s.limited({ [SUB_THREAD_HEADER]: "" })).r.status).toBe(403);
+    const { r, ws } = await s.limited();
+    expect(r.status).toBe(101);
+    expect(ws.deserializeAttachment()).toMatchObject({
+      embed: true,
+      chatOnly: true,
+      user: "account_owner",
+      thread: "owner~abcdefghijklmnopqrstuv",
+    });
+    expect(ws.deserializeAttachment()).not.toHaveProperty("session");
+    expect(ws.last("state")).toEqual({
+      type: "state",
+      pending: null,
+      sessions: [],
+      listeners: 0,
+      chatOnly: true,
+    });
+  });
+  it("chat/history stay in this site and never reach the privileged main-thread controller", async () => {
+    const s = setup();
+    const real = await s.owner();
+    await s.msg(real, { type: "chat", id: "main-line", text: "private main-thread sentinel" });
+    const { ws } = await s.limited();
+    await s.msg(ws, { type: "chat", id: "site-line", text: "Hello from this site" });
+    await s.msg(ws, { type: "replay", afterSeq: 0 });
+    const beforeSpoof = ws.sent.length;
+    await s.msg(ws, { type: "replay", afterSeq: 0, thread: "owner" });
+    expect(ws.sent).toHaveLength(beforeSpoof);
+    const h = ws.last("history") as { messages: { text: string }[] };
+    expect(h.messages.map((m) => m.text)).toContain("Hello from this site");
+    expect(h.messages.map((m) => m.text)).not.toContain("private main-thread sentinel");
+    expect(
+      real.sent.filter((m) => m.type === "chat").map((m) => (m.message as { text: string }).text),
+    ).not.toContain("Hello from this site");
+  });
+  it("eval, pairing approval, token, settings, payment and private-data frames are refused", async () => {
+    const s = setup();
+    const { ws } = await s.limited();
+    const before = ws.sent.length;
+    for (const frame of [
+      { type: "eval", code: "1+1" },
+      { type: "allow", pair: "pretend-pair", scope: "eval" },
+      { type: "answer", askId: "pretend-ask", choices: ["approve"] },
+      { type: "result", id: "pretend-eval", ok: true, value: "data" },
+      { type: "token", name: "new-token" },
+      { type: "settings", value: { debug: true } },
+      { type: "payment", amount: 1 },
+      { type: "private-data", path: "/api/profile" },
+      { type: "pair", scope: "eval" },
+    ])
+      await s.msg(ws, frame);
+    expect(ws.sent).toHaveLength(before);
+    expect(ws.deserializeAttachment()).toMatchObject({ embed: true, chatOnly: true });
+    expect(ws.last("approved")).toBeUndefined();
+  });
+  it("a valid first-party eval grant never reaches or binds to the limited page", async () => {
+    const s = setup();
+    const real = await s.owner();
+    const { ws } = await s.limited();
+    await s.hub.fetch(
+      new Request("https://lianki.com/api/version/debug/control?label=controller&scope=eval"),
+    );
+    const controller = s.sockets.at(-1)!;
+    const pair = (real.last("state") as { pending: { pair: string } }).pending.pair;
+    expect(pair).toBeTruthy();
+    await s.msg(ws, { type: "allow", pair, scope: "eval" });
+    expect(controller.last("approved")).toBeUndefined();
+    await s.msg(real, { type: "allow", pair, scope: "eval" });
+    expect(controller.last("approved")).toBeTruthy();
+    await s.msg(controller, { type: "eval", code: "1+1" });
+    expect(real.last("eval")).toBeTruthy();
+    expect(ws.last("eval")).toBeUndefined();
+    await s.msg(ws, { type: "chat", id: "site-command", text: "site-only command sentinel" });
+    expect(
+      controller.sent
+        .filter((m) => m.type === "chat")
+        .map((m) => (m.message as { text: string }).text),
+    ).not.toContain("site-only command sentinel");
+    expect((ws.last("state") as { pending: unknown }).pending).toBeNull();
   });
 });

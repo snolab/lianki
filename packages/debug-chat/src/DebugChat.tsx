@@ -902,7 +902,7 @@ export type DebugChatProps = {
   /** A one-line note above the input (a message dropped by the rate limit). */
   warning?: string;
   /** With `warning`: a link after it (out of credits: where credits are bought). */
-  warningHref?: { href: string; label: string };
+  warningHref?: { href: string; label: string; newTab?: true };
   /**
    * The agent's heartbeat says it is working on a message (DebugEval decides,
    * from real beats only): a spinner at the right end of the input.
@@ -3585,6 +3585,12 @@ export function DebugChat({
       }),
     [],
   );
+  useEffect(() => {
+    if (!embedded && location.pathname === "/chat") {
+      focusOnOpen.current = true;
+      toggleRef.current(true);
+    }
+  }, [embedded]);
   /** chat.open asked for the input: focused once the expand has rendered (it is inert minimized). */
   const focusOnOpen = useRef(false);
   const openRef = useRef(open);
@@ -5826,8 +5832,10 @@ export function DebugChat({
               {" "}
               <a
                 href={warningHref.href}
+                target={warningHref.newTab ? "_blank" : undefined}
+                rel={warningHref.newTab ? "noopener noreferrer" : undefined}
                 data-testid="debug-chat-warning-link"
-                className="underline"
+                className="pointer-events-auto underline"
                 style={{ color: "inherit" }}
               >
                 {warningHref.label}

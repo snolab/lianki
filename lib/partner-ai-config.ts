@@ -366,6 +366,8 @@ export type PartnerRequest = {
    * and the main Worker then serves the account only if it is the owner's.
    */
   owner?: true;
+  /** From a signed page-chat attachment only: no study/language/private-data reads. */
+  chatOnly?: true;
   /**
    * The owner's thread only: who is present there (the hub's presence list,
    * packages/debug-chat/src/roster.ts rosterOf), for Li's "who is here" prompt block.

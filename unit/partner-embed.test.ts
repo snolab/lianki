@@ -30,6 +30,7 @@ import {
 import {
   PARTNER_SUBPROTOCOL,
   createPartnerClient,
+  partnerWarning,
   pageLabel,
 } from "@lianki/debug-chat/embed/partner-client";
 import { EMBED_NAME, EMBED_STRINGS, embedLang } from "@lianki/debug-chat/ui-strings";
@@ -467,6 +468,29 @@ function clientSetup(tickets: (string | null)[] = ["t1", "t2", "t3", "t4"]) {
 }
 
 describe("partner client: the ticket socket", () => {
+  it("keeps socket and send failures visible above the chat-only notice", async () => {
+    const { c, flush } = clientSetup();
+    const copy = { sendFailed: "Could not send", chatOnly: "Chat only" };
+    try {
+      await flush();
+      const ws = FakeWs.made[0];
+      ws.open();
+      ws.hear({ type: "state", listeners: 0, chatOnly: true });
+      expect(partnerWarning(c.get(), copy)).toBe(copy.chatOnly);
+      ws.hear({ type: "rate-limited" });
+      expect(partnerWarning(c.get(), copy)).toBe("Too many messages: try again soon.");
+      ws.send = () => {
+        throw new Error("synthetic closed socket");
+      };
+      expect(c.send("synthetic message")).toBe(false);
+      expect(partnerWarning(c.get(), copy)).toBe(copy.sendFailed);
+      expect(partnerWarning({ chatOnly: true }, copy, "Share failed")).toBe("Share failed");
+      expect(partnerWarning({}, copy)).toBeUndefined();
+    } finally {
+      c.stop();
+    }
+  });
+
   it("offers the ticket in the subprotocol list, never in the URL", async () => {
     const { flush } = clientSetup();
     await flush();
@@ -838,7 +862,10 @@ describe("the userscript's side (src/partner.ts)", () => {
       expect(host.shadowMode).toBe("closed");
       const box = host.shadow!.children[0];
       const [text, close] = box.children;
-      expect(text.textContent).toContain(EMBED_NAME.en);
+      expect(text.textContent).toContain("Chat only");
+      expect((text.children[0] as unknown as { href: string }).href).toBe(
+        "https://lianki.com/chat",
+      );
       expect(text.children[0].tag).toBe("a");
       expect(close.tag).toBe("button");
       close.fire("click");

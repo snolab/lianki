@@ -665,6 +665,49 @@ describe("partner AI: main Worker (scoping, owner, flag)", () => {
     expect(FLAGS[PARTNER_AI_FLAG as keyof typeof FLAGS].default).toBe(false);
   });
 
+  it("page-chat-only never reads study/language/private tables for either account role", async () => {
+    const queries: string[] = [];
+    const prepare = d1.prepare.bind(d1);
+    d1.prepare = (sql: string) => {
+      queries.push(sql);
+      return prepare(sql);
+    };
+    d1.raw().exec(
+      "INSERT INTO feature_flags (key,enabled,updated_at,updated_by) VALUES ('partner.owner-thread',1,0,'test')",
+    );
+    d1.raw().exec(
+      "INSERT INTO credit_balance (userId,balance,updatedAt) VALUES ('u_owner',100,'x')",
+    );
+    for (const [userId, owner] of [
+      ["u_alice", false],
+      ["u_owner", true],
+    ] as const) {
+      const bodies: { messages: { role: string; content: string }[] }[] = [];
+      const result = await partnerReply(
+        env(),
+        {
+          userId,
+          ...(owner ? { owner: true } : {}),
+          chatOnly: true,
+          msgId: "page-chat-" + userId,
+          history: [{ role: "user", text: "Hello from this website" }],
+        },
+        { fetch: fakeFetch(bodies), now: () => NOW },
+      );
+      expect(result.ok).toBe(true);
+      const prompt = JSON.stringify(bodies[0]?.messages);
+      expect(prompt).toContain("chat-only");
+      expect(prompt).toContain("Hello from this website");
+      for (const value of ["Alice French", "French A2", "Numbers", "Owner Private List"])
+        expect(prompt).not.toContain(value);
+    }
+    expect(
+      queries.filter((q) =>
+        /word_lists|word_cards|roadmap_goals|user_prefs|read_material/i.test(q),
+      ),
+    ).toEqual([]);
+  });
+
   it("reads only the verified user's data; another user's never reaches the prompt", async () => {
     const bodies: {
       messages: { role: string; content: string }[];

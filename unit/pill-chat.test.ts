@@ -791,7 +791,7 @@ describe("dialogs: theme, keys, the blocked note", () => {
     });
     const nr = roots.at(-1)!;
     expect(nr.textContent).toContain("Chat on lianki.com");
-    expect(nr.querySelector("a")!.getAttribute("href")).toBe(ORIGIN);
+    expect(nr.querySelector("a")!.getAttribute("href")).toBe(ORIGIN + "/chat");
     nr.querySelector("button")!.dispatchEvent(ev(w, "click", {}));
     expect(doc.documentElement.contains(nr.host)).toBe(false);
     remove();
@@ -814,5 +814,59 @@ describe("opening Li: the real prompt", () => {
     host.dispatchEvent(e);
     expect(await p).toBe("denied");
     expect(h.calls).toEqual([]);
+  });
+});
+
+describe("page realm: the explicit cookie-only chat downgrade", () => {
+  for (const info of [
+    { sandboxMode: "raw", scriptHandler: "ScriptCat" },
+    { injectInto: "page" },
+    {},
+  ]) {
+    it("needs the same consent, then only the limited broker and a chat frame", async () => {
+      const h = harness({ info, choice: "once" });
+      const calls: string[] = [];
+      const pc = pillChat({
+        ...h.d,
+        gmFetch: async () => {
+          throw new Error("general token fetch must not run");
+        },
+        pageFetch: async (url) => {
+          calls.push(url);
+          return {
+            ok: true,
+            status: 200,
+            json: async () =>
+              url.endsWith("/api/ext/pill-chat")
+                ? { on: true, ticket: "owner" }
+                : { ticket: "scoped-page-chat-cap" },
+          };
+        },
+      });
+      expect(calls).toEqual([]);
+      expect(await pc.open()).toBe("ready");
+      expect(h.prompts).toEqual(["news.example.com"]);
+      expect(calls).toEqual([ORIGIN + "/api/ext/pill-chat"]);
+      expect(await h.frames[0]!.ticket()).toBe("scoped-page-chat-cap");
+      expect(calls).toEqual([ORIGIN + "/api/ext/pill-chat", ORIGIN + "/api/chat/page-ticket"]);
+      expect(h.calls).toEqual([]);
+      pc.close();
+    });
+  }
+  it("dismiss and Never still cause zero network and zero frames", async () => {
+    for (const choice of ["dismiss", "never"] as const) {
+      const h = harness({ info: PAGE_REALM, choice });
+      let calls = 0;
+      const pc = pillChat({
+        ...h.d,
+        pageFetch: async () => {
+          calls++;
+          throw Error("not allowed");
+        },
+      });
+      expect(await pc.open()).toBe(choice === "never" ? "never" : "denied");
+      expect(calls).toBe(0);
+      expect(h.frames).toEqual([]);
+    }
   });
 });

@@ -23,5 +23,13 @@ export default async function PartnerFramePage() {
   ) as unknown as Partial<ChatStrings>;
   // Most characters a selection shared from the host page keeps (M3).
   const shareChars = await cfg("chat.pillShareChars");
-  return <PartnerFrame strings={strings} shareChars={shareChars} />;
+  const portable = getIntlayer("pill-chat", locale as never);
+  return (
+    <PartnerFrame
+      strings={strings}
+      shareChars={shareChars}
+      chatOnlyText={String(portable.chatOnly)}
+      advancedText={String(portable.advanced)}
+    />
+  );
 }

@@ -54,6 +54,8 @@ type GmFetch = (
 export type PillChatDeps = {
   origin: string;
   gmFetch: GmFetch;
+  /** Cookie-only allowlisted broker for page-realm chat; never the general API-token fetch. */
+  pageFetch?: GmFetch;
   getValue: (k: string, d?: any) => any;
   setValue: (k: string, v: any) => void;
   /** GM_info: where the manager runs us (guard.ts isolatedWorld). */
@@ -203,6 +205,7 @@ export function pillChat(d: PillChatDeps) {
   const once = new Set<string>();
   const isolated = isolatedWorld(d.info as Parameters<typeof isolatedWorld>[0]);
   const report = d.report ?? (() => {});
+  const limitedFetch = d.pageFetch;
   let open: { destroy(): void } | null = null;
   let busy = false;
   let note: (() => void) | null = null;
@@ -222,17 +225,20 @@ export function pillChat(d: PillChatDeps) {
   let kind: TicketKind = "owner";
   const ticket = async (): Promise<string | null> => {
     try {
-      const r = await d.gmFetch(`${d.origin}${TICKET_PATHS[kind]}`, {
-        method: "POST",
-        // The top window's origin (scheme, host, port: never the path or query),
-        // read here in the userscript's world: with ext.pill-chat-per-origin on,
-        // lianki.com binds the ticket to this site's own thread (lib/li-thread.ts).
-        headers: {
-          "x-lianki-userscript": "1",
-          [HOST_ORIGIN_HEADER]: d.hostOrigin ?? location.origin,
+      const r = await (isolated ? d.gmFetch : limitedFetch!)(
+        isolated ? `${d.origin}${TICKET_PATHS[kind]}` : `${d.origin}/api/chat/page-ticket`,
+        {
+          method: "POST",
+          // The top window's origin (scheme, host, port: never the path or query),
+          // read here in the userscript's world: with ext.pill-chat-per-origin on,
+          // lianki.com binds the ticket to this site's own thread (lib/li-thread.ts).
+          headers: {
+            "x-lianki-userscript": "1",
+            [HOST_ORIGIN_HEADER]: d.hostOrigin ?? location.origin,
+          },
+          credentials: "include",
         },
-        credentials: "include",
-      });
+      );
       if (!r.ok) return null;
       const body = await r.json();
       return typeof body?.ticket === "string" ? body.ticket : null;
@@ -252,7 +258,7 @@ export function pillChat(d: PillChatDeps) {
   async function openChat(): Promise<OpenResult> {
     const e = entry();
     if (e === "hidden" || !host) return "hidden";
-    if (e === "note") {
+    if (e === "note" && !limitedFetch) {
       note?.();
       note = pageRealmNote(doc, d.origin, () => store.set(host, "never"));
       return "note";
@@ -269,7 +275,7 @@ export function pillChat(d: PillChatDeps) {
         if (!applyChoice(store, once, host, choice)) return choice === "never" ? "never" : "denied";
       }
       // Allowed: from here on lianki.com may be asked. The flag first (kill switch).
-      const access = await askAccess(d);
+      const access = await askAccess(isolated ? d : { ...d, gmFetch: limitedFetch! });
       if (!access) {
         d.setValue(PILLCHAT_ON_KEY, JSON.stringify({ on: false, at: d.now?.() ?? Date.now() }));
         return "off";
@@ -283,12 +289,14 @@ export function pillChat(d: PillChatDeps) {
         label: `${host}${d.path ?? location.pathname}`.slice(0, 300),
         ticket,
         // Read only now, on his Share press in the frame (M3): link without query or hash.
-        share: (what) =>
-          readShare(what, {
-            href: d.href ? d.href() : location.href,
-            title: doc.title,
-            selection: doc.getSelection?.()?.toString() ?? "",
-          }),
+        share: !isolated
+          ? undefined
+          : (what) =>
+              readShare(what, {
+                href: d.href ? d.href() : location.href,
+                title: doc.title,
+                selection: doc.getSelection?.()?.toString() ?? "",
+              }),
         gripLabel: EMBED_STRINGS[embedLang()].grip,
         pos: {
           get: () => {

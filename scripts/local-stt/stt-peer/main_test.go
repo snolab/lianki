@@ -246,10 +246,11 @@ func TestPageToSpeechServerOverWebRTC(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("the channel never opened")
 	}
+	// Consume readiness first: waitFor discards other messages, and ready may
+	// arrive before the second offer's busy refusal under ordinary scheduling.
+	waitFor(t, ctx, got, `{"t":"ready","engine":"fake"}`)
 	reg.toPeer(msg{"t": "offer", "sid": "s2234567890abcdef", "sdp": offer.SDP, "ticket": ticket})
 	waitFor(t, ctx, got, "end:busy")
-
-	waitFor(t, ctx, got, `{"t":"ready","engine":"fake"}`)
 	_ = dc.SendText(`{"t":"begin","id":1}`)
 	_ = dc.Send([]byte{1, 0, 0, 0, 0})
 	_ = dc.Send([]byte{1, 0, 0, 0, 0})
