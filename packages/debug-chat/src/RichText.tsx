@@ -9,6 +9,7 @@ import type { Rich, RichNode, RichString } from "./rich-text";
 import { ChatLinkMenu } from "./ChatLinkMenu";
 import { linkDestinations } from "./link-destination";
 import { MessageWidget, type WidgetHost } from "./MessageWidget";
+import { HtmlInline } from "./HtmlInline";
 
 const LINK_INK = "light-dark(oklch(0.46 0.187 22.3), oklch(0.8 0.132 22.3))";
 const CODE_BG = "light-dark(oklch(0.5 0.01 260 / 0.13), oklch(0.85 0.01 260 / 0.16))";
@@ -157,10 +158,12 @@ function nodeEls(
           <table className={CLASS.table}>{kids()}</table>
         </div>
       );
-    const { align, "data-widget": widget, ...rest } = attrs;
+    const { align, "data-widget": widget, "data-html-widget": htmlWidget, ...rest } = attrs;
     // A message widget, where the host shows them; otherwise the code block it is.
     if (widget !== undefined && o.widgets)
       return <MessageWidget key={key} spec={widget} host={o.widgets} />;
+    if (htmlWidget !== undefined && o.widgets)
+      return <HtmlInline key={key} html={htmlWidget} host={o.widgets} />;
     // A code block's <code> takes its look from the <pre>.
     const plainCode = tag === "code" && o.inPre;
     const props = {

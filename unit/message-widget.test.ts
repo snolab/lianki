@@ -18,6 +18,7 @@ afterAll(() => restoreGlobal("DOMParser", had));
 
 const host: WidgetHost = {
   onReply: () => {},
+  onSubmit: () => {},
   labels: { use: "Use", invalid: "Not a calculation", hint: "Fills your reply" },
 };
 const block = (spec: unknown) =>

@@ -1809,6 +1809,38 @@ embed (`widgetLine` in rich-text.ts), or the flag `chat.message-widgets` off: th
 Script widgets (a sandboxed iframe, granted per lane) are the mini apps'
 (docs/mini-apps.md), not this. Tests: `unit/message-widget.test.ts`.
 
+### HTML widgets: inline by default, a sandbox only for script
+
+Owner, 2026-11-25: JSON is too narrow, use HTML; it can be self-contained.
+The same agent lines (`widgetLine`) may carry a ` ```lianki-html ` block.
+
+- **No script: drawn inline** (`html-inline.ts`, `HtmlInline.tsx`). An
+  allowlist walk like rich-text's: layout and text tags, tables, `details`,
+  and form controls (`form`, `label`, `input` minus password and file,
+  `select`, `textarea`, `button`, `output`, `progress`, `meter`). Dropped:
+  `script`, `style`, `iframe`, `object`, `embed`, `link`, `meta`, `base`,
+  `svg`, `math`, every `on*`, `class` (the page's utility classes could cover
+  the chat), remote images (data: images only), and any style property outside
+  a short box-only list (no `position`, `z-index`, `transform`, `url()`).
+  ids are prefixed per widget, so `label for` works and nothing collides.
+- **Forms as written.** `action`, `method`, `formaction` and `formtarget` are
+  kept as data, never as real attributes: a submit never navigates, opens a
+  window or makes a request. It becomes his line in his own thread,
+  `↳ <action>: name=value, …` (`formLine`), so the posting agent gets it with
+  the action string as its routing key. If he is typing, it joins his reply
+  box instead. `formtarget=_blank` opens nothing.
+- **Script: a sandboxed frame** (`html-widget.ts`, `HtmlWidget.tsx`):
+  `srcdoc`, `sandbox="allow-scripts allow-forms"`, never `allow-same-origin`,
+  `allow-top-navigation`, `allow-popups` or `allow-modals`. A CSP inside
+  allows no network (`default-src`, `connect-src`, `form-action` and
+  `frame-src` are `'none'`). Its bootstrap turns submits into
+  `{lk:"action"}` and gives `lianki.reply(text)`. The chat accepts only its own
+  frame's messages (`event.source`): height (up to config
+  `chat.widgetHtmlMaxPx`), reply, action, each of which fills his reply box.
+
+Tests: `unit/html-widget.test.ts` (his form example as the first fixture, the
+usual XSS vectors, sandbox attributes and CSP, the thread boundary).
+
 ## Copying a message
 
 Owner, 2026-11-05 01:34 JST, iPhone PWA on /reader: "这里复制不了". The chat

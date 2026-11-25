@@ -15,7 +15,15 @@ export type WidgetLabels = {
   /** Tooltip on every widget control: it fills the reply box, it does not send. */
   hint: string;
 };
-export type WidgetHost = { onReply: (text: string) => void; labels: WidgetLabels };
+export type WidgetHost = {
+  /** Puts text into his reply box; he sends it. */
+  onReply: (text: string) => void;
+  /** An HTML widget's form submit: sent as his line (into the box instead when he is typing). */
+  onSubmit: (text: string) => void;
+  labels: WidgetLabels;
+  /** Config chat.widgetHtmlMaxPx: the tallest a sandboxed HTML widget grows. */
+  htmlMaxHeight?: number;
+};
 
 const INK = "light-dark(oklch(0.46 0.187 22.3), oklch(0.8 0.132 22.3))";
 const RULE = "light-dark(oklch(0.5 0.01 260 / 0.35), oklch(0.85 0.01 260 / 0.35))";

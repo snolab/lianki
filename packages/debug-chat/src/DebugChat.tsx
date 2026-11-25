@@ -1036,6 +1036,8 @@ export type DebugChatProps = {
    * that fill his reply box. Off: the block shows as code.
    */
   messageWidgets?: boolean;
+  /** Config chat.widgetHtmlMaxPx: the tallest a sandboxed HTML widget grows. */
+  widgetHtmlMaxPx?: number;
   /**
    * Flags `chat.line-replay` + `voice.recordings` and `dev`: his own spoken
    * line's details offer "Play original audio" (LineReplay.tsx, line-replay.ts).
@@ -1179,6 +1181,7 @@ export function DebugChat({
   etaBar = false,
   playAudio = false,
   messageWidgets = false,
+  widgetHtmlMaxPx,
   lineReplay = false,
   onEtaDue,
   etaSource,
@@ -5021,6 +5024,15 @@ export function DebugChat({
           const cur = uiStore.getState().draft;
           setDraft(cur.trim() ? `${cur.trimEnd()} ${t}` : t);
         },
+        // A form's submit is his line; while he is typing it joins the box instead.
+        onSubmit: (t) => {
+          const cur = uiStore.getState().draft;
+          if (cur.trim()) return setDraft(`${cur.trimEnd()} ${t}`);
+          draftRef.current = t;
+          setDraft(t);
+          submit();
+        },
+        htmlMaxHeight: widgetHtmlMaxPx,
         labels: { use: ux.widgetUse, invalid: ux.widgetCalcInvalid, hint: ux.widgetReplyHint },
       }
     : undefined;

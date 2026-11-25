@@ -1585,6 +1585,16 @@ export const CONFIG = {
     audience: "public",
     description: "每批聊天时间点的最多记录数。",
   }),
+  "chat.widgetHtmlMaxPx": int({
+    default: 480,
+    min: 120,
+    max: 2_000,
+    unit: "px",
+    group: "chat",
+    audience: "public",
+    description:
+      "聊天消息里带脚本的 HTML 小组件（沙盒框）最多长多高（像素），超出部分在框里滚动。不带脚本的 HTML 小组件直接画在消息里，不受这个限制（最高为屏幕的 70%）。",
+  }),
   "chat.readReceiptThrottleMs": int({
     default: 2_000,
     min: 2_000,

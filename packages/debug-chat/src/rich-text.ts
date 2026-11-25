@@ -24,6 +24,7 @@
 import { Marked } from "marked";
 import { linkAtStart, parseLinks, safeHref, safeImageSrc } from "./chat-links";
 import { WIDGET_LANG, parseWidget } from "./message-widget";
+import { HTML_WIDGET_LANG, MAX_HTML } from "./html-widget";
 
 export type RichTier = "html" | "markdown";
 
@@ -237,6 +238,16 @@ function walkElement(el: Element, tier: RichTier, ctx: Ctx): RichNode[] {
       const spec = textOf(children);
       if (parseWidget(spec))
         return [{ tag: "pre", silent: true, attrs: { "data-widget": spec }, children }];
+    }
+    // An HTML widget (html-inline.ts inline, html-widget.ts when it has script).
+    if (
+      ctx.widgets &&
+      code?.tagName.toLowerCase() === "code" &&
+      code.classList.contains(`language-${HTML_WIDGET_LANG}`)
+    ) {
+      const html = textOf(children);
+      if (html.trim() && html.length <= MAX_HTML)
+        return [{ tag: "pre", silent: true, attrs: { "data-html-widget": html }, children }];
     }
     return [{ tag: "pre", silent: true, children }];
   }

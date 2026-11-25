@@ -1812,6 +1812,7 @@ export function DebugEval({
             mergeReopenSec={mergeReopenSec}
             playAudio={playOn}
             messageWidgets={messageWidgets}
+            widgetHtmlMaxPx={publicCfg("chat.widgetHtmlMaxPx")}
             // His own recordings, behind the same gate as /my/recordings (the route checks it again).
             lineReplay={lineReplay && dev && owner && friend === null}
             // Back leaves full screen, as it closes any overlay (docs/ui-state.md).
