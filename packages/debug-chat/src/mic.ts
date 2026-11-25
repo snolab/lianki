@@ -40,11 +40,22 @@ import type { FilterVerdict } from "./local-stt";
 import type { SpeakerTag } from "./wire";
 import type { SpotResult, WakeSpot } from "./wake";
 import { wakeMention } from "./polish";
+import {
+  type ShortAnswerLimits,
+  awaitingAnswer,
+  keepShortAnswer,
+  shortAnswerLimits,
+} from "./short-answer";
 
 /** Someone else's voice, or our own TTS voice heard back ("self", docs/echo-suppression.md): never a wake. */
 const notHim = (d: string | undefined) => d === "other" || d === "self";
 /** Longest utterance: past this it is cut and sent, and listening goes on. */
 export const MAX_UTTERANCE_MS = 30_000;
+/**
+ * Audio kept from before the VAD's start, for a misfire kept as a short answer
+ * (short-answer.ts): vad-web's own pre-speech pad comes only with a speech end.
+ */
+export const MISFIRE_PRE_ROLL_MS = 320;
 /**
  * The longest a passive utterance waits for the wake gate's verdict (the
  * spotter's load timeout plus one check, with room to spare). Past it the
@@ -895,6 +906,11 @@ export function createMic(d: {
   guard?: Partial<SttGuardLimits>;
   /** The repetition guard's limits (stt-repeat.ts); default: the live config ones. */
   repeat?: () => RepeatLimits;
+  /**
+   * Short answers (short-answer.ts): their limits and whether a question waits
+   * for one now; default: the live config and the page's thread.
+   */
+  answer?: { limits?: () => ShortAnswerLimits; awaiting?: () => boolean };
   /** Rolling partial chunks for long utterances (on unless false). */
   partials?: boolean;
   /** The local streaming STT, if one is configured now (asked at each utterance). */
@@ -945,6 +961,11 @@ export function createMic(d: {
   /** The utterance being captured: its frames, and its seq once a partial reserved one. */
   let live: Float32Array[] = [];
   let liveLen = 0;
+  /** The last frames heard before the capture began (MISFIRE_PRE_ROLL_MS). */
+  let preRoll: Float32Array[] = [];
+  let preRollLen = 0;
+  const answerLimits = () => d.answer?.limits?.() ?? shortAnswerLimits();
+  const awaiting = () => d.answer?.awaiting?.() ?? awaitingAnswer();
   let sincePartial = 0;
   let cur: number | null = null;
   let partialBusy = false;
@@ -1164,7 +1185,13 @@ export function createMic(d: {
       // The noise floor: Silero's probability on what is heard between utterances.
       if (prob !== undefined && state === "listening" && !guarded)
         ep.floor += (prob - ep.floor) * FLOOR_ALPHA;
-      if (state !== "capturing") return;
+      if (state !== "capturing") {
+        preRoll.push(frame);
+        preRollLen += frame.length;
+        while (preRoll.length > 1 && preRollLen - preRoll[0].length >= toSamples(MISFIRE_PRE_ROLL_MS))
+          preRollLen -= preRoll.shift()!.length;
+        return;
+      }
       if (
         d.cue &&
         !guarded &&
@@ -1234,6 +1261,21 @@ export function createMic(d: {
     onMisfire() {
       d.adapt?.end(false);
       if (g !== gen || held) return;
+      // Too little speech for the VAD, but maybe one syllable ("要"): transcribed, and
+      // kept only as a short answer (short-answer.ts; the guard's "short-speech").
+      // Never for silent audio: the guard would drop it anyway ("silent-audio").
+      const heardMs = toMs(speechLen);
+      const rescue =
+        !tainted &&
+        !shadow &&
+        !enrolling &&
+        !gated &&
+        probN > 0 &&
+        liveLen > 0 &&
+        heardMs >= answerLimits().minSpeechMs &&
+        loudestFrameRms(concat(live)) >= { ...guardLimits(), ...d.guard }.minFrameRms;
+      d.log?.({ ev: "vad-misfire", speechMs: heardMs, rescued: rescue });
+      if (rescue) return void endedIn(g, concat([...preRoll, ...live]), true);
       shadow = false;
       clearTimer(cap);
       dropUtt();
@@ -1244,6 +1286,15 @@ export function createMic(d: {
     onSpeechEnd(audio) {
       // Only speech that is kept teaches the speech level (never the agent's echo).
       d.adapt?.end(g === gen && !held && !tainted && !shadow);
+      endedIn(g, audio, false);
+    },
+  });
+  /**
+   * One utterance ended: to the wake gate, the enrolment or the upload.
+   * `short`: a misfire kept for the short-answer check (no end cue: it may be dropped).
+   */
+  function endedIn(g: number, audio: Float32Array, short: boolean) {
+    {
       const u = utt;
       utt = null;
       // Heard while the agent spoke (or begun before it did): the reply's echo, dropped.
@@ -1268,7 +1319,7 @@ export function createMic(d: {
         return;
       }
       if (mine && state === "capturing") set("listening");
-      if (mine && !gated && !enrolling) d.cue?.edge("end");
+      if (mine && !gated && !enrolling && !short) d.cue?.edge("end");
       const seq = mine && cur !== null ? cur : q.add();
       if (mine) {
         cur = null;
@@ -1390,9 +1441,9 @@ export function createMic(d: {
         );
         return;
       }
-      send(seq, audio, ms, prob, u?.end(audio));
-    },
-  });
+      send(seq, audio, ms, prob, u?.end(audio), undefined, short);
+    }
+  }
   /** Upload one final utterance and hand its transcript to the queue in order. */
   const send = (
     seq: number,
@@ -1402,6 +1453,8 @@ export function createMic(d: {
     local?: Promise<LocalFinal>,
     /** The @mention a wake name heard (polish.ts wakeMention); not for dropped lines. */
     lead?: string,
+    /** A VAD misfire kept for the short-answer check (the guard's "short-speech"). */
+    short = false,
   ) => {
     const wav = encodeWav(audio);
     let signals: SttSignals | undefined;
@@ -1460,17 +1513,28 @@ export function createMic(d: {
               dropped: c.drop,
               removedChars: c.removed.join("").length,
             });
+          // A short answer in its context ("要" to a question, "小克 苹果"): the
+          // minimum-speech gates step down for it (short-answer.ts).
+          const lim = answerLimits();
+          const answer = !c.drop && !!text.trim() && keepShortAnswer(text, awaiting(), lim);
           // The silence guard: before the queue, so the taps, the chat, the send
           // and its cue, and the polish never hear a dropped line.
+          const evidence = {
+            speechMs: ms,
+            prob,
+            frameRms: loudestFrameRms(audio),
+            signals,
+            short,
+            answerMinSpeechMs: lim.minSpeechMs,
+          };
+          const limits = { ...guardLimits(), ...d.guard };
           const reason = c.drop
             ? null
             : looped?.action === "drop"
               ? ("repetition" as const)
-              : judgeFinal(
-                text,
-                { speechMs: ms, prob, frameRms: loudestFrameRms(audio), signals },
-                { ...guardLimits(), ...d.guard },
-              );
+              : judgeFinal(text, { ...evidence, answer }, limits);
+          // Logged only when the exemption kept a line the gates would have dropped.
+          const rescued = answer && !c.drop && !reason && !!judgeFinal(text, evidence, limits);
           const drop = c.drop || !!reason;
           if (reason) {
             d.log?.({
@@ -1482,8 +1546,10 @@ export function createMic(d: {
               decoder: signals?.decoder,
               logprob: signals?.logprob,
               vadShare: signals?.vadShare,
+              ...(short ? { short } : {}),
             });
-          }
+          } else if (rescued)
+            d.log?.({ ev: "stt-short-answer", chars: text.length, ms, ...(short ? { short } : {}) });
           d.timing?.(seq, {
             t_sttDone: now(),
             dropped: drop || !text.trim(),

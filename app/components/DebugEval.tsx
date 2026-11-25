@@ -39,6 +39,7 @@ import { PARTNER_SUBPROTOCOL } from "@/lib/stt-ticket";
 import { chatExtra } from "@lianki/debug-chat/chat-ui-locales";
 import { setRepeatLimits } from "@lianki/debug-chat/stt-repeat";
 import { setGuardLimits } from "@lianki/debug-chat/stt-guard";
+import { setShortAnswerLimits } from "@lianki/debug-chat/short-answer";
 import { setOwnerRoutes } from "@lianki/debug-chat/owner-routes";
 import { setVadThresholds } from "@lianki/debug-chat/adaptive";
 import { dispatchChatUi } from "@lianki/debug-chat/ui-cue";
@@ -341,6 +342,13 @@ export function DebugEval({
     },
   });
   setGuardLimits({ minSpeechMs: publicCfg("stt.guardMinSpeechMs") });
+  // Short spoken answers kept past the noise gates (short-answer.ts): live, no deploy.
+  setShortAnswerLimits({
+    maxChars: publicCfg("stt.shortAnswerMaxChars"),
+    maxWordChars: publicCfg("stt.shortAnswerMaxWordChars"),
+    minSpeechMs: publicCfg("stt.shortAnswerMinSpeechMs"),
+    words: publicCfg("stt.shortAnswerWords"),
+  });
   // The owner's default speech routes (owner-routes.ts, read by local-stt.ts): live, no deploy.
   setOwnerRoutes(publicCfg("stt.ownerRoutes"));
   setCloudVoices(cloudVoices);
