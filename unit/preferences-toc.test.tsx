@@ -13,6 +13,19 @@ import {
   type TocSection,
 } from "@/app/(app)/my/preferences/PreferencesToc";
 import { stubGlobals } from "./support/globals";
+import type {
+  GroupedTocSection,
+  PreferenceGroupLabels,
+} from "@/app/(app)/my/preferences/preferences-toc-groups";
+
+const groupLabels: PreferenceGroupLabels = {
+  appearance: "Language and appearance",
+  learning: "Learning and reading",
+  tools: "AI and extensions",
+  notifications: "Notifications and updates",
+  access: "Access and permissions",
+  activity: "Activity and recordings",
+};
 
 const win = new Window();
 let reducedMotionMatches = false;
@@ -101,9 +114,9 @@ describe("PreferencesToc and collapsible behavior", () => {
   });
 
   it("renders PreferencesToc cleanly into DOM with click handler", () => {
-    const sections: TocSection[] = [
-      { id: "language", title: "Language" },
-      { id: "paper", title: "Paper" },
+    const sections: GroupedTocSection[] = [
+      { id: "language", group: "appearance", title: "Language" },
+      { id: "paper", group: "appearance", title: "Paper" },
     ];
     let selected = "";
     const host = win.document.createElement("div");
@@ -113,6 +126,7 @@ describe("PreferencesToc and collapsible behavior", () => {
     act(() => {
       root.render(
         <PreferencesToc
+          groupLabels={groupLabels}
           label="Table of Contents"
           sections={sections}
           activeId="language"
@@ -318,15 +332,123 @@ describe("PreferencesToc and collapsible behavior", () => {
     const host = win.document.createElement("div");
     win.document.body.appendChild(host);
     const root = createRoot(host as unknown as Element);
-    const sections: TocSection[] = [{ id: "mail", title: "Mail" }];
-    act(() => root.render(<PreferencesToc label="TOC" sections={sections} />));
+    const sections: GroupedTocSection[] = [{ id: "mail", group: "notifications", title: "Mail" }];
+    act(() =>
+      root.render(<PreferencesToc groupLabels={groupLabels} label="TOC" sections={sections} />),
+    );
     (host.querySelector('[data-testid="toc-chip-mail"]') as HTMLElement).click();
     (host.querySelector('[data-testid="toc-link-mail"]') as HTMLElement).click();
     expect(calls).toEqual(["#mail", "#mail", "#mail"]);
-    act(() => root.render(<PreferencesToc label="TOC" sections={[]} />));
+    act(() => root.render(<PreferencesToc groupLabels={groupLabels} label="TOC" sections={[]} />));
     act(() => root.unmount());
     host.remove();
     el.remove();
     restoreHistory();
+  });
+});
+
+describe("grouped preferences contents", () => {
+  const sections: GroupedTocSection[] = [
+    { id: "language", title: "Language", group: "appearance" },
+    { id: "paper", title: "Paper", group: "appearance" },
+    { id: "tokens", title: "API tokens", group: "access" },
+  ];
+  it("shows only nonempty primary categories and reveals their settings", () => {
+    const host = win.document.createElement("div");
+    win.document.body.appendChild(host);
+    const root = createRoot(host as unknown as Element);
+    let selected = "";
+    act(() =>
+      root.render(
+        <PreferencesToc
+          label="Contents"
+          sections={sections}
+          groupLabels={groupLabels}
+          onSelect={(id) => {
+            selected = id;
+          }}
+        />,
+      ),
+    );
+    expect(host.querySelectorAll('[data-testid^="toc-group-"]').length).toBe(2);
+    expect(host.querySelectorAll('[data-testid^="toc-category-"]').length).toBe(2);
+    expect(host.querySelector('[data-testid="toc-group-learning"]')).toBeNull();
+    const access = host.querySelector('[data-testid="toc-group-access"]') as HTMLElement;
+    act(() => access.click());
+    expect(access.getAttribute("aria-expanded")).toBe("true");
+    expect((host.querySelector("#preferences-toc-access") as HTMLElement).hidden).toBe(false);
+    act(() => (host.querySelector('[data-testid="toc-link-tokens"]') as HTMLElement).click());
+    expect(selected).toBe("tokens");
+    act(() => access.click());
+    expect(access.getAttribute("aria-expanded")).toBe("false");
+    expect((host.querySelector("#preferences-toc-access") as HTMLElement).hidden).toBe(true);
+    act(() => (host.querySelector('[data-testid="toc-category-access"]') as HTMLElement).click());
+    expect(selected).toBe("tokens");
+    expect(
+      host.querySelector('[data-testid="toc-category-access"]')?.getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(host.querySelector('[data-testid="toc-chip-tokens"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="toc-chip-paper"]')).toBeNull();
+    act(() =>
+      (host.querySelector('[data-testid="toc-category-appearance"]') as HTMLElement).click(),
+    );
+    expect(selected).toBe("language");
+    act(() => (host.querySelector('[data-testid="toc-chip-paper"]') as HTMLElement).click());
+    expect(selected).toBe("paper");
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it("follows the active reading section after a category was manually folded", () => {
+    const host = win.document.createElement("div");
+    win.document.body.appendChild(host);
+    const root = createRoot(host as unknown as Element);
+    act(() =>
+      root.render(
+        <PreferencesToc
+          label="Contents"
+          sections={sections}
+          groupLabels={groupLabels}
+          activeId="language"
+        />,
+      ),
+    );
+    act(() => (host.querySelector('[data-testid="toc-group-appearance"]') as HTMLElement).click());
+    expect(
+      host.querySelector('[data-testid="toc-group-appearance"]')?.getAttribute("aria-expanded"),
+    ).toBe("false");
+    act(() =>
+      root.render(
+        <PreferencesToc
+          label="Contents"
+          sections={sections}
+          groupLabels={groupLabels}
+          activeId="tokens"
+        />,
+      ),
+    );
+    expect(
+      host.querySelector('[data-testid="toc-group-access"]')?.getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(host.querySelector('[data-testid="toc-chip-tokens"]')).not.toBeNull();
+    act(() =>
+      root.render(
+        <PreferencesToc
+          label="Contents"
+          sections={sections}
+          groupLabels={groupLabels}
+          activeId="unknown"
+        />,
+      ),
+    );
+    expect(
+      host.querySelector('[data-testid="toc-group-appearance"]')?.getAttribute("aria-expanded"),
+    ).toBe("true");
+    act(() =>
+      root.render(<PreferencesToc label="Contents" sections={[]} groupLabels={groupLabels} />),
+    );
+    expect(host.querySelector('[data-testid^="toc-group-"]')).toBeNull();
+    act(() => root.unmount());
+    host.remove();
   });
 });
