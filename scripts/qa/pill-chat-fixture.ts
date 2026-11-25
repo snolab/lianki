@@ -11,6 +11,7 @@
  */
 import { pageChatFetch } from "../../src/page-chat-fetch";
 import { pillChat } from "../../src/pill-chat";
+import { pageRealmNote } from "../../src/partner";
 
 const APP = (globalThis as unknown as { __QA_APP__: string }).__QA_APP__;
 const PAGE_CHAT =
@@ -77,6 +78,9 @@ function start() {
   root.append(b);
   document.documentElement.append(host);
   update();
+  // Preserve the legacy read-only note alongside the new entry: it must not
+  // intercept a real click on the pill (the production overlap regression).
+  if (PAGE_CHAT && window.self === window.top) pageRealmNote(document, APP, () => {});
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);

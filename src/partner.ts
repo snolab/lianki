@@ -225,7 +225,7 @@ export function pageRealmNote(doc: Document, origin: string, hideHere: () => voi
     ["display", "block"],
     ["position", "fixed"],
     ["right", "8px"],
-    ["bottom", "8px"],
+    ["top", "8px"],
     ["z-index", "2147483647"],
   ]);
   const root = host.attachShadow({ mode: "closed" });
