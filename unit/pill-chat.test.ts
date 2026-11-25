@@ -119,6 +119,37 @@ describe("the gate's rules", () => {
     expect(pillEntry({ ...base, decision: "allow" })).toBe("show");
   });
 
+  it("all new websites show Li while explicit exclusions and consent remain independent", () => {
+    const g = gm();
+    const store = trustStore(g);
+    store.set("excluded.example", "never");
+    store.set("allowed.example", "allow");
+    for (const host of ["example.com", "another.example", "sub.another.example"]) {
+      expect(
+        pillEntry({
+          flagOn: true,
+          top: true,
+          isolated: true,
+          host,
+          decision: store.decision(host),
+        }),
+      ).toBe("show");
+      expect(allowedHere(store, new Set(), host)).toBe(false);
+    }
+    expect(
+      pillEntry({
+        flagOn: true,
+        top: true,
+        isolated: true,
+        host: "excluded.example",
+        decision: store.decision("excluded.example"),
+      }),
+    ).toBe("hidden");
+    expect(allowedHere(store, new Set(), "excluded.example")).toBe(false);
+    expect(allowedHere(store, new Set(), "allowed.example")).toBe(true);
+    expect(store.list()).toHaveLength(2);
+  });
+
   it("the flag mirror: only {on: true} is on; rechecked after a minute", () => {
     expect(flagMirrorOn(null)).toBe(false);
     expect(flagMirrorOn('{"on":"true"}')).toBe(false);
@@ -782,6 +813,7 @@ describe("dialogs: theme, keys, the blocked note", () => {
       store: trustStore(gm()),
     });
     expect(roots.at(-1)!.textContent).toContain("No sites yet.");
+    expect(roots.at(-1)!.textContent).toContain(PILL_CHAT_STRINGS.en.sitesDefaultAll);
     m.remove();
     const remove = blockedNote({
       doc,

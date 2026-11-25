@@ -41,6 +41,7 @@ export type PillChatStrings = {
   sitesTitle: string;
   sitesMenu: string;
   sitesEmpty: string;
+  sitesDefaultAll: string;
   sitesAllowed: string;
   sitesNever: string;
   forget: string;
@@ -70,6 +71,8 @@ export const PILL_CHAT_CONTEXT: Record<keyof PillChatStrings, string> = {
     "Heading of the dialog listing every website where the user allowed or blocked Li chat, each with a button to remove the decision. Li stays as is.",
   sitesMenu:
     "Menu item in the userscript manager's menu (Tampermonkey/Violentmonkey) that opens the list of websites allowed or blocked for Li chat. Ends with an ellipsis because it opens a dialog. Li stays as is.",
+  sitesDefaultAll:
+    "Explanation at the top of the sites dialog: the Li entry is available by default on all websites when the account feature is on; only explicit Never decisions hide it. New sites still require the existing trust prompt before opening. Do not imply automatic permission or bypassing site security.",
   sitesEmpty:
     "Shown in the sites list when the user has not allowed or blocked Li chat on any website yet. A full short sentence.",
   sitesAllowed:
@@ -98,6 +101,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "Not now",
     sitesTitle: "Li chat: sites",
     sitesMenu: "Li chat: sites…",
+    sitesDefaultAll:
+      "Li is available on all websites. Only sites marked Never hide it. New sites still ask before opening.",
     sitesEmpty: "No sites yet.",
     sitesAllowed: "Allowed",
     sitesNever: "Never",
@@ -118,6 +123,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "暂不",
     sitesTitle: "Li 聊天：网站",
     sitesMenu: "Li 聊天：网站…",
+    sitesDefaultAll:
+      "Li 默认在所有网站显示。只有标为“不再允许”的网站会隐藏入口；新网站打开前仍会征求同意。",
     sitesEmpty: "还没有任何网站。",
     sitesAllowed: "已允许",
     sitesNever: "永不",
@@ -138,6 +145,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "अभी नहीं",
     sitesTitle: "Li चैट: साइटें",
     sitesMenu: "Li चैट: साइटें…",
+    sitesDefaultAll:
+      "Li सभी वेबसाइटों पर उपलब्ध है। केवल कभी नहीं वाले साइटों पर छिपता है। नई साइट पर खोलने से पहले अनुमति माँगी जाती है।",
     sitesEmpty: "अभी कोई साइट नहीं।",
     sitesAllowed: "अनुमति है",
     sitesNever: "कभी नहीं",
@@ -158,6 +167,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "Ahora no",
     sitesTitle: "Chat de Li: sitios",
     sitesMenu: "Chat de Li: sitios…",
+    sitesDefaultAll:
+      "Li está disponible en todos los sitios. Solo se oculta donde eliges Nunca. Los sitios nuevos aún piden permiso antes de abrirlo.",
     sitesEmpty: "Todavía no hay sitios.",
     sitesAllowed: "Permitido",
     sitesNever: "Nunca",
@@ -179,6 +190,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "Pas maintenant",
     sitesTitle: "Chat Li : sites",
     sitesMenu: "Chat Li : sites…",
+    sitesDefaultAll:
+      "Li est disponible sur tous les sites. Seuls ceux marqués Jamais le masquent. Les nouveaux sites demandent encore votre accord avant l’ouverture.",
     sitesEmpty: "Aucun site pour l’instant.",
     sitesAllowed: "Autorisé",
     sitesNever: "Jamais",
@@ -199,6 +212,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "ليس الآن",
     sitesTitle: "دردشة Li: المواقع",
     sitesMenu: "دردشة Li: المواقع…",
+    sitesDefaultAll:
+      "يتوفر Li على جميع المواقع. يُخفى فقط في المواقع المحددة بأبدًا. وتظل المواقع الجديدة تطلب الموافقة قبل الفتح.",
     sitesEmpty: "لا توجد مواقع بعد.",
     sitesAllowed: "مسموح",
     sitesNever: "أبدًا",
@@ -219,6 +234,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "এখন না",
     sitesTitle: "Li চ্যাট: সাইট",
     sitesMenu: "Li চ্যাট: সাইট…",
+    sitesDefaultAll:
+      "সব ওয়েবসাইটে Li পাওয়া যায়। শুধু কখনও নয় হিসেবে চিহ্নিত সাইটে এটি লুকানো থাকে। নতুন সাইটে খোলার আগে অনুমতি চাওয়া হয়।",
     sitesEmpty: "এখনো কোনো সাইট নেই।",
     sitesAllowed: "অনুমতি আছে",
     sitesNever: "কখনো না",
@@ -239,6 +256,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "Agora não",
     sitesTitle: "Chat do Li: sites",
     sitesMenu: "Chat do Li: sites…",
+    sitesDefaultAll:
+      "Li está disponível em todos os sites. Só fica oculto nos marcados como Nunca. Sites novos ainda pedem permissão antes de abrir.",
     sitesEmpty: "Nenhum site ainda.",
     sitesAllowed: "Permitido",
     sitesNever: "Nunca",
@@ -259,6 +278,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "Не сейчас",
     sitesTitle: "Чат Li: сайты",
     sitesMenu: "Чат Li: сайты…",
+    sitesDefaultAll:
+      "Li доступен на всех сайтах. Он скрыт только там, где выбрано «Никогда». Новые сайты по-прежнему запрашивают согласие перед открытием.",
     sitesEmpty: "Пока нет сайтов.",
     sitesAllowed: "Разрешено",
     sitesNever: "Никогда",
@@ -279,6 +300,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "ابھی نہیں",
     sitesTitle: "Li چیٹ: سائٹس",
     sitesMenu: "Li چیٹ: سائٹس…",
+    sitesDefaultAll:
+      "Li تمام ویب سائٹس پر دستیاب ہے۔ صرف کبھی نہیں والے مقامات پر چھپتا ہے۔ نئی سائٹ پر کھولنے سے پہلے اجازت لی جاتی ہے۔",
     sitesEmpty: "ابھی کوئی سائٹ نہیں۔",
     sitesAllowed: "اجازت ہے",
     sitesNever: "کبھی نہیں",
@@ -299,6 +322,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "Nanti saja",
     sitesTitle: "Obrolan Li: situs",
     sitesMenu: "Obrolan Li: situs…",
+    sitesDefaultAll:
+      "Li tersedia di semua situs. Hanya situs bertanda Jangan pernah yang menyembunyikannya. Situs baru tetap meminta izin sebelum dibuka.",
     sitesEmpty: "Belum ada situs.",
     sitesAllowed: "Diizinkan",
     sitesNever: "Tidak pernah",
@@ -320,6 +345,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "Jetzt nicht",
     sitesTitle: "Li-Chat: Websites",
     sitesMenu: "Li-Chat: Websites…",
+    sitesDefaultAll:
+      "Li ist auf allen Websites verfügbar. Nur bei „Nie“ wird es ausgeblendet. Neue Websites fragen vor dem Öffnen weiterhin um Erlaubnis.",
     sitesEmpty: "Noch keine Websites.",
     sitesAllowed: "Erlaubt",
     sitesNever: "Nie",
@@ -341,6 +368,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "今はしない",
     sitesTitle: "Li チャット：サイト",
     sitesMenu: "Li チャット：サイト…",
+    sitesDefaultAll:
+      "Li はすべてのサイトで利用できます。「許可しない」にしたサイトだけ入口を隠します。新しいサイトでは開く前に確認します。",
     sitesEmpty: "まだサイトはありません。",
     sitesAllowed: "許可",
     sitesNever: "許可しない",
@@ -361,6 +390,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "Si sasa",
     sitesTitle: "Gumzo la Li: tovuti",
     sitesMenu: "Gumzo la Li: tovuti…",
+    sitesDefaultAll:
+      "Li inapatikana kwenye tovuti zote. Inafichwa tu kwenye zilizo na Kamwe. Tovuti mpya bado huomba ruhusa kabla ya kufungua.",
     sitesEmpty: "Bado hakuna tovuti.",
     sitesAllowed: "Imeruhusiwa",
     sitesNever: "Kamwe",
@@ -381,6 +412,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "आता नाही",
     sitesTitle: "Li चॅट: साइट्स",
     sitesMenu: "Li चॅट: साइट्स…",
+    sitesDefaultAll:
+      "Li सर्व वेबसाइटवर उपलब्ध आहे. फक्त कधीही नाही निवडलेल्या साइटवर तो लपतो. नवीन साइटवर उघडण्यापूर्वी परवानगी विचारली जाते.",
     sitesEmpty: "अजून कोणतीही साइट नाही.",
     sitesAllowed: "परवानगी आहे",
     sitesNever: "कधीही नाही",
@@ -401,6 +434,8 @@ export const PILL_CHAT_STRINGS: Record<PillChatLocale, PillChatStrings> = {
     notNow: "나중에",
     sitesTitle: "Li 채팅: 사이트",
     sitesMenu: "Li 채팅: 사이트…",
+    sitesDefaultAll:
+      "Li는 모든 웹사이트에서 사용할 수 있습니다. 허용 안 함으로 지정한 사이트에서만 숨겨집니다. 새 사이트에서는 열기 전에 동의를 구합니다.",
     sitesEmpty: "아직 사이트가 없습니다.",
     sitesAllowed: "허용됨",
     sitesNever: "허용 안 함",

@@ -367,3 +367,9 @@ The panel has sixteen locales with per-key context. Regression coverage:
 `unit/userscript-install.test.ts`, `unit/pill-install-guide.test.tsx` and
 `bun scripts/qa/qa-pill-install-guide.mjs` (silent fixtures, including an
 isolated-world marker and 320px / 150% layouts; not production evidence).
+
+## All websites and installation diagnostics (2.24.41)
+
+With the account feature on, Li is available by default on every supported top-level website. The site decisions list is not an entry allowlist: only an explicit Never decision hides the entry. A new site still asks for consent before any chat request; remembered permissions, revocation, isolated-world checks and the account kill switch are unchanged. The sites dialog now explains that default explicitly.
+
+The installation guide always displays its required version and the detected live version, or a localized “not detected on this page”. Missing injection does not prove the script is absent from the manager. Stored status is historical and cannot make the guide ready; an installed script may need enabling for the site and a page reload.

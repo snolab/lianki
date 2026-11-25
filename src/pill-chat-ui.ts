@@ -307,7 +307,8 @@ export function sitesDialog(
   };
   render();
   const closeBtn = button(d.doc, t.close, "primary", p, close);
-  shell.panel.append(h, list, closeBtn);
+  const scope = text(d.doc, t.sitesDefaultAll, [["color", p.muted]]);
+  shell.panel.append(h, scope, list, closeBtn);
   try {
     closeBtn.focus();
   } catch {}

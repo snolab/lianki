@@ -35,6 +35,7 @@ const dictionary = {
     sitesTitle: tr("sitesTitle"),
     sitesMenu: tr("sitesMenu"),
     sitesEmpty: tr("sitesEmpty"),
+    sitesDefaultAll: tr("sitesDefaultAll"),
     sitesAllowed: tr("sitesAllowed"),
     sitesNever: tr("sitesNever"),
     forget: tr("forget"),

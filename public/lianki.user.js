@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.40
+// @version     2.24.41
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -1971,6 +1971,8 @@
       notNow: "Not now",
       sitesTitle: "Li chat: sites",
       sitesMenu: "Li chat: sites…",
+      sitesDefaultAll:
+        "Li is available on all websites. Only sites marked Never hide it. New sites still ask before opening.",
       sitesEmpty: "No sites yet.",
       sitesAllowed: "Allowed",
       sitesNever: "Never",
@@ -1991,6 +1993,8 @@
       notNow: "暂不",
       sitesTitle: "Li 聊天：网站",
       sitesMenu: "Li 聊天：网站…",
+      sitesDefaultAll:
+        "Li 默认在所有网站显示。只有标为“不再允许”的网站会隐藏入口；新网站打开前仍会征求同意。",
       sitesEmpty: "还没有任何网站。",
       sitesAllowed: "已允许",
       sitesNever: "永不",
@@ -2011,6 +2015,8 @@
       notNow: "अभी नहीं",
       sitesTitle: "Li चैट: साइटें",
       sitesMenu: "Li चैट: साइटें…",
+      sitesDefaultAll:
+        "Li सभी वेबसाइटों पर उपलब्ध है। केवल कभी नहीं वाले साइटों पर छिपता है। नई साइट पर खोलने से पहले अनुमति माँगी जाती है।",
       sitesEmpty: "अभी कोई साइट नहीं।",
       sitesAllowed: "अनुमति है",
       sitesNever: "कभी नहीं",
@@ -2031,6 +2037,8 @@
       notNow: "Ahora no",
       sitesTitle: "Chat de Li: sitios",
       sitesMenu: "Chat de Li: sitios…",
+      sitesDefaultAll:
+        "Li está disponible en todos los sitios. Solo se oculta donde eliges Nunca. Los sitios nuevos aún piden permiso antes de abrirlo.",
       sitesEmpty: "Todavía no hay sitios.",
       sitesAllowed: "Permitido",
       sitesNever: "Nunca",
@@ -2052,6 +2060,8 @@
       notNow: "Pas maintenant",
       sitesTitle: "Chat Li : sites",
       sitesMenu: "Chat Li : sites…",
+      sitesDefaultAll:
+        "Li est disponible sur tous les sites. Seuls ceux marqués Jamais le masquent. Les nouveaux sites demandent encore votre accord avant l’ouverture.",
       sitesEmpty: "Aucun site pour l’instant.",
       sitesAllowed: "Autorisé",
       sitesNever: "Jamais",
@@ -2072,6 +2082,8 @@
       notNow: "ليس الآن",
       sitesTitle: "دردشة Li: المواقع",
       sitesMenu: "دردشة Li: المواقع…",
+      sitesDefaultAll:
+        "يتوفر Li على جميع المواقع. يُخفى فقط في المواقع المحددة بأبدًا. وتظل المواقع الجديدة تطلب الموافقة قبل الفتح.",
       sitesEmpty: "لا توجد مواقع بعد.",
       sitesAllowed: "مسموح",
       sitesNever: "أبدًا",
@@ -2092,6 +2104,8 @@
       notNow: "এখন না",
       sitesTitle: "Li চ্যাট: সাইট",
       sitesMenu: "Li চ্যাট: সাইট…",
+      sitesDefaultAll:
+        "সব ওয়েবসাইটে Li পাওয়া যায়। শুধু কখনও নয় হিসেবে চিহ্নিত সাইটে এটি লুকানো থাকে। নতুন সাইটে খোলার আগে অনুমতি চাওয়া হয়।",
       sitesEmpty: "এখনো কোনো সাইট নেই।",
       sitesAllowed: "অনুমতি আছে",
       sitesNever: "কখনো না",
@@ -2112,6 +2126,8 @@
       notNow: "Agora não",
       sitesTitle: "Chat do Li: sites",
       sitesMenu: "Chat do Li: sites…",
+      sitesDefaultAll:
+        "Li está disponível em todos os sites. Só fica oculto nos marcados como Nunca. Sites novos ainda pedem permissão antes de abrir.",
       sitesEmpty: "Nenhum site ainda.",
       sitesAllowed: "Permitido",
       sitesNever: "Nunca",
@@ -2132,6 +2148,8 @@
       notNow: "Не сейчас",
       sitesTitle: "Чат Li: сайты",
       sitesMenu: "Чат Li: сайты…",
+      sitesDefaultAll:
+        "Li доступен на всех сайтах. Он скрыт только там, где выбрано «Никогда». Новые сайты по-прежнему запрашивают согласие перед открытием.",
       sitesEmpty: "Пока нет сайтов.",
       sitesAllowed: "Разрешено",
       sitesNever: "Никогда",
@@ -2152,6 +2170,8 @@
       notNow: "ابھی نہیں",
       sitesTitle: "Li چیٹ: سائٹس",
       sitesMenu: "Li چیٹ: سائٹس…",
+      sitesDefaultAll:
+        "Li تمام ویب سائٹس پر دستیاب ہے۔ صرف کبھی نہیں والے مقامات پر چھپتا ہے۔ نئی سائٹ پر کھولنے سے پہلے اجازت لی جاتی ہے۔",
       sitesEmpty: "ابھی کوئی سائٹ نہیں۔",
       sitesAllowed: "اجازت ہے",
       sitesNever: "کبھی نہیں",
@@ -2172,6 +2192,8 @@
       notNow: "Nanti saja",
       sitesTitle: "Obrolan Li: situs",
       sitesMenu: "Obrolan Li: situs…",
+      sitesDefaultAll:
+        "Li tersedia di semua situs. Hanya situs bertanda Jangan pernah yang menyembunyikannya. Situs baru tetap meminta izin sebelum dibuka.",
       sitesEmpty: "Belum ada situs.",
       sitesAllowed: "Diizinkan",
       sitesNever: "Tidak pernah",
@@ -2193,6 +2215,8 @@
       notNow: "Jetzt nicht",
       sitesTitle: "Li-Chat: Websites",
       sitesMenu: "Li-Chat: Websites…",
+      sitesDefaultAll:
+        "Li ist auf allen Websites verfügbar. Nur bei „Nie“ wird es ausgeblendet. Neue Websites fragen vor dem Öffnen weiterhin um Erlaubnis.",
       sitesEmpty: "Noch keine Websites.",
       sitesAllowed: "Erlaubt",
       sitesNever: "Nie",
@@ -2215,6 +2239,8 @@
       notNow: "今はしない",
       sitesTitle: "Li チャット：サイト",
       sitesMenu: "Li チャット：サイト…",
+      sitesDefaultAll:
+        "Li はすべてのサイトで利用できます。「許可しない」にしたサイトだけ入口を隠します。新しいサイトでは開く前に確認します。",
       sitesEmpty: "まだサイトはありません。",
       sitesAllowed: "許可",
       sitesNever: "許可しない",
@@ -2235,6 +2261,8 @@
       notNow: "Si sasa",
       sitesTitle: "Gumzo la Li: tovuti",
       sitesMenu: "Gumzo la Li: tovuti…",
+      sitesDefaultAll:
+        "Li inapatikana kwenye tovuti zote. Inafichwa tu kwenye zilizo na Kamwe. Tovuti mpya bado huomba ruhusa kabla ya kufungua.",
       sitesEmpty: "Bado hakuna tovuti.",
       sitesAllowed: "Imeruhusiwa",
       sitesNever: "Kamwe",
@@ -2255,6 +2283,8 @@
       notNow: "आता नाही",
       sitesTitle: "Li चॅट: साइट्स",
       sitesMenu: "Li चॅट: साइट्स…",
+      sitesDefaultAll:
+        "Li सर्व वेबसाइटवर उपलब्ध आहे. फक्त कधीही नाही निवडलेल्या साइटवर तो लपतो. नवीन साइटवर उघडण्यापूर्वी परवानगी विचारली जाते.",
       sitesEmpty: "अजून कोणतीही साइट नाही.",
       sitesAllowed: "परवानगी आहे",
       sitesNever: "कधीही नाही",
@@ -2275,6 +2305,8 @@
       notNow: "나중에",
       sitesTitle: "Li 채팅: 사이트",
       sitesMenu: "Li 채팅: 사이트…",
+      sitesDefaultAll:
+        "Li는 모든 웹사이트에서 사용할 수 있습니다. 허용 안 함으로 지정한 사이트에서만 숨겨집니다. 새 사이트에서는 열기 전에 동의를 구합니다.",
       sitesEmpty: "아직 사이트가 없습니다.",
       sitesAllowed: "허용됨",
       sitesNever: "허용 안 함",
@@ -3512,6 +3544,8 @@ Sasisha kadi kwa anwani mpya?`,
       "Tooltip on every control of an interactive widget inside an assistant's chat message (choice buttons, the calculator's and slider's put-in-reply button): tapping only fills the user's reply box; the user still decides and sends it. One short sentence.",
     widgetScriptsOff:
       "A short neutral note above an interactive HTML widget inside an assistant's chat message, shown when the widget contained script code that was removed for safety. The rest of the widget still works (its text, buttons and form fields). Not an error alarm; one short sentence.",
+    widgetFilled:
+      "A small tappable chip under an assistant's chat message, shown when the assistant filled in a form widget (above in the chat) from what the user said by voice. {n} is the number of fields it filled (keep {n} as is). Tapping it scrolls to the form and highlights those fields so the user can check them; nothing has been sent. Short, like a button label.",
     menuSwitchOn: `In ${CHAT}: the two words stamped side by side inside an on/off switch in the chat's menu (now the Full screen row), both always visible: the ON word first, then the OFF word; the half naming the current state is filled seal red. They name the states, never the action, and must fit one small stamp together. This is the ON word: the setting is active. The shortest word this language's own on/off switches show for 'on' (English 'On', Chinese 开), the same as the app's other switches.`,
     menuSwitchOff: `In ${CHAT}: the two words stamped side by side inside an on/off switch in the chat's menu (now the Full screen row), both always visible: the ON word first, then the OFF word; the half naming the current state is filled seal red. They name the states, never the action, and must fit one small stamp together. This is the OFF word: the setting is inactive. The shortest word this language's own on/off switches show for 'off' (English 'Off', Chinese 关), the pair to the ON word.`,
     readReceipts:
@@ -4508,7 +4542,8 @@ Sasisha kadi kwa anwani mpya?`,
     };
     render();
     const closeBtn = button(d.doc, t.close, "primary", p, close);
-    shell.panel.append(h, list, closeBtn);
+    const scope = text(d.doc, t.sitesDefaultAll, [["color", p.muted]]);
+    shell.panel.append(h, scope, list, closeBtn);
     try {
       closeBtn.focus();
     } catch {}
