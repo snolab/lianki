@@ -1858,13 +1858,9 @@ form by field name and shows the patch as a chip, "Filled 2 fields · show
 form": a tap scrolls to the form and outlines the filled fields. Same boundary
 as widgets (`widgetLine`): both lines are agent lines in his own thread. A
 patch never adds a field and never touches hidden, disabled, read-only or file
-inputs. Nothing submits by itself: `"submit": true` is honoured only when his
-own latest line, from the last minute, ends in a plain command to send
-("submit", "ok, submit it", 「提交吧」), with nothing that negates, questions or
-merely mentions it ("don't submit", 「不要 提交」, "what does the submit button
-do?") (`submitAsked`), and only once per patch: a replay or a remount fills
-again but never submits again (`consumeSubmit`). Inputs inside a disabled
-fieldset count as disabled. Values go in through the native setter and an input event, so
+inputs, including those inside a disabled fieldset. A fill never submits:
+sending is always his own tap on the form's Submit button; a `"submit"` key
+in a patch is ignored, on every page and every replay. Values go in through the native setter and an input event, so
 the page's uncontrolled inputs and Android keyboards agree. Tests:
 `unit/widget-fill.test.tsx`.
 

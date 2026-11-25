@@ -5,7 +5,7 @@
  * posted it (host.onSubmit). Links open through the chat's own link menu.
  */
 import { createElement, type FormEvent, type ReactNode, useEffect, useId, useMemo, useRef } from "react";
-import { fillForm, fillStore, submitAsked, type FillStore } from "./widget-fill";
+import { fillForm, fillStore, type FillStore } from "./widget-fill";
 import { formLine, inlineHtml, scriptedHtml, type InlineNode } from "./html-inline";
 import type { WidgetHost } from "./MessageWidget";
 import { ChatLink } from "./RichText";
@@ -110,11 +110,9 @@ export function HtmlInline({
   store?: FillStore;
 }) {
   const box = useRef<HTMLDivElement>(null);
-  const hostRef = useRef(host);
-  hostRef.current = host;
   useEffect(() => {
     if (!lineId) return;
-    return store.on(lineId, (patch, flashOnly, patchId) => {
+    return store.on(lineId, (patch, flashOnly) => {
       const root = box.current;
       if (!root) return;
       if (flashOnly) {
@@ -124,14 +122,7 @@ export function HtmlInline({
       }
       const changed = fillForm(root, patch.fields);
       flash(changed);
-      // Sent only when his own latest line, from the last minute, said so, and only once
-      // per patch: a remount or a replay fills again but never submits again.
-      if (
-        patch.submit &&
-        submitAsked(hostRef.current.lastOwn?.() ?? null, Date.now()) &&
-        store.consumeSubmit(patchId, lineId)
-      )
-        root.querySelector("form")?.requestSubmit();
+      // A fill never submits: sending is his own tap on the form's Submit.
     });
   }, [lineId, store]);
   const id = useId().replace(/[^\w-]/g, "");
@@ -149,16 +140,13 @@ export function HtmlInline({
       form.getAttribute("data-action") ||
       form.getAttribute("name") ||
       "submit";
+    // The form's fields, then the button that sent it (one path for every browser).
     const fields: [string, string][] = [];
-    try {
-      new FormData(form, submitter ?? undefined).forEach((v, k) => {
-        if (typeof v === "string") fields.push([k, v]);
-      });
-    } catch {
-      new FormData(form).forEach((v, k) => {
-        if (typeof v === "string") fields.push([k, v]);
-      });
-    }
+    new FormData(form).forEach((v, k) => {
+      if (typeof v === "string") fields.push([k, v]);
+    });
+    const by = submitter?.getAttribute("name");
+    if (by) fields.push([by, submitter?.getAttribute("value") ?? ""]);
     host.onSubmit(formLine(action, fields));
   };
   return (

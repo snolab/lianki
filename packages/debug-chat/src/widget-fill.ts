@@ -12,13 +12,13 @@
  * fields it filled. Only agent lines in his own thread carry patches
  * (rich-text.ts widgetLine), and only widget lines in his own thread have forms
  * to fill. A patch never adds fields and never touches hidden, disabled or
- * read-only ones. Nothing submits by itself: `"submit": true` is honoured only
- * when his own latest line, from the last minute, asks for it (submitAsked).
+ * read-only ones. A fill never submits: sending is always his own tap on the
+ * form's Submit button (a `"submit"` key in a patch is ignored).
  */
 
 export const FILL_LANG = "lianki-fill";
 
-export type FillPatch = { line: string; fields: Record<string, string>; submit: boolean };
+export type FillPatch = { line: string; fields: Record<string, string> };
 
 const MAX_SPEC = 8_000;
 const MAX_FIELDS = 30;
@@ -43,52 +43,20 @@ export function parseFill(spec: string): FillPatch | null {
     else if (typeof raw === "boolean") fields[k] = raw ? "on" : "";
   }
   if (!Object.keys(fields).length) return null;
-  return { line: v.line, fields, submit: v.submit === true };
-}
-
-export const SUBMIT_WINDOW_MS = 60_000;
-
-/** Anything that turns "submit" into its opposite, a question or a mention: then never. */
-const NOT_A_COMMAND =
-  /\b(not|don'?t|do\s+not|never|no|without|wait|stop|hold|cancel|explain|what|how|why|which|where|button|later)\b|[?？]|不要|不用|别|不|先别|暂时|等等|等一下|吗|呢|怎么|什么|为什么|按钮|解释/i;
-/** The last clause is a bare command to send: "submit", "ok, submit it now", "提交吧", "请发送". */
-const SUBMIT_COMMAND = [
-  /^(ok(ay)?|yes|yeah|good|great|alright|right|go)?[\s,]*(please\s+)?(submit|send)(\s+(it|this|the\s+form|that))?(\s+(now|please))?[.!]*$/i,
-  /^(好|好的|行|可以|对|没问题)?[，,\s]*(请|帮我)?(提交|发送|发出去|送出)(吧|了|一下|表单|它)?[。！!]*$/,
-];
-
-/**
- * Did his own latest line, within the last minute, ask to submit? Only a
- * positive command as its last clause ("first name Sam, submit"; "提交吧"),
- * and nothing anywhere in it that negates, questions or merely mentions it
- * ("don't submit", 「不要 提交」, "what does the submit button do?").
- */
-export function submitAsked(
-  own: { text?: string; at?: number } | null | undefined,
-  now: number,
-): boolean {
-  if (!own?.text || typeof own.at !== "number") return false;
-  if (now - own.at > SUBMIT_WINDOW_MS || own.at > now + 5_000) return false;
-  const text = own.text.trim();
-  if (!text || NOT_A_COMMAND.test(text)) return false;
-  const last = text.split(/[,，;；。.、]\s*(?=\S)/).at(-1)!.trim();
-  return SUBMIT_COMMAND.some((re) => re.test(last));
+  return { line: v.line, fields };
 }
 
 /** A fill for one form: the patch, its own id, and whether this call is only a flash. */
 type Listener = (patch: FillPatch, flashOnly: boolean, patchId: string) => void;
 
 /**
- * Patches by target line, a "flash" for the chip's tap-through, and the one
- * submit each patch may cause. A patch line renders and re-renders, and a form
- * remounts (scrolling, a re-render of the log) and gets the fields again; but
- * its `submit` is a single authorization, used up the first time a form for
- * that line takes it (consumeSubmit), however often the patch replays.
+ * Patches by target line and a "flash" for the chip's tap-through. A patch
+ * line renders and re-renders, and a form remounts (scrolling, a re-render of
+ * the log) and gets the fields again. Nothing here ever submits a form.
  */
 export function makeFillStore() {
   const listeners = new Map<string, Set<Listener>>();
   const applied = new Set<string>();
-  const submitted = new Set<string>();
   const last = new Map<string, { patch: FillPatch; id: string }>();
   return {
     /** A patch line was rendered: fill its form (once per patch line). */
@@ -112,13 +80,6 @@ export function makeFillStore() {
       const p = last.get(line);
       if (p) l(p.patch, false, p.id);
       return () => set!.delete(l);
-    },
-    /** The patch's one submit, for its own line: true the first time only. */
-    consumeSubmit(patchId: string, line: string): boolean {
-      const key = `${patchId}\u0000${line}`;
-      if (submitted.has(key)) return false;
-      submitted.add(key);
-      return true;
     },
   };
 }

@@ -5040,7 +5040,6 @@ export function DebugChat({
           scriptsOff: ux.widgetScriptsOff,
           filled: ux.widgetFilled,
         },
-        lastOwn: () => (latestOwn ? { text: latestOwn.text, at: latestOwn.at } : null),
       }
     : undefined;
   const readText = (m: ChatMessage, text: ReactNode) => {

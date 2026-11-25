@@ -27,8 +27,6 @@ export type WidgetHost = {
   labels: WidgetLabels;
   /** Config chat.widgetHtmlMaxPx: the tallest a sandboxed HTML widget grows. */
   htmlMaxHeight?: number;
-  /** His own latest line in this thread (text, time): a fill may submit only when it asked to. */
-  lastOwn?: () => { text?: string; at?: number } | null;
 };
 
 const INK = "light-dark(oklch(0.46 0.187 22.3), oklch(0.8 0.132 22.3))";
