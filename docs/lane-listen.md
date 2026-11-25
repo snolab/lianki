@@ -134,6 +134,30 @@ and the chat lane's listener gets `--route chat` at the same moment, never
 before: until codex and agy listen, a line addressed to them would reach no
 one.
 
+## Read receipts and no lost lines (seq cursor)
+
+Every line in a thread has the hub's `seq`. A lane listener keeps a
+**delivered cursor** per lane at `~/.config/lianki/lanes/<lane>.seq` (0600,
+next to its token): the highest seq with nothing still waiting at or below
+it. It moves past a line only when `ay send` took it (exit 0 or 4), or when
+the line was never this lane's (another lane's, a refused voice). A line
+lost in delivery holds the cursor before it.
+
+- **Receipt.** After a hand-over the listener posts `lianki chat seen --seq
+N` with its own token: N is the newest line handed over, never past a
+  held one. The hub keeps it as that token's read position, and the chat
+  shows the lane's avatar under his latest line once it is read
+  (`read-receipts.ts`, the same marks pages get). One receipt in flight at a
+  time; a burst coalesces.
+- **Recovery.** On every connect (start, reconnect after a drop) it reads
+  `lianki chat read --after-seq <cursor> --limit 100` and hands over what the
+  socket never brought, deduped by id with the live stream. A recovered line
+  older than `LANE_RECOVER_MAX_MIN` (default 120) is passed, not handed
+  over: a stale line answers nothing.
+- **First run.** No cursor file: it starts at the first live line; nothing
+  older is replayed. `--dry-run` reads and writes no cursor and posts no
+  receipt.
+
 ## Public CLI composition
 
 The public CLI now has an unreleased composition layer for new installations:
@@ -205,14 +229,14 @@ How much of his chat a participant hears, from most to least. Tier ⓪ was
 added on top (owner, 2026-11-16 02:16 JST: "再多一层监听，一共是 6 层监听，最上面
 那一层会包括各种系统通知"): the system notices moved from ① up to ⓪.
 
-| tier | who                             | hears                                                                                             | how                                                                                            | presence / system line                                               |
-| ---- | ------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| ⓪    | live, everything (小克)         | tier ①'s lines and the system lines (lane join/leave/live/read-only, state-tree hub lines and ETA receipts, spend alerts) | `lanes.agents` `scope: "system"` → `lane-listen --all --everyone --system`                    | filled red dot, "实时监听（全部消息 + 系统通知）"; "X 开始实时监听（全部消息 + 系统通知）" |
-| ①    | live, all messages (coco)       | his lines and every agent's lines, NO system lines; never its own                                 | `lanes.agents` `scope: "all"` → `lane-listen --all --everyone`                                 | filled red dot, "实时监听（全部消息）"; "X 开始实时监听（全部消息）" |
-| ②    | live, his lines (杰咪, mimiai)  | his lines only (today's "listener"); a voiceprint "unknown" line not ("未定不送")                 | `lanes.agents` `resident: true` (scope `owner`) → `lane-listen --all`                          | red ring dot, "实时监听"; "X 开始实时监听"                           |
-| ③    | reader                          | the thread when it reads; woken when he names it, then his lines live for `lanes.wakeLiveMin` min | any other joined agent: the manager's `ay send` on a name, alias, `@<lane>`, `#<repo>` or 全体 | "只读"; "X 入群（只读）"                                             |
-| ④    | Li                              | everything (the main lane, always a listener)                                                     | the hub's own main lane                                                                        | —                                                                    |
-| ⑤    | display-only pages              | what the page shows                                                                               | a page, no agent                                                                               | —                                                                    |
+| tier | who                            | hears                                                                                                                     | how                                                                                            | presence / system line                                                                     |
+| ---- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| ⓪    | live, everything (小克)        | tier ①'s lines and the system lines (lane join/leave/live/read-only, state-tree hub lines and ETA receipts, spend alerts) | `lanes.agents` `scope: "system"` → `lane-listen --all --everyone --system`                     | filled red dot, "实时监听（全部消息 + 系统通知）"; "X 开始实时监听（全部消息 + 系统通知）" |
+| ①    | live, all messages (coco)      | his lines and every agent's lines, NO system lines; never its own                                                         | `lanes.agents` `scope: "all"` → `lane-listen --all --everyone`                                 | filled red dot, "实时监听（全部消息）"; "X 开始实时监听（全部消息）"                       |
+| ②    | live, his lines (杰咪, mimiai) | his lines only (today's "listener"); a voiceprint "unknown" line not ("未定不送")                                         | `lanes.agents` `resident: true` (scope `owner`) → `lane-listen --all`                          | red ring dot, "实时监听"; "X 开始实时监听"                                                 |
+| ③    | reader                         | the thread when it reads; woken when he names it, then his lines live for `lanes.wakeLiveMin` min                         | any other joined agent: the manager's `ay send` on a name, alias, `@<lane>`, `#<repo>` or 全体 | "只读"; "X 入群（只读）"                                                                   |
+| ④    | Li                             | everything (the main lane, always a listener)                                                                             | the hub's own main lane                                                                        | —                                                                                          |
+| ⑤    | display-only pages             | what the page shows                                                                                                       | a page, no agent                                                                               | —                                                                                          |
 
 The voiceprint gate (`voiceAllowed`, lane-listen-lib.ts): a spoken line decided
 "other" goes to no lane. One decided "unknown" (a short or soft sentence) goes
@@ -330,7 +354,7 @@ decisions in `lanes-manager-lib.ts`, the loop in `lanes-manager-core.ts`):
 
 1. Watches `ay ls --watch --json --local` (ay's state transitions; ay
    itself polls every 2 s for them); each edge re-reads `ay ls --json
-   --local`, plus a slow re-list every `lanes.relistSec` (60 s) in case the
+--local`, plus a slow re-list every `lanes.relistSec` (60 s) in case the
    stream is silent.
 2. Maps each alive agent to a repo: the first part of its cwd on the
    `lanes.repos` whitelist (lianki, agent-yes, liagent, rechrome, otoji, rgui, mimiai).
@@ -420,4 +444,3 @@ neither Node's nor Bun's `fs.watch` reports those writes on macOS (measured
 back-off, 1 s doubling to 60 s) falls back to ay's states from the same `ay ls
 --watch --json` stream (active / stuck busy, the rest idle). That stream
 polls (every 2 s inside ay), so a lane on it is up to 2 s late.
-
