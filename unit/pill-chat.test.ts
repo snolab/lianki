@@ -8,7 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { Window } from "happy-dom";
 import { pillChatState } from "@/lib/pill-chat-route";
-import { flagChangedEvent, FLAG_CHANGED_EVENT } from "@/lib/flag-events";
+import { flagChangedEvent, FLAG_CHANGED_EVENT, readFlagChanged } from "@/lib/flag-events";
 import {
   HOST_ORIGIN_HEADER,
   mirrorPillChatFlag,
@@ -484,6 +484,41 @@ describe("the flag mirror follows /dev/flags", () => {
     h.changed({ key: "ext.pill-chat", enabled: true, cacheSeconds: 30 });
     await h.tick(60_000);
     expect(h.calls.length).toBe(1);
+  });
+
+  it("with the real timer: the re-ask is set, and an abort clears it", async () => {
+    const h = lianki({ value: true });
+    const ac = new AbortController();
+    const { later: _fake, ...deps } = h.deps;
+    watchPillChatFlag({ ...deps, signal: ac.signal });
+    await h.tick(0);
+    // No cacheSeconds (an older page): the 30 s default.
+    h.win.dispatchEvent(
+      new h.win.CustomEvent(FLAG_CHANGED_EVENT, {
+        detail: JSON.stringify({ key: "ext.pill-chat", enabled: true }) as unknown as object,
+      }),
+    );
+    h.changed({ key: "ext.pill-chat", enabled: true, cacheSeconds: 30 }); // replaces the first
+    await h.tick(0);
+    expect(h.calls.length).toBe(3);
+    ac.abort(); // clears the pending timer, unhooks
+    h.changed({ key: "ext.pill-chat", enabled: true, cacheSeconds: 30 });
+    await h.tick(0);
+    expect(h.calls.length).toBe(3);
+  });
+});
+
+describe("readFlagChanged", () => {
+  it("reads the JSON string /dev/flags sends, or an object", () => {
+    const d = { key: "ext.pill-chat", enabled: true, cacheSeconds: 30 };
+    expect(readFlagChanged(JSON.stringify(d))).toEqual(d);
+    expect(readFlagChanged(d)).toEqual(d);
+  });
+  it("leaves out what it cannot read", () => {
+    expect(readFlagChanged("{not json")).toEqual({});
+    expect(readFlagChanged(null)).toEqual({});
+    expect(readFlagChanged("7")).toEqual({});
+    expect(readFlagChanged({ key: 1, enabled: "yes", cacheSeconds: Infinity })).toEqual({});
   });
 });
 
