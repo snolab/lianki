@@ -188,9 +188,12 @@ describe("page broker: no general credentials or advanced HTTP routes", () => {
         responseText: JSON.stringify({ on: true, ticket: "synthetic-chat-cap" }),
       });
     });
-    await f("https://lianki.com/api/ext/pill-chat", {
+    const response = await f("https://lianki.com/api/ext/pill-chat", {
       headers: { Authorization: "synthetic-private-api-token" },
     });
+    expect(response.ok).toBe(true);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ on: true, ticket: "synthetic-chat-cap" });
     await f("https://lianki.com/api/chat/page-ticket", {
       method: "POST",
       headers: {
@@ -205,6 +208,19 @@ describe("page broker: no general credentials or advanced HTTP routes", () => {
     }
     expect(calls[1]!.headers).toEqual({ "x-lianki-userscript": "1", "x-lianki-host-origin": HOST });
   });
+  for (const event of ["onerror", "ontimeout"] as const)
+    it("reports " + event + " without falling back to general credentials", async () => {
+      const calls: Parameters<ChatGmRequest>[0][] = [];
+      const fetch = pageChatFetch("https://lianki.com", HOST, (request) => {
+        calls.push(request);
+        request[event]();
+      });
+      await expect(
+        fetch("https://lianki.com/api/chat/page-ticket", { method: "POST" }),
+      ).rejects.toThrow(event === "onerror" ? "connection failed" : "timed out");
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.headers.Authorization).toBeUndefined();
+    });
   for (const [capability, path] of [
     ["eval", "/api/version/debug/control"],
     ["token", "/api/token"],
