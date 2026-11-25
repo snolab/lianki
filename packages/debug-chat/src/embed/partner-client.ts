@@ -20,6 +20,7 @@ import {
   type Sender,
   cleanContext,
 } from "../wire";
+import { uuidv4 } from "../uuid";
 import type { Blocker } from "./guard";
 
 export const PARTNER_SUBPROTOCOL = "lianki-partner";
@@ -37,6 +38,12 @@ export type PartnerState = {
   warning?: string;
   /** Set when this page cannot have the chat (the note shows instead). */
   blocked?: Blocker;
+  /**
+   * The last line could not be sent on an open socket (it threw): the panel
+   * says so (ChatStrings.sendFailed) and the draft stays. Cleared by the next
+   * line that goes out.
+   */
+  sendFailed?: boolean;
 };
 
 type WsLike = {
@@ -70,6 +77,8 @@ export type PartnerDeps = {
   doc: Pick<Document, "visibilityState" | "addEventListener" | "removeEventListener">;
   /** A CSP violation about us arrived (guard.ts cspBlocker): the socket will not open. */
   onBlocked?: (b: Blocker) => void;
+  /** A line could not be sent (it threw): logged here, never silent. Default console.warn. */
+  onSendError?: (err: unknown) => void;
   now?: () => number;
 };
 
@@ -212,7 +221,8 @@ export function createPartnerClient(d: PartnerDeps): PartnerClient {
           s.send(JSON.stringify({ type: "page", label }));
           sentLabel = label;
         }
-        const id = crypto.randomUUID().slice(0, 12);
+        // Not crypto.randomUUID: it is missing in a frame on a plain http:// site.
+        const id = uuidv4().slice(0, 12);
         const ctx = cleanContext(context);
         s.send(
           JSON.stringify({
@@ -223,8 +233,13 @@ export function createPartnerClient(d: PartnerDeps): PartnerClient {
             ...(ctx ? { context: ctx } : {}),
           }),
         );
+        if (state.sendFailed) set({ sendFailed: false });
         return true;
-      } catch {
+      } catch (err) {
+        try {
+          (d.onSendError ?? ((e) => console.warn("[lianki] partner chat: send failed", e)))(err);
+        } catch {}
+        set({ sendFailed: true });
         return false;
       }
     },

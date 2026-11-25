@@ -35,6 +35,7 @@ import {
 import { silenceHere } from "./speak-rules";
 import { voiceLatency, noteSttVia } from "./latency";
 import { sttTagOf } from "./wire";
+import { uuidv4 } from "./uuid";
 import { postSessionClip } from "./clips-store";
 import { createRecorder, pageRecorder } from "./recorder";
 import { createLocalStt, localDotWhy, REQUEST_TIMEOUT_MS } from "./local-stt";
@@ -283,7 +284,7 @@ export function pttRecorder(
           : undefined;
         recorder = createPttRecognition({
           now: Date.now,
-          run: crypto.randomUUID(),
+          run: uuidv4(),
           rate: RATE,
           startAt: at,
           maxCaptureMs:

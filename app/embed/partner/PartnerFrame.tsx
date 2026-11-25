@@ -113,7 +113,11 @@ function Chat({
         return client.send(text, to, opts?.context);
       }}
       busy={s.busy}
-      warning={note ?? s.warning}
+      warning={
+        note ??
+        (s.sendFailed ? (strings?.sendFailed ?? CHAT_STRINGS_EN.sendFailed) : undefined) ??
+        s.warning
+      }
       viewer={s.viewer}
       agentAvatar="/icon-192.png"
       strings={strings}
