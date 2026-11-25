@@ -17,6 +17,7 @@ export type PillInstallLabels = {
   install: string;
   update: string;
   installHelp: string;
+  managerHelp: string;
   reload: string;
   trySite: string;
   tryHelp: string;
@@ -55,6 +56,17 @@ export default function PillInstallGuide({
       {!checking && (
         <>
           <p className="mt-2 text-sm">{ready ? labels.tryHelp : labels.installHelp}</p>
+          {state.status === "missing" && (
+            <a
+              href="https://www.tampermonkey.net/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-block text-sm underline"
+              data-testid="pill-manager-help"
+            >
+              {labels.managerHelp}
+            </a>
+          )}
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <a
               href={ready ? USERSCRIPT_TRY_URL : USERSCRIPT_INSTALL_URL}

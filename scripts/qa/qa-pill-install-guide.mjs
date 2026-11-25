@@ -84,6 +84,10 @@ try {
   const guide = page.getByTestId("pill-install-guide");
   await expect(guide).toHaveAttribute("data-install-status", "missing");
   await expect(page.getByTestId("pill-install-link")).toHaveAttribute("href", "/lianki.user.js");
+  await expect(page.getByTestId("pill-manager-help")).toHaveAttribute(
+    "href",
+    "https://www.tampermonkey.net/",
+  );
   await page.evaluate(() =>
     localStorage.setItem("lk:status", JSON.stringify({ version: "99.0.0" })),
   );

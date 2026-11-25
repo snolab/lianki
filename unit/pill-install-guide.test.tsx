@@ -41,6 +41,9 @@ test("SSR is neutral; mounted guide offers install/update or a safe external tri
       "/lianki.user.js",
     );
     expect(host.textContent).toContain(labels.installHelp);
+    expect(host.querySelector('[data-testid="pill-manager-help"]')?.getAttribute("href")).toBe(
+      "https://www.tampermonkey.net/",
+    );
     expect(reloads).toBe(0);
     await act(() =>
       Array.from(host.querySelectorAll("button"))
@@ -66,6 +69,7 @@ test("SSR is neutral; mounted guide offers install/update or a safe external tri
     expect(trial?.getAttribute("target")).toBe("_blank");
     expect(trial?.getAttribute("rel")).toBe("noopener noreferrer");
     expect(host.textContent).toContain(labels.tryHelp);
+    expect(host.querySelector('[data-testid="pill-manager-help"]')).toBeNull();
     expect(host.querySelector('[data-testid="pill-install-link"]')).toBeNull();
     await marker("not-a-version");
     expect(status()).toBe("outdated");

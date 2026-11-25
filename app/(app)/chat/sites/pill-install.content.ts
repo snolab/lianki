@@ -148,6 +148,24 @@ const dictionary = {
       mr: "ब्राउझरचा युजरस्क्रिप्ट मॅनेजर सुरू करा, खालील लिंकवरून इंस्टॉलेशनची पुष्टी करा आणि हे पान रीलोड करा.",
       ko: "브라우저의 사용자 스크립트 관리자를 켜고 아래 링크에서 설치를 확인한 뒤 이 페이지를 새로고침하세요.",
     }),
+    managerHelp: t({
+      en: "Need a script manager? Get Tampermonkey",
+      zh: "还没有脚本管理器？安装 Tampermonkey",
+      hi: "स्क्रिप्ट मैनेजर चाहिए? Tampermonkey लें",
+      es: "¿Necesitas un gestor de scripts? Instala Tampermonkey",
+      fr: "Besoin d’un gestionnaire de scripts ? Installez Tampermonkey",
+      ar: "تحتاج مدير سكربتات؟ ثبّت Tampermonkey",
+      bn: "স্ক্রিপ্ট ম্যানেজার দরকার? Tampermonkey নিন",
+      pt: "Precisa de um gerenciador de scripts? Instale Tampermonkey",
+      ru: "Нужен менеджер скриптов? Установите Tampermonkey",
+      ur: "اسکرپٹ مینیجر چاہیے؟ Tampermonkey حاصل کریں",
+      id: "Perlu pengelola skrip? Instal Tampermonkey",
+      de: "Noch kein Userscript-Manager? Tampermonkey installieren",
+      ja: "スクリプト管理機能が必要なら Tampermonkey を入手",
+      sw: "Unahitaji kidhibiti cha hati? Pata Tampermonkey",
+      mr: "स्क्रिप्ट मॅनेजर हवा? Tampermonkey मिळवा",
+      ko: "스크립트 관리자가 필요하면 Tampermonkey 설치",
+    }),
     reload: t({
       en: "Reload after installing",
       zh: "安装后刷新",
@@ -239,6 +257,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Primary link that opens the same installer to update an older Li userscript. An imperative verb.",
   installHelp:
     "One instruction below the missing or outdated status: enable a browser userscript manager, confirm installation from the script link, then reload this page. Does not install a browser extension automatically.",
+  managerHelp:
+    "Optional help link for users without a userscript manager. Opens Tampermonkey’s official browser-specific installation page. Keep Tampermonkey unchanged; users with another manager do not need to install a second one.",
   reload:
     "Button beside the installation link. Reload this page only after the user confirms installation in their userscript manager.",
   trySite:
