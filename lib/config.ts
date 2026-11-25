@@ -256,6 +256,54 @@ export const CONFIG = {
   },
   // The chat's last lines kept on the device for an instant first paint
   // (lib/chat-cache.ts; docs/cold-start.md, "The chat at once"). Read by the root layout.
+  // OAuth sign-in for the remote MCP server (docs/mcp-oauth.md, lib/mcp-oauth/*).
+  "mcp.oauthAccessMin": int({
+    default: 60,
+    min: 5,
+    max: 1440,
+    unit: "min",
+    group: "mcp",
+    audience: "server",
+    description:
+      "ChatGPT 等应用通过 OAuth 拿到的访问令牌多久失效（分钟）；到期后应用用续期令牌换新的，断开连接则立即失效。",
+  }),
+  "mcp.oauthRefreshDays": int({
+    default: 30,
+    min: 1,
+    max: 365,
+    unit: "days",
+    group: "mcp",
+    audience: "server",
+    description:
+      "OAuth 续期令牌多久不用就失效（天）；每次续期都会换新并重新计时。过期后要在应用里重新连接。",
+  }),
+  "mcp.oauthCodeSeconds": int({
+    default: 60,
+    min: 10,
+    max: 600,
+    unit: "s",
+    group: "mcp",
+    audience: "server",
+    description: "用户在同意页点「允许」后，应用必须在几秒内用授权码换令牌；授权码只能用一次。",
+  }),
+  "mcp.oauthRegisterPerHour": int({
+    default: 20,
+    min: 1,
+    max: 1000,
+    unit: "per hour",
+    group: "mcp",
+    audience: "server",
+    description: "同一 IP 每小时最多注册几个 OAuth 应用（动态注册不需要登录，用这个防刷）。",
+  }),
+  "mcp.oauthTokenPerMin": int({
+    default: 60,
+    min: 5,
+    max: 6000,
+    unit: "per min",
+    group: "mcp",
+    audience: "server",
+    description: "同一 IP 每分钟最多请求几次 OAuth 换令牌/续期/撤销。",
+  }),
   "chat.cacheLines": int({
     default: 40,
     min: 0,

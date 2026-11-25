@@ -23,6 +23,13 @@
  *   id is that hash (`id`); hub sockets and the audit log carry its first 16
  *   characters (`tag`). Neither is ever the token.
  *
+ * - **Apps connected by OAuth** (docs/mcp-oauth.md, lib/mcp-oauth/*): their
+ *   short-lived access tokens are rows here too, with `oauth_grant_id` set, so
+ *   this one check decides for them exactly as for a token made by hand. Such
+ *   a row is alive only while its grant exists and the flag `mcp.oauth` is on
+ *   (OAUTH_LIVE). They are not listed or revoked one by one: the account sees
+ *   and disconnects the app (its grant) instead.
+ *
  * Rows from before scopes (0056_api_token_scopes.sql): `scopes` NULL reads as
  * LEGACY_SCOPES (cards and settings, never chat), `expires_at` NULL as no
  * expiry, `user_id` NULL as "the account with this email".
@@ -231,6 +238,19 @@ const info = (r: Row, now: number): TokenInfo => ({
 
 /** The rows that are this account's: bound to its id, or (rows from before) its email. */
 const MINE = "(user_id = ?1 OR (user_id IS NULL AND email = ?2))";
+/** Tokens the account made itself, not an OAuth app's (those are managed by their grant). */
+const OWN = "oauth_grant_id IS NULL";
+
+/**
+ * SQL for "this row `t` (joined to its account `u`) is not a dead OAuth
+ * token": made by hand, or its grant still exists for the same account and the
+ * flag mcp.oauth is on. The flag is read from its row, live, so turning it off
+ * stops every OAuth token at once; no row reads as the registry default, off
+ * (unit/mcp-oauth.test.ts pins that default).
+ */
+export const OAUTH_LIVE = `(t.oauth_grant_id IS NULL OR (
+  EXISTS (SELECT 1 FROM mcp_oauth_grant g WHERE g.id = t.oauth_grant_id AND g.user_id = u.id)
+  AND EXISTS (SELECT 1 FROM feature_flags f WHERE f.key = 'mcp.oauth' AND f.enabled = 1)))`;
 
 /** Mint a token for `owner`. The secret is returned once and never stored. */
 export async function createToken(
@@ -262,7 +282,7 @@ export async function createToken(
 /** This account's tokens, newest first. */
 export async function listTokens(db: D1Like, owner: TokenOwner, now = Date.now()) {
   const { results } = await db
-    .prepare(`SELECT * FROM api_tokens WHERE ${MINE} ORDER BY created_at DESC`)
+    .prepare(`SELECT * FROM api_tokens WHERE ${MINE} AND ${OWN} ORDER BY created_at DESC`)
     .bind(owner.userId, owner.email)
     .all<Row>();
   return results.map((r) => info(r, now));
@@ -276,7 +296,7 @@ export async function revokeToken(
 ): Promise<TokenInfo | null> {
   if (typeof id !== "string" || !/^[0-9a-f]{64}$/.test(id)) return null;
   const r = await db
-    .prepare(`DELETE FROM api_tokens WHERE token_hash = ?3 AND ${MINE} RETURNING *`)
+    .prepare(`DELETE FROM api_tokens WHERE token_hash = ?3 AND ${MINE} AND ${OWN} RETURNING *`)
     .bind(owner.userId, owner.email, id)
     .first<Row>();
   return r ? info(r, Date.now()) : null;
@@ -284,6 +304,8 @@ export async function revokeToken(
 
 /** Every token of the account (a sign-out everywhere, the account deleted). Their ids. */
 export async function revokeAllTokens(db: D1Like, owner: TokenOwner): Promise<string[]> {
+  // Connected OAuth apps end too (docs/mcp-oauth.md); their tokens go below.
+  await db.prepare("DELETE FROM mcp_oauth_grant WHERE user_id = ?").bind(owner.userId).run();
   const { results } = await db
     .prepare(`DELETE FROM api_tokens WHERE ${MINE} RETURNING token_hash`)
     .bind(owner.userId, owner.email)
@@ -307,7 +329,7 @@ export async function describeToken(
     .prepare(
       `SELECT t.name, t.scopes, t.expires_at FROM api_tokens t JOIN user u ON u.email = t.email
          AND (t.user_id IS NULL OR u.id = t.user_id)
-       WHERE t.token_hash = ?`,
+       WHERE t.token_hash = ? AND ${OAUTH_LIVE}`,
     )
     .bind(id)
     .first<Pick<Row, "name" | "scopes" | "expires_at">>();
@@ -365,7 +387,7 @@ export async function checkToken(
               u.id AS uid, u.email AS uemail, u.name AS uname, u.image AS uimage
        FROM api_tokens t JOIN user u ON u.email = t.email
          AND (t.user_id IS NULL OR u.id = t.user_id)
-       WHERE t.token_hash = ?`,
+       WHERE t.token_hash = ? AND ${OAUTH_LIVE}`,
     )
     .bind(id)
     .first<

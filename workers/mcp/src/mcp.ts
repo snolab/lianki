@@ -16,7 +16,9 @@
  * (/api/version/*), to lianki-push (PUSH), which
  * check it exactly as for any other API request — permissions, expiry,
  * account, rate limits. No header, or the server refusing the token (401),
- * answers HTTP 401 with `WWW-Authenticate: Bearer`. This Worker holds no
+ * answers HTTP 401 with `WWW-Authenticate: Bearer` (with `resource_metadata`
+ * while OAuth sign-in is on, so ChatGPT and Claude.ai can sign in; an OAuth
+ * access token is an lk_ token too, docs/mcp-oauth.md). This Worker holds no
  * secret and no data, and never logs a token or a tool's arguments.
  *
  * Tools: the table of `lianki mcp` (packages/lianki-cli/mcp-tools.mjs) with
@@ -66,6 +68,39 @@ type Rpc = { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unknown
 
 const NO_STORE = { "cache-control": "no-store" };
 const AUTH_HEADERS = { ...NO_STORE, "www-authenticate": 'Bearer realm="lianki"' };
+
+/**
+ * OAuth sign-in (docs/mcp-oauth.md): where this server's protected resource
+ * metadata is (RFC 9728). The main Worker answers it only while the flag
+ * mcp.oauth is on; this Worker has no flags, so it asks, at most every
+ * OAUTH_PROBE_MS per isolate, and only on a 401. Off (or unreachable): the
+ * challenge stays the plain one, as before OAuth existed.
+ */
+export const RESOURCE_METADATA_URL = `${SITE}/.well-known/oauth-protected-resource${MCP_PATH}`;
+export const OAUTH_PROBE_MS = 30_000;
+let oauthProbe: { at: number; on: Promise<boolean> } | null = null;
+
+/** Tests: forget the cached probe. */
+export function resetOauthProbe(): void {
+  oauthProbe = null;
+}
+
+function oauthOn(env: Env, now = Date.now()): Promise<boolean> {
+  if (oauthProbe && now - oauthProbe.at < OAUTH_PROBE_MS) return oauthProbe.on;
+  const on = env.MAIN.fetch(new Request(RESOURCE_METADATA_URL))
+    .then((r) => r.status === 200)
+    .catch(() => false);
+  oauthProbe = { at: now, on };
+  return on;
+}
+
+async function authHeaders(env: Env): Promise<Record<string, string>> {
+  if (!(await oauthOn(env))) return AUTH_HEADERS;
+  return {
+    ...NO_STORE,
+    "www-authenticate": `Bearer realm="lianki", resource_metadata="${RESOURCE_METADATA_URL}"`,
+  };
+}
 
 class Unauthorized extends Error {}
 
@@ -276,7 +311,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     return plain(
       rpcError(null, -32001, "Authorization: Bearer <your Lianki API token> is required"),
       401,
-      AUTH_HEADERS,
+      await authHeaders(env),
     );
   const token = bearer[1];
 
@@ -313,7 +348,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
       return plain(
         rpcError(id, -32001, "Lianki refused the token (unknown, expired or revoked)"),
         401,
-        AUTH_HEADERS,
+        await authHeaders(env),
       );
     // Never the token or the arguments: only what failed.
     const err = toolError(

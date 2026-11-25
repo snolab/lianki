@@ -11,6 +11,7 @@ import {
   type Expiry,
 } from "@/app/components/TokenPickers";
 import { RevokeConfirm } from "./RevokeConfirm";
+import ConnectedApps from "./ConnectedApps";
 import { AgentGuide, CopyGuideButton, useAgentGuide, useAgentGuidePointer } from "./AgentGuide";
 import { agentGuideWithToken } from "@/lib/agent-guide";
 import { INVITE_PREFILL, invitePrefill } from "@lianki/debug-chat/presence";
@@ -403,6 +404,7 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
           {busy ? s("creating") : s("create")}
         </button>
       </form>
+      <ConnectedApps />
     </section>
   );
 }
