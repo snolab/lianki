@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.36
+// @version     2.24.37
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -3491,6 +3491,7 @@ Sasisha kadi kwa anwani mpya?`,
       "Shown in the pending push-to-talk speech bubble when a held recording reaches the configured memory/duration limit. Recording stops with an explicit failure; already recognized text remains available and is not silently sent as a complete recording.",
     voiceDetails:
       "Accessible label and heading of the small voice-information icon and its tap-open popover beside a spoken chat message. Shows recorded recognition, voiceprint and polishing metadata; not a playback action.",
+    lineReplay: `In ${CHAT}, the message details popover (opened by right-click or long press) on one of the user's OWN spoken messages: the name on a small play chip that plays back the user's own microphone recording of that message, exactly as it was recorded, before any recognition or polishing. Shown only when such a recording is kept in the user's account. A short imperative phrase, like a media app's 'Play recording'; 'original' means the untouched recorded sound, not the first version of the text.`,
     voiceDetailRoute:
       "Field label in a spoken message’s voice details: the recorded recognition route, local speech server or cloud. Does not identify a physical device or hostname.",
     voiceDetailRecognitionModel:
@@ -6734,6 +6735,8 @@ ${state.errorDetails}`);
       return overrides[location.hostname] || (lang && lang.length <= 32 ? lang : undefined);
     }
     let watchSyncUnavailable = false;
+    let watchSyncSignedOut = false;
+    const isWatchAuthRefusal = (err) => err?.status === 401 || err?.status === 403;
     let watchAcc = null;
     let watchSavedAt = 0;
     const watchSnapshot = (acc) =>
@@ -6767,7 +6770,7 @@ ${state.errorDetails}`);
       }
     }
     async function flushWatch(acc = watchAcc) {
-      if (watchSyncUnavailable || !acc?.dirty) return;
+      if (watchSyncUnavailable || watchSyncSignedOut || !acc?.dirty) return;
       persistWatch(acc, true);
       if (acc.wall < WATCH_MIN_SYNC_S) return;
       const stats = watchSnapshot(acc);
@@ -6790,11 +6793,12 @@ ${state.errorDetails}`);
           );
           return;
         }
+        if (isWatchAuthRefusal(err)) watchSyncSignedOut = true;
         logFail("watch", `watch-time sync for ${acc.url}`, err);
       }
     }
     async function flushPendingWatch(max = 3) {
-      if (watchSyncUnavailable) return;
+      if (watchSyncUnavailable || watchSyncSignedOut) return;
       for (const url of watchDirtyList()
         .filter((u) => u !== watchAcc?.url)
         .slice(0, max)) {
@@ -6811,7 +6815,8 @@ ${state.errorDetails}`);
           });
           saveLocalWatch(url, stats, false);
           watchDirtyDrop(url);
-        } catch {
+        } catch (err) {
+          if (isWatchAuthRefusal(err)) watchSyncSignedOut = true;
           return;
         }
       }
