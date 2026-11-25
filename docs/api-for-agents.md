@@ -278,7 +278,7 @@ collapses the entire credential namespace to `/mcp/:token`.
 
 [Cloudflare invocation logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/#invocation-logs)
 and tail events include raw request URLs, so this
-Worker disables invocation logs, tracing and its tail consumer. Do not enable
+Worker disables persisted logs (including invocation logs), tracing and its tail consumer. Do not enable
 live tail or add request-URL logging on this Worker while using token addresses.
 Client history and any external HTTP logging remain outside application
 redaction; treat the whole address as a password. Prefer the Bearer endpoint

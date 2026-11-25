@@ -421,9 +421,15 @@ describe("token addresses", () => {
     const config = Bun.JSONC.parse(
       await Bun.file(new URL("../workers/mcp/wrangler.jsonc", import.meta.url)).text(),
     ) as {
-      observability: { logs: { invocation_logs: boolean }; traces: { enabled: boolean } };
+      observability: {
+        enabled: boolean;
+        logs: { enabled: boolean; invocation_logs: boolean };
+        traces: { enabled: boolean };
+      };
       tail_consumers: unknown[];
     };
+    expect(config.observability.enabled).toBe(false);
+    expect(config.observability.logs.enabled).toBe(false);
     expect(config.observability.logs.invocation_logs).toBe(false);
     expect(config.observability.traces.enabled).toBe(false);
     expect(config.tail_consumers).toEqual([]);

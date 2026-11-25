@@ -17,11 +17,11 @@
     { "binding": "PUSH", "service": "lianki-push" },
   ],
   // Invocation events and tail consumers include the raw request URL. Do not
-  // persist or forward credential-bearing paths; explicit logs stay available.
+  // persist or forward credential-bearing paths, including attached log metadata.
   "tail_consumers": [],
   "observability": {
-    "enabled": true,
-    "logs": { "enabled": true, "invocation_logs": false },
+    "enabled": false,
+    "logs": { "enabled": false, "invocation_logs": false },
     "traces": { "enabled": false },
   },
 }
