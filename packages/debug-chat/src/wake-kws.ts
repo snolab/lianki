@@ -11,6 +11,7 @@
  * utterance (a VAD segment) is checked at a time, after it ends, so the
  * spotter costs nothing while the room is quiet.
  */
+import { downloadModelAssets, modelDownloadRisk, ModelDownloadBlocked, type ModelAssetBytes } from "./model-download";
 import { type Detection, type KeywordEntry, LINKY, type SpotResult, afterKeyword } from "./wake";
 
 /** The KWS runtime: its Emscripten glue and wasm (npm @sherpaw/kws, published 2026-10-12). */
@@ -26,6 +27,8 @@ export const KWS_SHA256: Record<string, string> = {
     "b75814d1f900cc99efc7de51ae561ffb2517456307488ec4387689c953b9b983",
   [`${KWS_MODEL}preload.data`]: "4ca3ae0d147df1576fac87a4837f5a8959f4f87600a8306c57cc67eb8b40494d",
 };
+/** Complete set, including runtime and metadata; a model-only cache hit is insufficient. */
+export const KWS_ASSETS = [...Object.entries(KWS_SHA256).map(([url, sha256]) => ({ url, sha256 })), { url: `${KWS_MODEL}preload.js.metadata` }];
 /** The Cache API cache; bump the version to drop an old download. */
 export const WAKE_CACHE = "lk-wake-v1";
 /** One utterance's check; past this the utterance is dropped as "no wake word". */
@@ -42,8 +45,8 @@ export const RATE = 16_000;
 export const TAIL_PAD_S = 1;
 
 /**
- * The Worker, as plain JS (a Blob URL, so it is same-origin). It fetches the
- * pinned files through the Cache API, verifies each digest, imports the glue
+ * The Worker, as plain JS (a Blob URL, so it is same-origin). The page prepares
+ * files through the shared network guard and transfers them; it verifies each digest, imports the glue
  * from a Blob (with its `import.meta.url` pointed back at jsDelivr, so it
  * finds its wasm there), writes the model into the WASM file system and
  * answers {type: "spot", id, samples} with {type: "spotted", id, hits, ms}.
@@ -59,28 +62,20 @@ export const workerSource = (o: {
   cache: string;
 }) => `
 const O = ${JSON.stringify(o)};
-const realFetch = self.fetch.bind(self);
+let prepared = new Map();
 const hex = (b) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
 async function get(url) {
-  let c = null;
-  try { c = await caches.open(O.cache); } catch {}
-  let res = c ? await c.match(url).catch(() => null) : null;
-  let fresh = false;
-  if (!res) { res = await realFetch(url, { mode: "cors", credentials: "omit" }); fresh = true; }
-  if (!res.ok) throw new Error("HTTP " + res.status + " for " + url);
-  const buf = await res.arrayBuffer();
+  const asset = prepared.get(url);
+  const buf = asset?.bytes;
+  if (!buf) throw new Error("model asset was not prepared");
   const want = O.sha[url];
-  if (want) {
-    const got = hex(await crypto.subtle.digest("SHA-256", buf));
-    if (got !== want) { if (c) await c.delete(url).catch(() => {}); throw new Error("digest mismatch for " + url); }
-  }
-  if (fresh && c) await c.put(url, new Response(buf, { headers: { "content-type": res.headers.get("content-type") || "application/octet-stream" } })).catch(() => {});
-  return { buf, fresh };
+  if (want && hex(await crypto.subtle.digest("SHA-256", buf)) !== want) throw new Error("digest mismatch");
+  return { buf, fresh: asset.downloaded === true };
 }
 const wasmUrl = O.base + "prebuilt/kws.wasm";
 self.fetch = async (input, init) => {
-  const url = typeof input === "string" ? input : input.url;
-  if (url !== wasmUrl) return realFetch(input, init);
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  if (url !== wasmUrl) throw new Error("unprepared model request");
   const { buf } = await get(url);
   return new Response(buf, { headers: { "content-type": "application/wasm" } });
 };
@@ -120,6 +115,7 @@ self.onmessage = async (e) => {
     return;
   }
   if (m.type === "init") {
+    prepared = new Map((m.assets || []).map(a => [a.url, a]));
     try { postMessage({ type: "ready", ...(await init(m.keywords)) }); }
     catch (err) { postMessage({ type: "failed", error: String((err && err.message) || err) }); }
     return;
@@ -156,21 +152,21 @@ export type KwsState = "idle" | "loading" | "ready" | "failed" | "needs-wifi";
 
 /**
  * May the first download start now? Yes once the model is in the Cache API;
- * else no on a cellular or Save-Data connection. Browsers without
- * navigator.connection (Safari) are not asked: yes.
+ * else only an explicitly unmetered connection. Unknown networks need consent
+ * at the actual downloadModelAssets boundary (including Safari).
  */
 export async function mayDownload(
   nav: { connection?: { type?: string; saveData?: boolean } } | undefined = globalThis.navigator as never,
   cached: () => Promise<boolean> = async () => {
     try {
-      return !!(await (await caches.open(WAKE_CACHE)).match(`${KWS_MODEL}preload.data`));
+      const c = await caches.open(WAKE_CACHE);
+      return (await Promise.all(KWS_ASSETS.map(a => c.match(a.url)))).every(Boolean);
     } catch {
       return false;
     }
   },
 ): Promise<boolean> {
-  const c = nav?.connection;
-  if (!c || (c.type !== "cellular" && !c.saveData)) return true;
+  if (modelDownloadRisk({ connection: nav?.connection }) === "unmetered") return true;
   return cached();
 }
 /** The slice of a Worker the spotter uses (a fake in the tests). */
@@ -208,6 +204,10 @@ export function createKws(o: {
   loadTimeoutMs?: number;
   /** mayDownload, replaced in the tests. */
   allowed?: () => Promise<boolean>;
+  /** Custom Workers prepare their own bytes; the real Worker never fetches directly. */
+  prepare?: (signal: AbortSignal) => Promise<ModelAssetBytes[]>;
+  confirmDownload?: Parameters<typeof downloadModelAssets>[0]["confirm"];
+  estimatedMb?: number;
   /**
    * The keyword list and its changes (wake-names.ts wakeNames(): LINKY and
    * everyone's names). The Worker starts with the list as it is then; each
@@ -269,13 +269,17 @@ export function createKws(o: {
   const unsubscribe = o.keywords?.subscribe(push);
   /** The Worker's start itself, with no time limit; `ready` is it raced against the load timeout. */
   let boot: Promise<void> | null = null;
+  let generation = 0;
+  let downloadAbort: AbortController | null = null;
   const load = () => {
     if (ready && (state === "ready" || state === "loading")) return ready;
     set("loading");
     const t0 = Date.now();
-    const start = () =>
+    const version = generation;
+    const start = (assets: ModelAssetBytes[]) =>
       new Promise<void>((resolve, reject) => {
       try {
+        if (version !== generation) return reject(new ModelDownloadBlocked());
         w = make();
       } catch (e) {
         set("failed");
@@ -320,16 +324,25 @@ export function createKws(o: {
       };
       sent = current();
       note(sent);
-      w.postMessage({ type: "init", keywords: sent.entries });
+      w.postMessage({ type: "init", keywords: sent.entries, assets }, assets.map(a => a.bytes));
     });
     if (!boot) {
-      const b = (o.allowed ?? mayDownload)()
-        .catch(() => true)
-        .then((ok) => {
-          if (ok) return start();
-          set("needs-wifi");
-          o.log?.({ ev: "wake-kws", ok: false, error: "needs-wifi" });
-          throw new Error("needs-wifi");
+      downloadAbort = new AbortController();
+      const signal = downloadAbort.signal;
+      const b = (o.allowed ? o.allowed() : Promise.resolve(true))
+        .then(async (ok) => {
+          if (!ok) throw new ModelDownloadBlocked();
+          const assets = o.prepare
+            ? await o.prepare(signal)
+            : o.worker ? [] : await downloadModelAssets({ assets: KWS_ASSETS, cacheName: WAKE_CACHE, estimatedMb: o.estimatedMb ?? 0, confirm: o.confirmDownload, signal });
+          signal.throwIfAborted();
+          return start(assets);
+        }).catch((error) => {
+          if (version === generation) {
+            set(error instanceof ModelDownloadBlocked ? "needs-wifi" : "failed");
+            o.log?.({ ev: "wake-kws", ok: false, error: error instanceof ModelDownloadBlocked ? "needs-wifi" : "download-failed" });
+          }
+          throw error;
         });
       // A failed start is forgotten, so the next load() tries again from the top.
       b.catch(() => {
@@ -379,6 +392,8 @@ export function createKws(o: {
     state: () => state,
     dispose() {
       unsubscribe?.();
+      generation++;
+      downloadAbort?.abort(new ModelDownloadBlocked());
       sent = null;
       w?.terminate();
       w = null;

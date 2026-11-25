@@ -1,5 +1,8 @@
 "use client";
 
+import { confirmBrowserModelDownload } from "./model-download-consent";
+import { publicCfg } from "@/lib/config-client";
+
 import { chatExtra } from "./chat-ui-locales";
 import { type Adaptive, LIMIT, voiceAdapt } from "./adaptive";
 import { VOICE_CAPTURE_EVENT, voiceTune } from "./voice-tune";
@@ -622,7 +625,10 @@ function session(): MicSession {
     // Its keywords: "Linky" and everyone's names (wake-names.ts), swapped in place on each change.
     kws: wakeOff()
       ? undefined
-      : (onState) => createKws({ log: (ev) => v.log(ev), onState, keywords: wakeNames() }),
+      : (onState) => createKws({ log: (ev) => v.log(ev), onState, keywords: wakeNames(),
+          estimatedMb: publicCfg("voice.kwsDownloadMb"),
+          confirmDownload: confirmBrowserModelDownload,
+        }),
     wakeAllowed: () => !wakeOff(),
     upload: async (wav, { seq, durationMs, partial, local, onEcho, onSignals }, cfg) => {
       const at = Date.now();
@@ -976,7 +982,7 @@ export function DebugMic({
       : view.state !== "off" && view.kws === "failed"
         ? ws.failed
         : view.state !== "off" && view.kws === "needs-wifi"
-          ? ws.wifi
+          ? chatExtra().modelDownloadWaiting
           : view.state !== "off" && stopped
             ? localSttStrings().filtered
             : null;

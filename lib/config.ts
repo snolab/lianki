@@ -1546,6 +1546,16 @@ export const CONFIG = {
     audience: "public",
     description: "触屏或触笔按住聊天拖柄多久打开菜单。鼠标拖动立即开始；双击/双点切换全屏。",
   }),
+  "voice.kwsDownloadMb": int({
+    default: 25,
+    min: 1,
+    max: 1000,
+    unit: "MB",
+    group: "voice",
+    audience: "public",
+    description:
+      "唤醒词模型和运行时首次下载总量的近似值，用于计量或未知网络下载确认；模型版本变化时更新。",
+  }),
   "chat.telemetrySamplePct": int({
     default: 10,
     min: 0,
