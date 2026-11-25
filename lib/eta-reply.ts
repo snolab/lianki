@@ -48,7 +48,10 @@ export function laneShown(lane: string, rows: unknown = []): string {
       const d = parseLaneDef(r);
       if (d?.id === lane && d.name) return d.name;
     }
-  const base = (LANES as Readonly<Record<string, { name: string } | undefined>>)[lane];
+  // Own keys only: "constructor" or "toString" is an id, not a built-in lane.
+  const base = Object.hasOwn(LANES, lane)
+    ? (LANES as Readonly<Record<string, { name: string }>>)[lane]
+    : undefined;
   return base?.name || lane;
 }
 

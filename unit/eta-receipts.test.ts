@@ -399,6 +399,9 @@ describe("blocked (someone can act now) vs paused (an outside event)", () => {
     expect(whoShown("otoji-main", rows)).toBe("otoji-main");
     expect(whoShown("main")).toBe("main");
     expect(whoShown("coco@agy", rows)).toBe("coco (咪宝)");
+    // Prototype keys are plain ids, never Object's properties.
+    for (const id of ["constructor", "toString", "__proto__", "hasOwnProperty"])
+      expect(whoShown(id)).toBe(id);
     // Done after a fresh reminder: "已处理".
     await h.write({ id: "/w/d", agent: "agy", eta: "5m" });
     h.tick(5 * MIN);
