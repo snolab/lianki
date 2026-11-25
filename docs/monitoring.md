@@ -34,6 +34,59 @@ monitor as tail consumer: its requests land under `index1 = 'voice'` (same
 blobs and doubles), timings only — a clip it passes on is counted, and
 alerted on, again as the main Worker's request.
 
+## MCP latency without credential-bearing invocation tails
+
+`lianki-mcp` intentionally keeps raw tails, invocation logs and tracing off:
+its capability URL may carry a credential in the path. A tail consumer sees
+that raw URL before any redaction in application code. Do not restore a raw
+MCP tail consumer merely to measure latency.
+
+Instead, its `MONITOR` service binding calls the monitor's private
+`McpMetrics.record` entrypoint once per completed MCP request. The schema
+allows only numeric aggregates and fixed enums; it rejects unknown fields.
+No URL, header, token, argument, line text, cursor, timestamp or user identity
+crosses this binding. There is no public HTTP ingestion route or new secret.
+Reporting runs in `waitUntil` and failures do not change the MCP response.
+
+Analytics Engine uses these two record shapes:
+
+- `index1 = 'mcp'`: blobs kind, canonical `/mcp`, HTTP status, outcome,
+  HTTP method, `application-wall`; doubles application wall ms and **-1**
+  (CPU unavailable). This is application timing, not Cloudflare invocation
+  CPU or billable duration.
+- `index1 = 'mcp-wait'`: blobs kind, outcome (`message`, `history`, `answered`,
+  `timeout`, `auth`, `rate`, `network`, `error`), empty/data, socket opened,
+  cursor/next; doubles total waited ms, live post-to-return ms (**-1** when
+  unavailable), line count, answer count and unexpected-disconnect count.
+
+`lianki_chat_wait` also returns `waitedMs` and `empty`; existing returned
+lines retain their own `at`. Normal idle waits up to 55 seconds are not slow
+delivery. Historical catchup is tagged separately and excluded from delivery
+alerts. Each wait opens a new socket, so cursor resumes and socket opens are
+not described as reconnects; `network` counts unexpected disconnects instead.
+
+The monitor logs one allowlisted `mcp.metrics` aggregate per request and
+keeps at most 256 live delivery samples for ten minutes in isolate memory.
+Once at least `mcp.waitMinSamples` (default 20) exist, p95 above
+`mcp.waitP95AlertMs` (default 5,000 ms) alerts through the existing Slack path,
+at most once per 30 minutes through KV. Both keys are live config read via
+`DebugSessions.config` over the existing private binding, cached ten minutes
+and falling back to code defaults. There is no cron, polling or D1 write per
+wait. The alert window is isolate-local; AE is the source for account-wide
+percentiles and hourly counts.
+
+```sql
+SELECT quantileWeighted(0.50)(double2, _sample_interval) AS p50_ms,
+       quantileWeighted(0.95)(double2, _sample_interval) AS p95_ms
+FROM lianki_metrics
+WHERE index1 = 'mcp-wait' AND blob2 = 'message' AND double2 >= 0
+  AND timestamp > NOW() - INTERVAL '1' HOUR
+```
+
+The feature is verified only after both the MCP and monitor revisions are
+served and a real wait produces its aggregate on the monitor. Unit fixtures
+alone do not prove that the deployed service binding delivers events.
+
 ## New-version push (`lianki-push`)
 
 `workers/push`: one Durable Object holds every open page's WebSocket

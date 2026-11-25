@@ -15,6 +15,7 @@
   "services": [
     { "binding": "MAIN", "service": "lianki" },
     { "binding": "PUSH", "service": "lianki-push" },
+    { "binding": "MONITOR", "service": "lianki-monitor", "entrypoint": "McpMetrics" },
   ],
   // Invocation events and tail consumers include the raw request URL. Do not
   // persist or forward credential-bearing paths, including attached log metadata.

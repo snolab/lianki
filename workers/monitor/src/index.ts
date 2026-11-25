@@ -13,6 +13,8 @@
  * Types are declared here rather than taken from @cloudflare/workers-types:
  * the repo's root tsconfig type-checks this folder with the DOM lib.
  */
+import { post } from "./slack";
+export { McpMetrics } from "./mcp-entrypoint";
 import {
   ERROR_BURST,
   REAL_SLOW_MS,
@@ -53,29 +55,6 @@ type Trace = {
   } | null;
   exceptions?: { name: string; message: string }[];
 };
-
-async function post(env: Env, text: string) {
-  console.log(JSON.stringify({ msg: "monitor.alert", text }));
-  try {
-    if (env.SLACK_WEBHOOK_URL)
-      await fetch(env.SLACK_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-    else if (env.SLACK_BOT_TOKEN)
-      await fetch("https://slack.com/api/chat.postMessage", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json; charset=utf-8",
-          authorization: `Bearer ${env.SLACK_BOT_TOKEN}`,
-        },
-        body: JSON.stringify({ channel: env.SLACK_CHANNEL, text }),
-      });
-  } catch (err) {
-    console.log(JSON.stringify({ msg: "monitor.slack.failed", err: String(err) }));
-  }
-}
 
 /** One kind of burst: recent event times and lines, per isolate. */
 type Burst = {

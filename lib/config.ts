@@ -1,3 +1,4 @@
+import { MCP_MONITOR_DEFAULTS } from "./mcp-metrics";
 import { HUB_RPC_LIMITS } from "./hub-rpc-config";
 import {
   CAP_WINDOW_HOURS,
@@ -2240,6 +2241,25 @@ export const CONFIG = {
     audience: "server",
     description:
       "药丸 Li 聊天：在别的网站上点「分享选中文字」时，最多带上多少个字（超出部分截掉）。分享的内容先放进输入框，你按发送才会发出。",
+  }),
+  "mcp.waitP95AlertMs": int({
+    default: MCP_MONITOR_DEFAULTS.waitP95AlertMs,
+    min: 100,
+    max: 60000,
+    unit: "ms",
+    group: "monitor",
+    audience: "server",
+    description:
+      "MCP 实时消息从发送到 wait 返回的延迟 p95 超过多少毫秒时告警；不含正常空等和历史补读。",
+  }),
+  "mcp.waitMinSamples": int({
+    default: MCP_MONITOR_DEFAULTS.waitMinSamples,
+    min: 5,
+    max: 256,
+    unit: "calls",
+    group: "monitor",
+    audience: "server",
+    description: "最近十分钟至少多少次 MCP 实时消息投递样本后才判断 p95 延迟告警。",
   }),
 } as const satisfies Record<string, ConfigDef>;
 

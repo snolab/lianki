@@ -270,7 +270,7 @@ export const TOOLS = [
     description:
       "Wait for the next message in the user's chat and return as soon as there is one, so you can take part in the conversation as it happens. " +
       "Pass `after` (a message id, e.g. the last one you saw, or the `after` this tool returned) to get every message newer than it, at once if some already are; " +
-      `without it, waits for the next one. Returns {lines, answered, after} — lines oldest first, answered = answers to your own question cards — or empty lists at the timeout (default ${WAIT_DEFAULT_SEC} s, at most ${WAIT_MAX_SEC} s); then call it again with the returned \`after\`.`,
+      `without it, waits for the next one. Returns {lines, answered, after, waitedMs, empty} — lines oldest first, answered = answers to your own question cards — or empty lists at the timeout (default ${WAIT_DEFAULT_SEC} s, at most ${WAIT_MAX_SEC} s); then call it again with the returned \`after\`.`,
     input: {
       after: z
         .string()
@@ -486,32 +486,53 @@ export function waitChat(io, { after, timeoutSec } = {}) {
     return Promise.reject(
       new CliError("unavailable", EXIT.server, "waiting for the chat is not available here"),
     );
+  const started = Date.now();
+  let socketOpened = false;
+  const observe = (err, value, outcome) => {
+    const lines = value?.lines ?? [];
+    const answers = value?.answered ?? [];
+    const waitedMs = Math.max(0, Math.min(3600000, Date.now() - started));
+    const posted = outcome === "message"
+      ? lines.map((line) => line?.at).filter((at) => typeof at === "number" && Number.isFinite(at) && at > 0 && at <= Date.now())
+      : [];
+    const metric = {
+      waitedMs, empty: lines.length === 0 && answers.length === 0,
+      lines: lines.length, answered: answers.length,
+      outcome: err ? (err.code === "auth_refused" ? "auth" : err.code === "rate_limited" ? "rate" : err.code === "network" ? "network" : "error") : outcome,
+      deliveryMs: posted.length ? Math.min(86400000, Math.max(0, Date.now() - Math.min(...posted))) : null,
+      socketOpened, resumed: Boolean(after),
+    };
+    try { io.observeWait?.(metric); } catch { /* Monitoring cannot break a chat call. */ }
+    return { waitedMs, empty: metric.empty };
+  };
   const ms = Math.min(WAIT_MAX_SEC, Math.max(1, timeoutSec ?? WAIT_DEFAULT_SEC)) * 1000;
   return io.openChat().then(
-    (ws) =>
-      new Promise((resolve, reject) => {
+    (ws) => {
+      socketOpened = true;
+      return new Promise((resolve, reject) => {
         let done = false;
         let cursor = after ?? null;
         let history = null;
         const early = [];
         const answered = [];
-        const finish = (err, value) => {
+        const finish = (err, value, outcome = "timeout") => {
           if (done) return;
           done = true;
           clearTimeout(timer);
           try {
             ws.close(1000, "done");
           } catch {}
+          const timing = observe(err, value, outcome);
           if (err) reject(err);
-          else resolve(value);
+          else resolve({ ...value, ...timing });
         };
-        const deliver = (lines, extra = {}) =>
+        const deliver = (lines, extra = {}, outcome = "timeout") =>
           finish(null, {
             lines,
             answered: answered.slice(),
             after: lines.length ? (lines[lines.length - 1].id ?? cursor) : cursor,
             ...extra,
-          });
+          }, outcome);
         const timer = setTimeout(() => deliver([]), ms);
         const refused = (why) =>
           new CliError(
@@ -551,7 +572,7 @@ export function waitChat(io, { after, timeoutSec } = {}) {
               at: m.answer?.at ?? null,
             });
             // An answer on its own counts when nothing newer is pending behind the history.
-            if (!after || history) return deliver([]);
+            if (!after || history) return deliver([], {}, "answered");
             return;
           }
           if (m.type === "history") {
@@ -559,20 +580,20 @@ export function waitChat(io, { after, timeoutSec } = {}) {
             history = list;
             if (!after) {
               cursor = list.length ? (list[list.length - 1].id ?? null) : null;
-              return early.length || answered.length ? deliver(early) : undefined;
+              return early.length || answered.length ? deliver(early, {}, early.length ? "message" : "answered") : undefined;
             }
             const i = list.findIndex((x) => x?.id === after);
             const newer = i < 0 ? list : list.slice(i + 1);
             const ids = new Set(newer.map((x) => x?.id));
             const all = [...newer, ...early.filter((x) => !ids.has(x?.id))];
             if (all.length || answered.length)
-              return deliver(all, i < 0 && list.length ? { gap: true } : {});
+              return deliver(all, i < 0 && list.length ? { gap: true } : {}, newer.length ? "history" : early.length ? "message" : "answered");
             return;
           }
           if (m.type === "chat" && m.message) {
             // Before the history: kept, and merged with it when it comes.
             if (!history) return void early.push(m.message);
-            return deliver([m.message]);
+            return deliver([m.message], {}, "message");
           }
         });
         ws.addEventListener("close", (ev) =>
@@ -597,7 +618,9 @@ export function waitChat(io, { after, timeoutSec } = {}) {
             new CliError("network", EXIT.server, `cannot reach lianki.com: ${e?.message ?? e}`),
           );
         }
-      }),
+      });
+    },
+    (err) => { observe(err, null, "error"); throw err; },
   );
 }
 

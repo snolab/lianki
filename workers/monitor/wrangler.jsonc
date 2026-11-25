@@ -10,6 +10,9 @@
   "name": "lianki-monitor",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
+  "services": [
+    { "binding": "SESSIONS", "service": "lianki", "entrypoint": "DebugSessions" },
+  ],
   // No schedule: an empty list also removes any cron left from earlier deploys.
   "triggers": { "crons": [] },
   "analytics_engine_datasets": [{ "binding": "METRICS", "dataset": "lianki_metrics" }],

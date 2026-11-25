@@ -54,6 +54,60 @@ const io = (ws: FakeHubSocket) => ({ token: TOKEN, openChat: async () => ws });
 const later = (fn: () => void, ms = 5) => setTimeout(fn, ms);
 
 describe("waitChat", () => {
+  test("observer receives counts and live delivery latency, never content or token", async () => {
+    const ws = new FakeHubSocket();
+    const metrics: unknown[] = [];
+    const p = waitChat(
+      { ...io(ws), observeWait: (metric: unknown) => metrics.push(metric) },
+      { timeoutSec: 5 },
+    );
+    later(() =>
+      ws.emit({
+        type: "chat",
+        message: { ...line("private-id", "private message"), at: Date.now() - 200 },
+      }),
+    );
+    const result = await p;
+    expect(result.empty).toBe(false);
+    expect(result.waitedMs).toBeGreaterThanOrEqual(0);
+    expect(metrics).toHaveLength(1);
+    expect(metrics[0]).toMatchObject({
+      outcome: "message",
+      lines: 1,
+      answered: 0,
+      empty: false,
+      socketOpened: true,
+      resumed: false,
+    });
+    expect((metrics[0] as { deliveryMs: number }).deliveryMs).toBeGreaterThanOrEqual(200);
+    for (const privateValue of [TOKEN, "private-id", "private message"])
+      expect(JSON.stringify(metrics)).not.toContain(privateValue);
+  });
+  test("history catchup is distinguished from live latency and observer failure does not break replies", async () => {
+    const ws = new FakeHubSocket([line("a"), line("b")]);
+    const metrics: unknown[] = [];
+    const result = await waitChat(
+      {
+        ...io(ws),
+        observeWait: (metric: unknown) => {
+          metrics.push(metric);
+          throw new Error("observer unavailable");
+        },
+      },
+      { after: "a" },
+    );
+    expect(result.lines.map((item: Line) => item.id)).toEqual(["b"]);
+    expect(metrics[0]).toMatchObject({ outcome: "history", deliveryMs: null, resumed: true });
+  });
+  test("unexpected socket close is a network event, not an empty timeout", async () => {
+    const metrics: unknown[] = [];
+    const ws = new FakeHubSocket([], (socket) => socket.hangUp(1011));
+    await expect(
+      waitChat({ ...io(ws), observeWait: (metric: unknown) => metrics.push(metric) }),
+    ).rejects.toMatchObject({ code: "network" });
+    expect(metrics[0]).toMatchObject({ outcome: "network", lines: 0, answered: 0 });
+  });
+
   test("no `after`: resolves on the next new line, and closes the socket", async () => {
     const ws = new FakeHubSocket([line("old")]);
     const p = waitChat(io(ws), { timeoutSec: 5 });
@@ -68,9 +122,16 @@ describe("waitChat", () => {
   test("times out empty, with the latest line as the cursor", async () => {
     const ws = new FakeHubSocket([line("a"), line("b")]);
     const t0 = Date.now();
-    const r = await waitChat(io(ws), { timeoutSec: 1 });
+    const observed: unknown[] = [];
+    const r = await waitChat(
+      { ...io(ws), observeWait: (metric: unknown) => observed.push(metric) },
+      { timeoutSec: 1 },
+    );
     expect(Date.now() - t0).toBeGreaterThanOrEqual(900);
-    expect(r).toEqual({ lines: [], answered: [], after: "b" });
+    expect(r).toMatchObject({ lines: [], answered: [], after: "b", empty: true });
+    expect(r.waitedMs).toBeGreaterThanOrEqual(900);
+    expect(observed).toHaveLength(1);
+    expect(observed[0]).toMatchObject({ outcome: "timeout", empty: true, deliveryMs: null });
     expect(ws.closed).not.toBeNull();
   });
 
