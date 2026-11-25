@@ -2189,6 +2189,24 @@ const learningPartnerContent = {
       mr: "दुसरा आवाज · उघडण्यासाठी टॅप करा",
       ko: "다른 목소리 · 눌러서 펼치기",
     }),
+    stateTreeName: t({
+      en: "State tree reminder",
+      zh: "状态树提醒",
+      hi: "स्टेट ट्री रिमाइंडर",
+      es: "Aviso del árbol de estado",
+      fr: "Rappel de l'arbre d'état",
+      ar: "تذكير شجرة الحالة",
+      bn: "স্টেট ট্রি অনুস্মারক",
+      pt: "Lembrete da árvore de estado",
+      ru: "Напоминание дерева задач",
+      ur: "اسٹیٹ ٹری یاددہانی",
+      id: "Pengingat pohon status",
+      de: "Statusbaum-Erinnerung",
+      ja: "状態ツリーの通知",
+      sw: "Kikumbusho cha mti wa hali",
+      mr: "स्टेट ट्री स्मरणपत्र",
+      ko: "상태 트리 알림",
+    }),
     vpOtherVoice: t({
       en: "Another voice",
       zh: "另一个声音",
@@ -4121,6 +4139,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: Lianki's speech server confirmed the line was spoken in his own voice. Short phrase, no full stop.",
   vpOtherVoiceFolded:
     "Small button text for a collapsed chat message spoken by another person in the room: shows it was another voice and tapping unfolds it into full text. Short phrase.",
+  stateTreeName:
+    "Sender name shown with the small tree avatar on automatic chat lines posted by the task tracker (the 'state tree': the list of the owner's in-flight tasks). These lines remind an AI helper that a task is late or blocked, e.g. '@coco (codex): … is blocked on you'. The name must make clear the line comes from the tracker, not from the helper it addresses. Short noun phrase, no full stop; a live setting may override it.",
   vpOtherVoice:
     "Tooltip and screen-reader name of the small coloured avatar on a voice-typed chat line that was spoken by someone other than the account's owner (a family member or guest near the mic; each such person gets their own stable colour and shape). It names that person without knowing who they are. Short noun phrase, no full stop: 'Another voice'.",
   vpVoiceCluster:

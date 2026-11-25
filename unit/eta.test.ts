@@ -109,7 +109,9 @@ function setup(
     get: () => ({
       fetch: async (req: Request) => {
         expect(new URL(req.url).pathname).toBe(ETA_PATH);
-        pings.push((await req.json()) as Record<string, unknown>);
+        const p = (await req.json()) as Record<string, unknown>;
+        // The agents' replies (lib/eta-reply.ts) are tested in eta-receipts.test.ts.
+        if (p.kind !== "reply") pings.push(p);
         return answer();
       },
     }),

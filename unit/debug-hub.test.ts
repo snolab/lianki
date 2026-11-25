@@ -4885,6 +4885,38 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
     // A nudge must name who.
     expect((await post(s, { ...ping, kind: "blocked" })).status).toBe(400);
   });
+
+  it("the state tree is the sender; a named agent is addressed; the agent's reply is quoted under its name", async () => {
+    const s = setup(on());
+    const owner = s.page();
+    await lane(s, owner);
+    const r = { ...ping, title: "R键重播: 中文" };
+    await post(s, {
+      ...r,
+      assignee: "agy",
+      kind: "blocked",
+      lane: "codex",
+      agent: "coco",
+      reason: "中文 TTS 修复",
+    });
+    const nudge = chats(owner).at(-1) as Record<string, any>;
+    // Its sender is the state tree (chat.stateTreeSender), never the lane it addresses.
+    expect(nudge.label).toBe("状态树提醒");
+    expect(nudge.agentId).toBe("eta");
+    expect(nudge.eta).toMatchObject({ kind: "blocked", lane: "codex", agent: "coco" });
+    expect(nudge.text).toStartWith("@coco (codex): R键重播: 中文 (/words/swipe) is blocked on you");
+    expect(nudge.text).toContain("agy cannot go on until you act; then tell agy.");
+    // The reply, from the ack or the report: the agent's own name, quoting the task and the reminder.
+    await post(s, { ...r, assignee: "coco@codex", kind: "reply", state: "doing", min: 20 });
+    const reply = chats(owner).at(-1) as Record<string, any>;
+    expect(reply.label).toBe("coco (codex)");
+    expect(reply.agentId).toBe("coco@codex");
+    expect(reply.quiet).toBe(true);
+    expect(reply.text).toBe("coco (codex)：收到「R键重播」，处理中（ETA 20 分钟）");
+    expect(reply.eta).toMatchObject({ kind: "reply", re: nudge.id });
+    // A reply names who replies.
+    expect((await post(s, { ...r, kind: "reply", assignee: undefined })).status).toBe(400);
+  });
 });
 
 describe("DebugHub spend alert (/internal/spend-alert, lib/payments/spend-alert.ts)", () => {

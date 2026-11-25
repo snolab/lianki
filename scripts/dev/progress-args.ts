@@ -25,7 +25,7 @@ export const PROGRESS_USAGE = `usage:
   bun scripts/dev/progress.ts --agent <name> --task "<name>: <description>" --status <${PROGRESS_STATUSES.join("|")}>
       [--path /words/prefetch | --id <slug> [--parent <id>]] [--done] [--pct 40]
       [--eta 15m | --eta 12m-63m [--late "why"] | --confirm] [--change-id <id>]
-      [--pr 299] [--note "..."] [--needs "approve PR #299"] [--who owner|<lane>] [--kind <${PROGRESS_KINDS.join("|")}>]
+      [--pr 299] [--note "..."] [--needs "approve PR #299"] [--who owner|<lane>|<agent>@<lane>] [--kind <${PROGRESS_KINDS.join("|")}>]
       [--done [--verified "<evidence>" | --unverified]]
       [--ref <id>] [--action "<command or URL>"] [--link https://…] [--rev N] [--human]
   bun scripts/dev/progress.ts batch [--change-id <id>] '<JSON list of reports>' | --file <path.json>
@@ -60,7 +60,8 @@ The clock starts when a listener got the line (none listening: it waits). No ack
 coordinating lane (main) is told. No reason and new ETA 5 min after that: the owner hears
 "<name> 超时，未说明原因", then again 10, 20, 40… min later (at most every 4 h) until you explain or
 finish (config chat.etaAckMin, chat.etaOwnerMin, chat.etaCoordinator, chat.nudgeBackoffMin).
-Blocked vs paused: --status blocked --who owner|<lane> --needs "what" = someone can act now; the hub
+Blocked vs paused: --status blocked --who owner|<lane>|<agent>@<lane> --needs "what" = someone can
+act now (coco@codex names the agent coco in the codex lane: "@coco (codex): …"); the hub
 nudges them (the owner in Li, a lane by a line to it) at once, then 10, 20, 40… min, until it is no
 longer blocked. --status waiting = paused on an outside event: no nudges, no overrun.
 Done kinds: --done --verified "<evidence>" (PR merged and deployed, a test or screenshot link) or
@@ -293,7 +294,7 @@ export function parseProgressArgs(argv: string[]): ProgressCommand | Error {
   if (report instanceof Error) return report;
   if (report.status === "blocked" && !report.who)
     return new Error(
-      '--status blocked names who can act now: --who owner|<lane> --needs "what they must do" (the hub nudges them); waiting on an outside event is --status waiting',
+      '--status blocked names who can act now: --who owner|<lane>|<agent>@<lane> --needs "what they must do" (the hub nudges them); waiting on an outside event is --status waiting',
     );
   const title = checkTaskTitle(report.task);
   // Over 20 characters can never be a name a node already has; a narrower one

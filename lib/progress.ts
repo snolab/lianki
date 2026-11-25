@@ -140,8 +140,8 @@ export type ProgressReport = {
   prs?: number[];
   needs?: string;
   /**
-   * Who can unblock it now (`--who`), with status blocked: "owner" or a lane
-   * name. The hub nudges that one with backoff until it is no longer blocked
+   * Who can unblock it now (`--who`), with status blocked: "owner", a lane
+   * name, or a specific agent in a lane, "coco@codex" (parseWho). The hub nudges that one with backoff until it is no longer blocked
    * (docs/state-tree.md, "Blocked and paused"). "" clears it.
    */
   who?: string;
@@ -168,8 +168,46 @@ export type ProgressReport = {
 export type ProgressNote = { at: number; by: string; text: string };
 /** How a done node was done (docs/state-tree.md, "Done kinds"). */
 export type ProgressDoneKind = "verified" | "unverified";
-/** `--who`: "owner" or a lane name (an "@" in front is dropped). */
+/** A lane name (or "owner"); a bare `--who` (an "@" in front is dropped). */
 export const WHO_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/;
+/**
+ * A specific agent's own name: a session, a sub-agent or a child token's
+ * name ("coco", "哈基米"). Any letters; no spaces, "@", parentheses, ":" or
+ * control characters, so "<agent>@<lane>" and "<agent> (<lane>)" stay unambiguous.
+ */
+export const AGENT_NAME_RE = /^[^\s@():<>\p{Cc}]{1,40}$/u;
+/**
+ * Who a blocked node waits on (docs/state-tree.md, "Blocked and paused"):
+ * the lane that routes the nudge, and the specific agent in it, if named.
+ */
+export type WhoTarget = { lane: string; agent?: string };
+
+/**
+ * `--who`: "owner", a lane ("codex"), or a specific agent in a lane, written
+ * "coco@codex" or "coco (codex)" (stored as "coco@codex"). Undefined if it is
+ * none of these. The lane routes the line (lane-listen); the agent is named in it.
+ */
+export function parseWho(raw: string): WhoTarget | undefined {
+  const w = raw.trim().replace(/^@/, "");
+  if (WHO_RE.test(w)) return { lane: w };
+  const m = /^(.+?)\s*\(([^()]+)\)$/.exec(w) ?? /^(.+)@([^@]+)$/.exec(w);
+  if (!m) return undefined;
+  const [agent, lane] = [m[1].trim(), m[2].trim()];
+  if (!WHO_RE.test(lane) || lane === OWNER_NAME || !AGENT_NAME_RE.test(agent)) return undefined;
+  return agent === lane ? { lane } : { lane, agent };
+}
+
+/** The stored form of a `--who`: "owner", "codex", "coco@codex". */
+export const whoKey = (t: WhoTarget) => (t.agent ? `${t.agent}@${t.lane}` : t.lane);
+
+/**
+ * How a who or an agent name reads in a line: "coco (codex)" for an agent in a
+ * lane, the name as it is otherwise ("codex", "agy").
+ */
+export function agentLabel(name: string): string {
+  const t = parseWho(name);
+  return t?.agent ? `${t.agent} (${t.lane})` : name;
+}
 /** A receipt code on an "ETA reached" line (`progress.ts ack <code>`). */
 export const RECEIPT_RE = /^[a-z0-9]{6}$/;
 /**
@@ -257,6 +295,11 @@ export type ProgressEntry = Omit<
   nudgeAt?: number;
   /** A nudge for a lane that found no listener: sent when one connects (not by the alarm). */
   nudgeQueued?: number;
+  /**
+   * The reminder the hub last answered in the thread for the agent
+   * (lib/eta-reply.ts): "eta:<etaAt>" or "nudge:<nudgeFor>". One reply each.
+   */
+  replyFor?: string;
   /**
    * Waiting on the owner (lib/owner-wait.ts; docs/state-tree.md, "Waiting on
    * the owner"): reminders sent for the estimate `remindFor` (its etaAt), and
@@ -445,9 +488,13 @@ export function parseProgressReport(body: unknown): ProgressReport | Error {
   }
   if (f.needs !== undefined) out.needs = f.needs;
   if (f.who !== undefined) {
-    const who = f.who.replace(/^@/, "");
-    if (who && !WHO_RE.test(who)) return new Error('who must be "owner" or a lane name');
-    out.who = who;
+    const raw = f.who.trim().replace(/^@/, "");
+    const t = raw ? parseWho(raw) : undefined;
+    if (raw && !t)
+      return new Error(
+        'who must be "owner", a lane name, or an agent in a lane ("coco@codex" / "coco (codex)")',
+      );
+    out.who = t ? whoKey(t) : "";
   }
   if (b.unverified !== undefined && b.unverified !== null && b.unverified !== false) {
     if (b.unverified !== true) return new Error("unverified must be true");
@@ -580,6 +627,7 @@ export function mergeProgress(
     "etaMain",
     "silentN",
     "silentAt",
+    "replyFor",
   ] as const)
     if (prev?.[k] !== undefined) (entry as Record<string, unknown>)[k] = prev[k];
   if (prev?.nudgeFor !== undefined && prev.nudgeFor === nudgeKey(entry)) {
