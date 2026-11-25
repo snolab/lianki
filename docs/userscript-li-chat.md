@@ -12,14 +12,14 @@ M5). The **security gate** below must pass in full before
 
 ## What was built in M2 (account ticket)
 
-| piece                                            | where                                                                                     |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| audience `lianki-li-chat`, `sub` = D1 user id    | `lib/stt-ticket.ts` (`LI_CHAT_TICKET_AUD`, `isTicketSub`)                                 |
-| who may open Li, with which ticket               | `lib/pill-chat-route.ts` `pillChatAccess` → `GET /api/ext/pill-chat` `{ on, ticket }`     |
-| `POST /api/chat/li-ticket`                       | `lib/li-ticket-route.ts`, `app/api/chat/li-ticket/route.ts`                               |
-| hub: verify, route to the account's own thread   | `workers/push/src/auth.ts` `liChatTicket`, `index.ts`, `debug.ts` `connectPage` (`embed`) |
-| userscript: fetch the ticket lianki.com names    | `src/pill-chat.ts` (`TICKET_PATHS`)                                                       |
-| tests                                            | `unit/li-ticket.test.ts`, `unit/pill-chat.test.ts`                                        |
+| piece                                          | where                                                                                     |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| audience `lianki-li-chat`, `sub` = D1 user id  | `lib/stt-ticket.ts` (`LI_CHAT_TICKET_AUD`, `isTicketSub`)                                 |
+| who may open Li, with which ticket             | `lib/pill-chat-route.ts` `pillChatAccess` → `GET /api/ext/pill-chat` `{ on, ticket }`     |
+| `POST /api/chat/li-ticket`                     | `lib/li-ticket-route.ts`, `app/api/chat/li-ticket/route.ts`                               |
+| hub: verify, route to the account's own thread | `workers/push/src/auth.ts` `liChatTicket`, `index.ts`, `debug.ts` `connectPage` (`embed`) |
+| userscript: fetch the ticket lianki.com names  | `src/pill-chat.ts` (`TICKET_PATHS`)                                                       |
+| tests                                          | `unit/li-ticket.test.ts`, `unit/pill-chat.test.ts`                                        |
 
 - **Who.** `ext.pill-chat` off: nobody. On: the owner (`isDev`) as before,
   with his partner ticket into his own thread (`ticket: "owner"`). Any other
@@ -51,16 +51,16 @@ conversation never mixes with another's and Li's context on one site holds
 none of the others. Off (the default): every site is the account's one
 thread, exactly as M2. Userscript 2.24.39.
 
-| piece                                                       | where                                                                         |
-| ----------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| origin check, thread id, site hash (pure)                   | `lib/li-thread.ts`                                                            |
-| the userscript names the top window's origin                | `src/pill-chat.ts` (`x-lianki-host-origin` on the ticket request)             |
-| minting binds it (`ho`, `th` in the signed ticket)          | `lib/li-ticket-route.ts`, `lib/partner-ticket-auth.ts` (`siteBinding`)        |
-| the frame reports the parent origin the browser stamped     | `embed/frame-protocol.ts` `helloFrom` (`event.origin`), `PartnerFrame.tsx` `?ho=` |
-| hub: same origin or refuse; route to the site's thread      | `workers/push/src/auth.ts` `ticketSite`, `index.ts`, `debug.ts` `subThreadFor` |
-| his list on lianki.com, open one and chat                   | `/chat/sites` (`app/(app)/chat/sites`), `GET /api/chat/sites`, hub `/internal/sub-threads` |
-| tests                                                       | `unit/li-thread.test.ts`, `unit/pill-chat.test.ts`, `unit/partner-frame.test.ts`, `unit/partner-send-insecure.test.ts` |
-| end to end (local Workers, https + plain-http sites)        | `scripts/qa/qa-pill-chat-sites.ts` (suite `pill-chat-sites`)                  |
+| piece                                                   | where                                                                                                                  |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| origin check, thread id, site hash (pure)               | `lib/li-thread.ts`                                                                                                     |
+| the userscript names the top window's origin            | `src/pill-chat.ts` (`x-lianki-host-origin` on the ticket request)                                                      |
+| minting binds it (`ho`, `th` in the signed ticket)      | `lib/li-ticket-route.ts`, `lib/partner-ticket-auth.ts` (`siteBinding`)                                                 |
+| the frame reports the parent origin the browser stamped | `embed/frame-protocol.ts` `helloFrom` (`event.origin`), `PartnerFrame.tsx` `?ho=`                                      |
+| hub: same origin or refuse; route to the site's thread  | `workers/push/src/auth.ts` `ticketSite`, `index.ts`, `debug.ts` `subThreadFor`                                         |
+| his list on lianki.com, open one and chat               | `/chat/sites` (`app/(app)/chat/sites`), `GET /api/chat/sites`, hub `/internal/sub-threads`                             |
+| tests                                                   | `unit/li-thread.test.ts`, `unit/pill-chat.test.ts`, `unit/partner-frame.test.ts`, `unit/partner-send-insecure.test.ts` |
+| end to end (local Workers, https + plain-http sites)    | `scripts/qa/qa-pill-chat-sites.ts` (suite `pill-chat-sites`)                                                           |
 
 - **Thread id.** `<base>~<hash>`: `base` is the account's own thread
   (`owner`, or the D1 user id), `hash` the first 16 bytes (base64url, 22
@@ -121,15 +121,15 @@ thread, exactly as M2. Userscript 2.24.39.
 
 ## What was built in M3 (share from the composer)
 
-| piece                                              | where                                                         |
-| -------------------------------------------------- | ------------------------------------------------------------- |
-| read, clean, escape (pure)                         | `packages/debug-chat/src/embed/share.ts`                      |
-| port messages `need-share` / `share`               | `embed/frame-protocol.ts`, `embed/frame-guest.ts` (`share()`) |
-| the shell reads the page only when asked           | `src/partner-frame.ts` (`share` dep), `src/pill-chat.ts`      |
-| the + menu's Share items, the composer, the hold   | `AttachMenu.tsx` (`share`), `DebugChat.tsx` (`onShare`)       |
-| the frame passes the attachment on his send        | `app/embed/partner/PartnerFrame.tsx`, `page.tsx`              |
-| strings (16 locales + context)                     | `shareSelection`, `sharePage`, `shareNoPage` in `learning-partner` |
-| tests                                              | `unit/pill-chat-share.test.ts`, `unit/partner-frame.test.ts`, `unit/support/debug-chat-mount.tsx`, `scripts/qa/qa-pill-chat.ts` §3b |
+| piece                                            | where                                                                                                                               |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| read, clean, escape (pure)                       | `packages/debug-chat/src/embed/share.ts`                                                                                            |
+| port messages `need-share` / `share`             | `embed/frame-protocol.ts`, `embed/frame-guest.ts` (`share()`)                                                                       |
+| the shell reads the page only when asked         | `src/partner-frame.ts` (`share` dep), `src/pill-chat.ts`                                                                            |
+| the + menu's Share items, the composer, the hold | `AttachMenu.tsx` (`share`), `DebugChat.tsx` (`onShare`)                                                                             |
+| the frame passes the attachment on his send      | `app/embed/partner/PartnerFrame.tsx`, `page.tsx`                                                                                    |
+| strings (16 locales + context)                   | `shareSelection`, `sharePage`, `shareNoPage` in `learning-partner`                                                                  |
+| tests                                            | `unit/pill-chat-share.test.ts`, `unit/partner-frame.test.ts`, `unit/support/debug-chat-mount.tsx`, `scripts/qa/qa-pill-chat.ts` §3b |
 
 - In the frame the + menu's "Attach to message" holds **Share selection** and
   **Share page title and link** (trusted presses only). Each asks the shell
@@ -325,9 +325,9 @@ already granted).
 | #   | slice                                                                                                                                                                                                                                                     | ETA  |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
 | M1  | **Shipped.** Pill → Li entry for the owner only (flag dark), reusing the current owner ticket and `/embed/partner`; per-site trust prompt with default deny and the warning copy; sites list (revoke) in the manager menu; hostile-page QA; @version bump | 2.5H |
-| M2  | **Built (2.24.35, dark for users).** Account-scoped `li-ticket` route + hub audience (chat-only, own thread), unit tests                                                                                                                                                                       | 3H   |
-| M3  | **Built (2.24.35).** Share selection / page link from the composer, escaped; no auto-send test                                                                                                                                                                                 | 2H   |
-| M4  | Security gate QA for the account ticket, trust list synced as a pref, revoke on /my/preferences                                                                                                                                                              | 3H   |
+| M2  | **Built (2.24.35, dark for users).** Account-scoped `li-ticket` route + hub audience (chat-only, own thread), unit tests                                                                                                                                  | 3H   |
+| M3  | **Built (2.24.35).** Share selection / page link from the composer, escaped; no auto-send test                                                                                                                                                            | 2H   |
+| M4  | Security gate QA for the account ticket, trust list synced as a pref, revoke on /my/preferences                                                                                                                                                           | 3H   |
 | M5  | Flag on for users after the gate passes and the owner approves                                                                                                                                                                                            | 0.5H |
 
 ETAs include the local gate and ~10M pipeline.
@@ -344,3 +344,26 @@ ETAs include the local gate and ~10M pipeline.
 4. ~~The Chrome extension at the same time?~~ After the userscript
    (2026-11-17, conservative): `packages/ext` gets the entry only once the
    security gate has passed for the userscript.
+
+## Installation and first-site trial
+
+The signed-in `/chat/sites` list includes an installation panel. It checks
+this page's live `data-lianki-userscript-version` marker against the shipped
+`LIANKI_USERSCRIPT_VERSION` (generated from the userscript's `@version`).
+An older version, or a legacy installed marker without a valid version,
+offers the same installer link for an update. No current marker offers
+installation; a stale `lk:status` localStorage entry alone is not evidence
+that the script is still installed. MutationObserver and return-to-tab events
+notice late injection without polling. After installing, reload the page.
+
+The script publishes only this non-secret version on lianki.com, its www
+redirect and preview.lianki.com, not on unrelated websites. It crosses
+userscript isolated worlds through the DOM. This is a user-interface hint,
+not an authentication or feature-permission check. No flags or account
+permissions change. A current version offers example.com in a new tab and
+explains the existing site-trust prompt and the pill's Li button.
+
+The panel has sixteen locales with per-key context. Regression coverage:
+`unit/userscript-install.test.ts`, `unit/pill-install-guide.test.tsx` and
+`bun scripts/qa/qa-pill-install-guide.mjs` (silent fixtures, including an
+isolated-world marker and 320px / 150% layouts; not production evidence).

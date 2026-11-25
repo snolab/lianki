@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.39
+// @version     2.24.40
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -53,6 +53,7 @@ import { heatmapBuckets, rateColor, videoDifficulty } from "@lianki/core/difficu
 import { dueWindow, isProvablyDeleted } from "@lianki/core/duePrune";
 import { activeTitleRules, cleanTitle } from "@lianki/core/titleClean";
 import { startGdocStream } from "./gdoc-stream";
+import { publishUserscriptVersion } from "../lib/userscript-install";
 import { mirrorPartnerSwitch, startPartner } from "./partner";
 import { pillChat, watchPillChatFlag } from "./pill-chat";
 import { fillUs, friendlyError, userscriptStrings } from "./userscript-strings";
@@ -892,6 +893,11 @@ class LocalFSRS {
 function main() {
   // Set global marker so web UI knows userscript is installed
   window.LIANKI_USERSCRIPT_INSTALLED = true;
+  const clearPresence = publishUserscriptVersion(
+    document.documentElement,
+    location.origin,
+    GM_info?.script?.version,
+  );
 
   // ── Origin ─────────────────────────────────────────────────────────────────
   // Auto-detected from @downloadURL.
@@ -4047,6 +4053,8 @@ function main() {
     .catch((err) => console.error("[Lianki] partner failed:", err));
 
   return () => {
+    clearPresence();
+    window.LIANKI_USERSCRIPT_INSTALLED = false;
     stopPartner();
     liChat.close();
     ac.abort();
