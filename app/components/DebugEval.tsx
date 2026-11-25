@@ -79,6 +79,7 @@ import {
   createAudioSyncHub,
 } from "@lianki/debug-chat/audio-sync-hub";
 import { cloudOut, existingCtx } from "@lianki/debug-chat/voice-out";
+import { setLocalTtsFallbacks } from "@lianki/debug-chat/local-tts-fallback";
 import { voiceLatency } from "@lianki/debug-chat/latency";
 import { messageTelemetry } from "@lianki/debug-chat/message-telemetry";
 import { pageScene } from "@lianki/debug-chat/scene";
@@ -356,6 +357,9 @@ export function DebugEval({
   // The owner's default speech routes (owner-routes.ts, read by local-stt.ts): live, no deploy.
   setOwnerRoutes(publicCfg("stt.ownerRoutes"));
   setCloudVoices(cloudVoices);
+  // Existing local voices only for developer diagnostics; other accounts never
+  // start probing a private network because a cloud model was retired.
+  setLocalTtsFallbacks(dev ? publicCfg("voice.localFallbacks") : {});
   setTalkOver(talkOver);
   // What this page reads aloud goes to the hub for the cross-device echo match (play-report.ts).
   setEchoReports(echoReports);
