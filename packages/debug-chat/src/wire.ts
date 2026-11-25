@@ -1016,6 +1016,8 @@ export type ChatStrings = {
   sharePage: string;
   /** One-line note in the pill's Li frame after Share page: this page has no http(s) address to share. One short sentence. */
   shareNoPage: string;
+  /** One-line note above the input in the pill's Li frame on another site: the line just typed could not be sent (it stays in the input). One short sentence, no blame. */
+  sendFailed: string;
   // Files attached to a message (files.ts; FileChips.tsx).
   /** Big hint over the chat while files are dragged over it: let go to attach them to the message. Short imperative phrase. */
   attachDrop: string;
@@ -1350,6 +1352,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   shareSelection: "Share selection",
   sharePage: "Share page title and link",
   shareNoPage: "This page has no web link to share.",
+  sendFailed: "Your message was not sent. Try again.",
 };
 
 /** Most characters of a page selection attached to a line. */

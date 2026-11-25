@@ -59,7 +59,8 @@ thread, exactly as M2. Userscript 2.24.39.
 | the frame reports the parent origin the browser stamped     | `embed/frame-protocol.ts` `helloFrom` (`event.origin`), `PartnerFrame.tsx` `?ho=` |
 | hub: same origin or refuse; route to the site's thread      | `workers/push/src/auth.ts` `ticketSite`, `index.ts`, `debug.ts` `subThreadFor` |
 | his list on lianki.com, open one and chat                   | `/chat/sites` (`app/(app)/chat/sites`), `GET /api/chat/sites`, hub `/internal/sub-threads` |
-| tests                                                       | `unit/li-thread.test.ts`, `unit/pill-chat.test.ts`, `unit/partner-frame.test.ts` |
+| tests                                                       | `unit/li-thread.test.ts`, `unit/pill-chat.test.ts`, `unit/partner-frame.test.ts`, `unit/partner-send-insecure.test.ts` |
+| end to end (local Workers, https + plain-http sites)        | `scripts/qa/qa-pill-chat-sites.ts` (suite `pill-chat-sites`)                  |
 
 - **Thread id.** `<base>~<hash>`: `base` is the account's own thread
   (`owner`, or the D1 user id), `hash` the first 16 bytes (base64url, 22
@@ -96,6 +97,25 @@ thread, exactly as M2. Userscript 2.24.39.
   `/chat/history` while the flag is on), never on a host page.
 - **Flag off**: nothing is bound at minting, the hub routes as M2, `/chat/sites`
   and `/api/chat/sites` are 404 and `?sub=` is refused.
+- **Plain-http sites.** The frame on an `http://` page is not a secure
+  context (a frame is secure only when every ancestor is), so
+  `crypto.randomUUID` is missing there. Line ids are minted from
+  `crypto.getRandomValues` (`packages/debug-chat/src/uuid.ts`); a send that
+  still throws is logged and shown above the input (`sendFailed`), the draft
+  kept.
+- **`/api/chat/sites` 503 under `wrangler dev`, local only.** The route asks
+  lianki-push over the `PUSH` binding (`https://lianki-push/internal/sub-threads`,
+  answered on that hostname alone), the same pattern as `/internal/friends`
+  (`lib/push-friends.ts`). Locally, with the main Worker and lianki-push in two
+  `wrangler dev` sessions, the session started first keeps getting 503 "Worker
+  … not found" from wrangler's dev registry on its binding to the later one,
+  even after it reports `[connected]`, and restarting it breaks the other
+  direction (wrangler 4.151, reproduced with two bare Workers). The route maps
+  that to its own 503. On Cloudflare the binding is direct: `GET /api/chat/sites`
+  answered 200 there, and the hub's answer does not depend on how many threads
+  exist. The QA runs both Workers in one `wrangler dev` session behind a router
+  instead, where both directions work (the same was seen for
+  `/internal/box-closed`, `scripts/qa/qa-box-oauth.mjs`).
 - **Deploys**: lianki-push (auth.ts, index.ts, debug.ts) and the main Worker;
   the flag goes on after the owner approves.
 

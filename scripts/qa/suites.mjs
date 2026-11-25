@@ -516,4 +516,26 @@ export const SUITES = [
     paths: ["src/pill-chat*.ts", "src/partner*.ts", "packages/debug-chat/src/embed/**"],
     sensitive: true,
   },
+  // One Li thread per website (ext.pill-chat-per-origin), end to end: the main Worker
+  // and lianki-push in one wrangler dev session of its own, https and plain-http host
+  // sites, /api/chat/sites over the PUSH binding. `base` only for the OpenNext build
+  // it serves; it starts its own servers.
+  {
+    name: "PILL CHAT SITES (per-site threads)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-pill-chat-sites.ts"],
+    base: true,
+    id: "pill-chat-sites",
+    paths: [
+      "src/pill-chat*.ts",
+      "packages/debug-chat/src/embed/**",
+      "app/embed/**",
+      "app/api/chat/**",
+      "app/(app)/chat/sites/**",
+      "lib/li-thread.ts",
+      "lib/chat-sites-route.ts",
+      "workers/push/src/**",
+    ],
+    sensitive: true,
+  },
 ];
