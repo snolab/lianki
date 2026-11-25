@@ -44,6 +44,61 @@ M5). The **security gate** below must pass in full before
 - **Caps and billing** as for any user's thread (partner-ai.md): unchanged.
 - **lianki-push needs a deploy** for M2 (auth.ts, index.ts, debug.ts).
 
+## Per-site threads (flag `ext.pill-chat-per-origin`, default off)
+
+Each website origin gets its own Li thread under the account, so one site's
+conversation never mixes with another's and Li's context on one site holds
+none of the others. Off (the default): every site is the account's one
+thread, exactly as M2. Userscript 2.24.37.
+
+| piece                                                       | where                                                                         |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| origin check, thread id, site hash (pure)                   | `lib/li-thread.ts`                                                            |
+| the userscript names the top window's origin                | `src/pill-chat.ts` (`x-lianki-host-origin` on the ticket request)             |
+| minting binds it (`ho`, `th` in the signed ticket)          | `lib/li-ticket-route.ts`, `lib/partner-ticket-auth.ts` (`siteBinding`)        |
+| the frame reports the parent origin the browser stamped     | `embed/frame-protocol.ts` `helloFrom` (`event.origin`), `PartnerFrame.tsx` `?ho=` |
+| hub: same origin or refuse; route to the site's thread      | `workers/push/src/auth.ts` `ticketSite`, `index.ts`, `debug.ts` `subThreadFor` |
+| his list on lianki.com, open one and chat                   | `/chat/sites` (`app/(app)/chat/sites`), `GET /api/chat/sites`, hub `/internal/sub-threads` |
+| tests                                                       | `unit/li-thread.test.ts`, `unit/pill-chat.test.ts`, `unit/partner-frame.test.ts` |
+
+- **Thread id.** `<base>~<hash>`: `base` is the account's own thread
+  (`owner`, or the D1 user id), `hash` the first 16 bytes (base64url, 22
+  chars) of HMAC-SHA-256(base + "\n" + origin) under a key derived from
+  `STT_TICKET_KEY`'s private part (no new secret; rotating that key gives each
+  site a new thread, the old lines stay in the history). The id never spells
+  the origin, and without the key a guess cannot be tested.
+- **Where the origin comes from.** Two sources that must agree, neither one
+  the page's say. (1) The userscript's shell reads `location.origin` in its
+  own isolated world and sends it as `x-lianki-host-origin` on its
+  `GM_xmlhttpRequest` for the ticket (the page cannot touch that request);
+  lianki.com accepts only a plain http(s) origin (no path, query, userinfo;
+  at most 100 chars) and signs it into the ticket with the hash. (2) The
+  frame, on the hello, keeps the browser's `event.origin` (the window that
+  posted it) and connects with `?ho=<origin>`. lianki-push takes a site
+  ticket only from origin `https://lianki.com` and only when `?ho=` equals
+  the ticket's `ho`; anything else is refused before its jti is spent.
+- **Refusals.** A ticket for site A in a frame on site B: 403. A ticket of
+  another account: its `sub` (and so its base) is its own; the hash is
+  signed with it. A lianki.com page asks for a site thread with `?sub=<hash>`:
+  only with the flag on and only for a thread the hub already holds under
+  **that page's own account** (4404 otherwise). The hub never merges two
+  origins under one hash.
+- **The thread.** Chat only everywhere (`embed`), as M2. Blocks, the friend
+  rate and the friend record go by the account. No lane hears a site
+  thread's lines (they go to its pages, Li and the account's history only).
+  Li answers with that thread's lines alone (`ai:win:<thread>` is per thread);
+  billing and caps are the account's, unchanged; in the owner's site threads
+  Li answers as in his own (`owner: true`, with his account id).
+- **Privacy.** The origin is kept only as an origin, in the hub's record
+  beside the thread (`subt:<thread>`: origin, first and last visit) for his
+  list. The account's history (D1 `chat_line`) holds the thread id, never
+  the origin. The list is only on lianki.com (`/chat/sites`, linked from
+  `/chat/history` while the flag is on), never on a host page.
+- **Flag off**: nothing is bound at minting, the hub routes as M2, `/chat/sites`
+  and `/api/chat/sites` are 404 and `?sub=` is refused.
+- **Deploys**: lianki-push (auth.ts, index.ts, debug.ts) and the main Worker;
+  the flag goes on after the owner approves.
+
 ## What was built in M3 (share from the composer)
 
 | piece                                              | where                                                         |

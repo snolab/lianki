@@ -50,6 +50,10 @@
  *   GET/POST /internal/friends The main Worker's owner-only /api/dev/friends,
  *                              over its PUSH binding: list chat users, read
  *                              one's thread, Block or unblock (debug.ts).
+ *   GET  /internal/sub-threads?base=<owner|userId>
+ *                              The main Worker's /api/chat/sites: that
+ *                              account's per-site Li threads (origin, last
+ *                              line, time; lib/li-thread.ts, debug.ts).
  *   POST /api/version/chat     `lianki chat say|ask|read` with an API token
  *   GET  /api/version/chat     (Authorization: Bearer lk_…), or a WebSocket for
  *                              `lianki chat listen` (the token in its first
@@ -86,6 +90,9 @@ import {
   DEBUG_ORIGIN,
   DEV_BRIDGE_HEADER,
   EMBED_HEADER,
+  SUB_ORIGIN_HEADER,
+  SUB_THREAD_HEADER,
+  SUB_THREADS_PATH,
   boxChatTicket,
   debugIdentity,
   liChatTicket,
@@ -295,6 +302,8 @@ export default {
       for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
       headers.delete(DEV_BRIDGE_HEADER);
       headers.delete(EMBED_HEADER);
+      headers.delete(SUB_THREAD_HEADER);
+      headers.delete(SUB_ORIGIN_HEADER);
       headers.delete(BOX_HEADER);
       headers.delete("cookie");
       headers.delete("authorization");
@@ -335,7 +344,14 @@ export default {
       // docs/userscript-li-chat.md M2) names its account: that account's own
       // thread, never the owner's, chat only; from the lianki.com frame only.
       if (offersPartner(req) || req.headers.get("origin") !== DEBUG_ORIGIN) {
-        const t: { jti: string; exp: number; cid?: string; sub?: string } | null =
+        const t: {
+          jti: string;
+          exp: number;
+          cid?: string;
+          sub?: string;
+          ho?: string;
+          th?: string;
+        } | null =
           (await partnerTicket(req, env.PARTNER_TICKET_PUB)) ??
           (await boxChatTicket(req, env.PARTNER_TICKET_PUB)) ??
           (await liChatTicket(req, env.PARTNER_TICKET_PUB));
@@ -344,7 +360,15 @@ export default {
         for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
         headers.delete(DEV_BRIDGE_HEADER);
         headers.delete(BOX_HEADER);
+        headers.delete(SUB_THREAD_HEADER);
+        headers.delete(SUB_ORIGIN_HEADER);
         headers.delete("cookie");
+        // A pill ticket bound to one site (lib/li-thread.ts, auth.ts ticketSite
+        // checked the frame names the same origin): that site's thread only.
+        if (t.th && t.ho) {
+          headers.set(SUB_THREAD_HEADER, t.th);
+          headers.set(SUB_ORIGIN_HEADER, t.ho);
+        }
         if (t.sub) {
           headers.set(IDENTITY_HEADERS.user, t.sub);
           headers.set(IDENTITY_HEADERS.email, "");
@@ -366,6 +390,8 @@ export default {
       headers.delete(DEV_BRIDGE_HEADER);
       // A lianki.com page is never an embedded one, nor a box, whatever it sends.
       headers.delete(EMBED_HEADER);
+      headers.delete(SUB_THREAD_HEADER);
+      headers.delete(SUB_ORIGIN_HEADER);
       headers.delete(BOX_HEADER);
       headers.set(IDENTITY_HEADERS.user, who.userId);
       headers.set(IDENTITY_HEADERS.email, who.email);
@@ -461,6 +487,8 @@ export default {
       for (const h of Object.values(IDENTITY_HEADERS)) headers.delete(h);
       headers.delete(DEV_BRIDGE_HEADER);
       headers.delete(EMBED_HEADER);
+      headers.delete(SUB_THREAD_HEADER);
+      headers.delete(SUB_ORIGIN_HEADER);
       headers.delete("cookie");
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(new Request(req, { headers }));
     }
@@ -486,6 +514,7 @@ export default {
     if (
       (url.pathname === "/internal/hub-diagnostics" ||
         url.pathname.startsWith("/internal/friends") ||
+        url.pathname === SUB_THREADS_PATH ||
         url.pathname === "/internal/signed-out" ||
         url.pathname === REVOKED_PATH ||
         url.pathname === CHAT_BACKFILL_PATH ||

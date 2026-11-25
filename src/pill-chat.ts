@@ -42,6 +42,9 @@ import {
 } from "./pill-chat-trust";
 import { blockedNote, sitesDialog, trustDialog } from "./pill-chat-ui";
 
+/** lib/li-thread.ts HOST_ORIGIN_HEADER (unit/li-thread.test.ts keeps the two the same). */
+export const HOST_ORIGIN_HEADER = "x-lianki-host-origin";
+
 type GmFetch = (
   url: string,
   opts?: { method?: string; headers?: Record<string, string>; credentials?: string },
@@ -57,6 +60,8 @@ export type PillChatDeps = {
   report?: (what: string, detail: string) => void;
   /** The top window's hostname, top-window flag, document, window (tests pass fakes). */
   hostname?: string;
+  /** The top window's origin (tests pass one). */
+  hostOrigin?: string;
   path?: string;
   /** The page's full address, read only when he presses Share in the frame (tests pass one). */
   href?: () => string;
@@ -155,7 +160,13 @@ export function pillChat(d: PillChatDeps) {
     try {
       const r = await d.gmFetch(`${d.origin}${TICKET_PATHS[kind]}`, {
         method: "POST",
-        headers: { "x-lianki-userscript": "1" },
+        // The top window's origin (scheme, host, port: never the path or query),
+        // read here in the userscript's world: with ext.pill-chat-per-origin on,
+        // lianki.com binds the ticket to this site's own thread (lib/li-thread.ts).
+        headers: {
+          "x-lianki-userscript": "1",
+          [HOST_ORIGIN_HEADER]: d.hostOrigin ?? location.origin,
+        },
         credentials: "include",
       });
       if (!r.ok) return null;

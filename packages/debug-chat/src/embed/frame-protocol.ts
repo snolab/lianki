@@ -64,16 +64,22 @@ export function isFrameUp(e: MsgEvent, frameWindow: unknown, origin: string): bo
   return !!frameWindow && e.source === frameWindow && e.origin === origin && d?.lk === FRAME_UP;
 }
 
-/** The frame's check: the parent's hello, with a port. Returns the port and the page label, or null. */
+/**
+ * The frame's check: the parent's hello, with a port. Returns the port, the
+ * page label and the parent's origin, or null. `origin` is the browser's
+ * `event.origin` of the hello (the window that posted it), never anything in
+ * the message: the hub binds a per-site ticket to it (lib/li-thread.ts).
+ */
 export function helloFrom(
   e: MsgEvent,
   parent: unknown,
-): { port: unknown; label: string } | null {
+): { port: unknown; label: string; origin: string } | null {
   const d = rec(e.data);
   if (!parent || e.source !== parent || d?.lk !== HELLO || !e.ports?.[0]) return null;
   return {
     port: e.ports[0],
     label: typeof d.label === "string" ? d.label.slice(0, 300) : "",
+    origin: typeof e.origin === "string" ? e.origin : "",
   };
 }
 

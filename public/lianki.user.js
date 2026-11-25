@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.36
+// @version     2.24.37
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -3491,6 +3491,7 @@ Sasisha kadi kwa anwani mpya?`,
       "Shown in the pending push-to-talk speech bubble when a held recording reaches the configured memory/duration limit. Recording stops with an explicit failure; already recognized text remains available and is not silently sent as a complete recording.",
     voiceDetails:
       "Accessible label and heading of the small voice-information icon and its tap-open popover beside a spoken chat message. Shows recorded recognition, voiceprint and polishing metadata; not a playback action.",
+    lineReplay: `In ${CHAT}, the message details popover (opened by right-click or long press) on one of the user's OWN spoken messages: the name on a small play chip that plays back the user's own microphone recording of that message, exactly as it was recorded, before any recognition or polishing. Shown only when such a recording is kept in the user's account. A short imperative phrase, like a media app's 'Play recording'; 'original' means the untouched recorded sound, not the first version of the text.`,
     voiceDetailRoute:
       "Field label in a spoken message’s voice details: the recorded recognition route, local speech server or cloud. Does not identify a physical device or hostname.",
     voiceDetailRecognitionModel:
@@ -4510,6 +4511,7 @@ Sasisha kadi kwa anwani mpya?`,
   }
 
   // src/pill-chat.ts
+  var HOST_ORIGIN_HEADER = "x-lianki-host-origin";
   async function mirrorPillChatFlag(d) {
     const now = d.now?.() ?? Date.now();
     if (!flagRecheckDue(d.getValue(PILLCHAT_ON_KEY, null), now)) return null;
@@ -4562,7 +4564,10 @@ Sasisha kadi kwa anwani mpya?`,
       try {
         const r = await d.gmFetch(`${d.origin}${TICKET_PATHS[kind]}`, {
           method: "POST",
-          headers: { "x-lianki-userscript": "1" },
+          headers: {
+            "x-lianki-userscript": "1",
+            [HOST_ORIGIN_HEADER]: d.hostOrigin ?? location.origin,
+          },
           credentials: "include",
         });
         if (!r.ok) return null;

@@ -5,6 +5,8 @@ import { isDev } from "@/lib/permissions";
 import { refreshPermissions } from "@/lib/permission-store";
 import { partnerTicket } from "@/lib/partner-ticket-auth";
 import { importTicketKey } from "@/lib/stt-ticket";
+import { readFlags } from "@/lib/flags-store";
+import { threadHashKeyFromJwk } from "@/lib/li-thread";
 
 /**
  * A 60 s, single-use ticket for the Learning Partner on another site
@@ -31,6 +33,8 @@ export const POST = (req: Request) =>
       await refreshPermissions();
       return isDev(email);
     },
+    flags: () => readFlags(),
+    threadKey: () => threadHashKeyFromJwk(process.env.STT_TICKET_KEY),
     key: async () => {
       const raw = process.env.STT_TICKET_KEY;
       if (!raw) return null;

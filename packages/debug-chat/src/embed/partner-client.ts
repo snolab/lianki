@@ -57,6 +57,16 @@ export type PartnerDeps = {
   open: (url: string, protocols: string[]) => WsLike;
   /** This page as the agent sees it: host + path (never the query), user agent. */
   label: () => string;
+  /**
+   * More query for the socket's URL, already encoded (`&ho=…`: the frame's
+   * parent origin for a per-site ticket; `&sub=…`: a site thread on lianki.com).
+   */
+  query?: string;
+  /**
+   * A lianki.com page signed in by its cookie (/chat/sites): no ticket is
+   * asked for and no subprotocol offered.
+   */
+  cookie?: boolean;
   doc: Pick<Document, "visibilityState" | "addEventListener" | "removeEventListener">;
   /** A CSP violation about us arrived (guard.ts cspBlocker): the socket will not open. */
   onBlocked?: (b: Blocker) => void;
@@ -127,15 +137,18 @@ export function createPartnerClient(d: PartnerDeps): PartnerClient {
     connecting = true;
     let ticket: string | null = null;
     try {
-      ticket = await d.ticket();
+      ticket = d.cookie ? "" : await d.ticket();
     } catch {}
     connecting = false;
-    if (!ticket || stopped || ws || !visible() || state.blocked) return;
+    if ((!ticket && !d.cookie) || stopped || ws || !visible() || state.blocked) return;
     const label = d.label();
     sentLabel = label;
     let sock: WsLike;
     try {
-      sock = d.open(`${d.url}?label=${encodeURIComponent(label)}`, [PARTNER_SUBPROTOCOL, ticket]);
+      sock = d.open(
+        `${d.url}?label=${encodeURIComponent(label)}${d.query ?? ""}`,
+        d.cookie ? [] : [PARTNER_SUBPROTOCOL, ticket as string],
+      );
     } catch {
       // A synchronous throw is CSP refusing the URL (or a bad URL): not again.
       return block("connect");

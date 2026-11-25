@@ -3,6 +3,9 @@ import { getIntlayer } from "intlayer";
 import { appLocale } from "@/lib/app-locale.server";
 import { authUserOrNull } from "@/app/signInEmail";
 import HistoryClient, { type HistoryLabels } from "./HistoryClient";
+import { flagIn } from "@/lib/flags";
+import { readFlags } from "@/lib/flags-store";
+import { PER_ORIGIN_FLAG } from "@/lib/li-thread";
 
 export const dynamic = "force-dynamic";
 
@@ -40,5 +43,17 @@ export default async function ChatHistoryPage({
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : "";
   const lane = typeof sp.lane === "string" ? sp.lane : "";
-  return <HistoryClient labels={labels} locale={locale} initialQ={q} initialLane={lane} />;
+  // Chats by site (docs/userscript-li-chat.md, "Per-site threads"): linked only while the flag is on.
+  const sitesLink = flagIn(await readFlags(), PER_ORIGIN_FLAG)
+    ? String(getIntlayer("chat-sites-page", locale).title)
+    : undefined;
+  return (
+    <HistoryClient
+      labels={labels}
+      locale={locale}
+      initialQ={q}
+      initialLane={lane}
+      sitesLink={sitesLink}
+    />
+  );
 }
