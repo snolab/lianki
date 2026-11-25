@@ -6739,6 +6739,8 @@ ${state.errorDetails}`);
       return overrides[location.hostname] || (lang && lang.length <= 32 ? lang : undefined);
     }
     let watchSyncUnavailable = false;
+    let watchSyncSignedOut = false;
+    const isWatchAuthRefusal = (err) => err?.status === 401 || err?.status === 403;
     let watchAcc = null;
     let watchSavedAt = 0;
     const watchSnapshot = (acc) =>
@@ -6772,7 +6774,7 @@ ${state.errorDetails}`);
       }
     }
     async function flushWatch(acc = watchAcc) {
-      if (watchSyncUnavailable || !acc?.dirty) return;
+      if (watchSyncUnavailable || watchSyncSignedOut || !acc?.dirty) return;
       persistWatch(acc, true);
       if (acc.wall < WATCH_MIN_SYNC_S) return;
       const stats = watchSnapshot(acc);
@@ -6795,11 +6797,12 @@ ${state.errorDetails}`);
           );
           return;
         }
+        if (isWatchAuthRefusal(err)) watchSyncSignedOut = true;
         logFail("watch", `watch-time sync for ${acc.url}`, err);
       }
     }
     async function flushPendingWatch(max = 3) {
-      if (watchSyncUnavailable) return;
+      if (watchSyncUnavailable || watchSyncSignedOut) return;
       for (const url of watchDirtyList()
         .filter((u) => u !== watchAcc?.url)
         .slice(0, max)) {
@@ -6816,7 +6819,8 @@ ${state.errorDetails}`);
           });
           saveLocalWatch(url, stats, false);
           watchDirtyDrop(url);
-        } catch {
+        } catch (err) {
+          if (isWatchAuthRefusal(err)) watchSyncSignedOut = true;
           return;
         }
       }
