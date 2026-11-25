@@ -4,6 +4,7 @@ import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
 import { readFlags } from "@/lib/flags-store";
 import { liTicket } from "@/lib/li-ticket-route";
+import { threadHashKeyFromJwk } from "@/lib/li-thread";
 import { isDev } from "@/lib/permissions";
 import { refreshPermissions } from "@/lib/permission-store";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -34,6 +35,7 @@ export const POST = (req: Request) =>
         windowMs: 60_000,
         max: await cfg("chat.pillTicketsPerMinute"),
       }).allowed,
+    threadKey: () => threadHashKeyFromJwk(process.env.STT_TICKET_KEY),
     key: async () => {
       const raw = process.env.STT_TICKET_KEY;
       if (!raw) return null;

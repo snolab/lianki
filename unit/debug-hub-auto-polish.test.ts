@@ -470,3 +470,50 @@ it("cloud PTT retains the complete final even when its live prefix was partial a
   expect(s.calls).toHaveLength(0);
   expect(s.stored()[0]).toMatchObject({ text: recheck.text, recheck });
 });
+
+describe("automatic polish: earlier lines as read-only context", () => {
+  /** His earlier lines and a reply, then the line to polish (the 他/她 case). */
+  const talk = async (s: ReturnType<typeof setup>) => {
+    const p = await s.owner();
+    const c = await s.agent(p);
+    await s.msg(p, { type: "chat", id: "t1", text: "我老婆想学日语" });
+    await s.msg(c, { type: "say", text: "好的，她现在是什么水平？" });
+    await s.msg(p, { type: "chat", id: "t2", text: "她刚开始学" });
+    await s.msg(p, s.voice("v1", "因为他的 GitHub 不怎么用"));
+    await s.settle();
+    return p;
+  };
+
+  it("the lines before the run go along, oldest first, and only the run's ids are polished", async () => {
+    const s = setup();
+    const p = await talk(s);
+    expect(s.calls).toHaveLength(1);
+    expect(s.calls[0]!.input.lines).toEqual([{ id: "v1", text: "因为他的 GitHub 不怎么用" }]);
+    expect(s.calls[0]!.input.context).toEqual([
+      { from: "owner", text: "我老婆想学日语" },
+      { from: "agent", text: "好的，她现在是什么水平？" },
+      { from: "owner", text: "她刚开始学" },
+    ]);
+    expect(p.all("edited").map((e) => e.id)).toEqual(["v1"]);
+  });
+
+  it("the window holds to voice.autoPolishContextLines and voice.autoPolishContextChars", async () => {
+    const lines = setup({ config: { "voice.autoPolishContextLines": 2 } });
+    await talk(lines);
+    expect((lines.calls[0]!.input.context as { text: string }[]).map((h) => h.text)).toEqual([
+      "好的，她现在是什么水平？",
+      "她刚开始学",
+    ]);
+    // 5 + 12 characters: the second-newest would pass a budget of 10, so it ends the window.
+    const chars = setup({ config: { "voice.autoPolishContextChars": 10 } });
+    await talk(chars);
+    expect(chars.calls[0]!.input.context).toEqual([{ from: "owner", text: "她刚开始学" }]);
+  });
+
+  it("0 lines sends no context, and the run is polished as before", async () => {
+    const s = setup({ config: { "voice.autoPolishContextLines": 0 } });
+    const p = await talk(s);
+    expect(s.calls[0]!.input.context).toEqual([]);
+    expect(p.last("edited")).toMatchObject({ id: "v1", edited: { by: AUTO_POLISH_BY } });
+  });
+});

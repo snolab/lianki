@@ -156,6 +156,7 @@ that are expensive to rediscover.
 | What's in flight / waiting on the owner                                    | [docs/state-tree.md](docs/state-tree.md)                            |
 | Planning tools: which one to use, consolidation plan                       | [docs/planning-tools.md](docs/planning-tools.md)                    |
 | Landing changes, CI, branch protection, post-deploy QA                     | [docs/shipping.md](docs/shipping.md)                                |
+| Proving a change works on prod before marking it done | [.agents/skills/prove-in-prod/SKILL.md](.agents/skills/prove-in-prod/SKILL.md) |
 | Finding your way around the code                                           | [docs/repo-map.md](docs/repo-map.md)                                |
 | Adding or renaming a route: nouns, /lab, /dev, 308 redirects               | [docs/url-principles.md](docs/url-principles.md)                    |
 | /my: the user's own data (profile, preferences, files)                     | [docs/url-principles.md](docs/url-principles.md), "/my"             |
@@ -185,6 +186,7 @@ that are expensive to rediscover.
 | The debug chat widget (packages/debug-chat), hot-loading                   | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                |
 | Mini apps: /m/<slug>, sandboxed one-file apps, `window.lianki` SDK         | [docs/mini-apps.md](docs/mini-apps.md)                              |
 | Users' own AI assistants: the token prompt, /api/agent-guide               | [docs/api-for-agents.md](docs/api-for-agents.md)                    |
+| ChatGPT / Claude.ai connecting to /mcp by OAuth (flag `mcp.oauth`)       | [docs/mcp-oauth.md](docs/mcp-oauth.md)                              |
 | `lianki-dev`, the agent lanes' CLI: say, ask, progress, doctor             | [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md)                    |
 | Which lane answers him ("codex, …"), codex/agy listeners                   | [docs/lane-listen.md](docs/lane-listen.md)                          |
 | Hot islands: swappable components, shared state                            | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                  |

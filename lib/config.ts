@@ -68,6 +68,7 @@ import {
 } from "@lianki/debug-chat/person-voice";
 import { VAD_MAX, VAD_MIN, VAD_THRESHOLDS } from "@lianki/debug-chat/adaptive";
 import { GUARD_MIN_SPEECH_MS, STT_GUARD } from "@lianki/debug-chat/stt-guard";
+import { SHORT_ANSWER, SHORT_ANSWER_RANGE } from "@lianki/debug-chat/short-answer";
 import { DEFAULT_PRESET_ROWS, presetListSchema, type ByokPresetRow } from "./byok/preset-data";
 import { DEFAULT_MIME_PREFS, parseMimePrefs } from "./meetings/core";
 import {
@@ -264,6 +265,54 @@ export const CONFIG = {
   },
   // The chat's last lines kept on the device for an instant first paint
   // (lib/chat-cache.ts; docs/cold-start.md, "The chat at once"). Read by the root layout.
+  // OAuth sign-in for the remote MCP server (docs/mcp-oauth.md, lib/mcp-oauth/*).
+  "mcp.oauthAccessMin": int({
+    default: 60,
+    min: 5,
+    max: 1440,
+    unit: "min",
+    group: "mcp",
+    audience: "server",
+    description:
+      "ChatGPT 等应用通过 OAuth 拿到的访问令牌多久失效（分钟）；到期后应用用续期令牌换新的，断开连接则立即失效。",
+  }),
+  "mcp.oauthRefreshDays": int({
+    default: 30,
+    min: 1,
+    max: 365,
+    unit: "days",
+    group: "mcp",
+    audience: "server",
+    description:
+      "OAuth 续期令牌多久不用就失效（天）；每次续期都会换新并重新计时。过期后要在应用里重新连接。",
+  }),
+  "mcp.oauthCodeSeconds": int({
+    default: 60,
+    min: 10,
+    max: 600,
+    unit: "s",
+    group: "mcp",
+    audience: "server",
+    description: "用户在同意页点「允许」后，应用必须在几秒内用授权码换令牌；授权码只能用一次。",
+  }),
+  "mcp.oauthRegisterPerHour": int({
+    default: 20,
+    min: 1,
+    max: 1000,
+    unit: "per hour",
+    group: "mcp",
+    audience: "server",
+    description: "同一 IP 每小时最多注册几个 OAuth 应用（动态注册不需要登录，用这个防刷）。",
+  }),
+  "mcp.oauthTokenPerMin": int({
+    default: 60,
+    min: 5,
+    max: 6000,
+    unit: "per min",
+    group: "mcp",
+    audience: "server",
+    description: "同一 IP 每分钟最多请求几次 OAuth 换令牌/续期/撤销。",
+  }),
   "chat.cacheLines": int({
     default: 40,
     min: 0,
@@ -600,6 +649,42 @@ export const CONFIG = {
     description:
       "静音过滤：一句话里 Silero 认为是说话的部分（每帧 32 毫秒）加起来不到这么多毫秒，识别出的文字就丢掉，不发到聊天里（详情里记为「no-speech-frames」）。默认 160（5 帧）；原来是 32。调高：背景噪声里一闪而过的声音更不容易变成文字；太高时很短的一个词（「好」「嗯」）也会被丢。",
   }),
+  // Short spoken answers (short-answer.ts; docs/voice-mode.md, "Short answers").
+  "stt.shortAnswerMaxChars": int({
+    default: SHORT_ANSWER.maxChars,
+    ...SHORT_ANSWER_RANGE.maxChars,
+    unit: "chars",
+    group: "voice",
+    audience: "public",
+    description:
+      "短回答：助手刚问了你一句（最后一条是助手的问句，或还没回答的选项卡）时，你说的一句话不超过这么多个字（「要」「好」「嗯」「不要」），就算太短、语音很少也照样发出去，不被噪声过滤丢掉。没有问题在等你回答时照旧过滤。默认 2；0 = 关闭（只剩 stt.shortAnswerWords 里的词）。",
+  }),
+  "stt.shortAnswerMaxWordChars": int({
+    default: SHORT_ANSWER.maxWordChars,
+    ...SHORT_ANSWER_RANGE.maxWordChars,
+    unit: "chars",
+    group: "voice",
+    audience: "public",
+    description:
+      "短回答：有问题在等你回答时，只有一个词、不超过这么多个字母的一句话（「yes」「nope」「okay」）也算短回答，照样发出去。默认 8；0 = 只看 stt.shortAnswerMaxChars。",
+  }),
+  "stt.shortAnswerMinSpeechMs": int({
+    default: SHORT_ANSWER.minSpeechMs,
+    ...SHORT_ANSWER_RANGE.minSpeechMs,
+    unit: "ms",
+    group: "voice",
+    audience: "public",
+    description:
+      "短回答最少要有多少毫秒的说话声（Silero 判为说话的帧，每帧 32 毫秒）。比语音检测的最短长度还短的一句话，有这么多就照样去识别，识别出来是短回答（见上两条和 stt.shortAnswerWords）才发出去，否则照旧丢掉（详情里记为「short-speech」）。默认 64（2 帧）。调高：更少的短噪声被送去识别；太高时一个字的回答又会丢。",
+  }),
+  "stt.shortAnswerWords": {
+    default: [...SHORT_ANSWER.words] as string[],
+    schema: z.array(z.string().min(1).max(40)).max(200),
+    group: "voice",
+    audience: "public",
+    description:
+      "永远算回答的词：你说的一句话（去掉前面叫的名字，如「小克 苹果」里的「小克」，不分大小写和标点）正好是其中一个，就算很短、没有问题在等你回答，也照样发出去。默认是助手给的选项代号（苹果 香蕉 橘子 葡萄 批准 驳回 搁置）和两个字以上的是/否（不要、好的、可以、yes、no、はい…）；单个字（要、好、是、嗯）噪声也常变成它们，所以只在有问题等你回答时才放行。任何语言都直接加在这里。JSON 字符串数组。",
+  },
   // A posted voice line takes the speech that follows (voice-merge.ts reopenVerdict;
   // docs/dev-debug-widget.md, "Continuous speech amends the last line", "Reopened").
   "stt.mergeReopenSec": int({
@@ -812,6 +897,26 @@ export const CONFIG = {
     audience: "server",
     description:
       "语音自动润色：一句话识别完以后等多久（毫秒）再送去润色。这段时间里你接着说的下一句会和它一起送，明显是一句话的碎片就合并成一条；等得越短，润色出来越快，但碎片更可能各润各的。",
+  }),
+  "voice.autoPolishContextLines": int({
+    default: 12,
+    min: 0,
+    max: 20,
+    unit: "lines",
+    group: "voice",
+    audience: "server",
+    description:
+      "语音自动润色：送去润色时，带上这次要润色的句子之前的多少条聊天（你自己的话和别人的回复），只当作上下文读、不改不输出，用来判断「他/她/它」这类同音字。0 = 不带上下文。",
+  }),
+  "voice.autoPolishContextChars": int({
+    default: 2000,
+    min: 0,
+    max: 6000,
+    unit: "chars",
+    group: "voice",
+    audience: "server",
+    description:
+      "语音自动润色：上下文（之前的聊天）合计最多几个字符，从最近的一条往前数，超过就不再往前带；每条另外最多 300 字。上下文算进这次润色的字数上限和扣费。",
   }),
   // The mic polish API (lib/mic-polish.ts; docs/mic-polish-api.md; flag mic.polish-api).
   "mic.polishDailyMax": int({
@@ -1441,6 +1546,43 @@ export const CONFIG = {
     audience: "public",
     description: "触屏或触笔按住聊天拖柄多久打开菜单。鼠标拖动立即开始；双击/双点切换全屏。",
   }),
+  "voice.kwsDownloadMb": int({
+    default: 25,
+    min: 1,
+    max: 1000,
+    unit: "MB",
+    group: "voice",
+    audience: "public",
+    description:
+      "唤醒词模型和运行时首次下载总量的近似值，用于计量或未知网络下载确认；模型版本变化时更新。",
+  }),
+  "chat.telemetrySamplePct": int({
+    default: 10,
+    min: 0,
+    max: 100,
+    unit: "%",
+    group: "chat",
+    audience: "public",
+    description: "开发账号聊天客户端时间点的确定性采样比例；不收消息正文，零为停止上报。",
+  }),
+  "chat.telemetryFlushMs": int({
+    default: 30_000,
+    min: 5_000,
+    max: 300_000,
+    unit: "ms",
+    group: "chat",
+    audience: "public",
+    description: "开发账号聊天客户端遥测批量上报间隔，不逐消息写数据库。",
+  }),
+  "chat.telemetryBatchSize": int({
+    default: 10,
+    min: 1,
+    max: 20,
+    unit: "records",
+    group: "chat",
+    audience: "public",
+    description: "每批聊天时间点的最多记录数。",
+  }),
   "chat.readReceiptThrottleMs": int({
     default: 2_000,
     min: 2_000,
@@ -1766,6 +1908,16 @@ export const CONFIG = {
   }),
   // Li in the owner's own thread (flag partner.owner-thread, docs/partner-ai.md):
   // read by the debug hub over DebugSessions.config.
+  "partner.checkpointKeepPct": int({
+    default: 50,
+    min: 10,
+    max: 90,
+    unit: "%",
+    group: "chat",
+    audience: "server",
+    description:
+      "Li 的对话记忆（开关 partner.stable-prompt）：之前的聊天按原样往后追加，不改写，这样模型那边的缓存能命中、更省钱；超过上限（20 条或 12000 字）时重新开一段，只保留最近的这个百分比。越大 Li 记得越多，但重开得越频繁（每次重开缓存失效一次）。",
+  }),
   "partner.ownerReplyDelayMs": int({
     default: OWNER_REPLY_DELAY_MS,
     min: 0,

@@ -204,10 +204,30 @@ on the Mac now, behind the KWS hit: [local-stt.md](local-stt.md), "Voiceprint".
   which is imported from a Blob after the check, and kept in the Cache API
   (`lk-wake-v1`). In Chromium the first load took 2.7–3.2 s on a fast line;
   after a reload, 0.4 s from the cache.
-- **Cellular:** with nothing cached and `navigator.connection` saying
-  cellular or Save-Data, the download waits. The mic stays active and the
-  button notes "downloads on Wi-Fi". Safari has no `navigator.connection`,
-  so there it downloads.
+- **Model download protection:** `model-download.ts` is the shared browser
+  download boundary, currently used by KWS only. All four assets (glue JS,
+  WASM, model data and metadata) are checked in the Cache API first; cached
+  pinned files are digest-verified. Missing files download automatically only
+  when the browser explicitly reports Wi-Fi or ethernet without a metered or
+  Save-Data signal. Cellular, metered, Save-Data and unknown connections need
+  a localized confirmation showing the approximate total package size
+  (`voice.kwsDownloadMb`, default 25 MB), including Safari where the browser
+  cannot report connection type. `effectiveType: 4g` is a speed estimate, not
+  evidence of Wi-Fi. Declining keeps normal speech recognition active.
+- **Network changes:** during uncached fetch/body reads, an offline event or
+  a change to a restricted/unknown connection aborts the request and prevents
+  later files from starting. A confirmation belongs only to that batch and
+  connection; it is never persisted as permission to spend mobile data.
+  Finished valid files remain cached. There is no polling or network-settings
+  mutation. Browser APIs cannot reveal every metered hotspot; consent on an
+  unknown connection is conservative, not a billing guarantee.
+- **Worker boundary:** the page prepares the verified bytes and transfers
+  them to the KWS Worker. The Worker does not fetch model/runtime files by
+  itself, and still verifies pinned digests before importing the glue.
+- **Future Windows/WebGPU STT:** there is no such engine in this tree yet.
+  It must use the same `downloadModelAssets` boundary with its own complete
+  manifest and size estimate; this change does not implement STT or claim
+  that an absent engine is protected in production.
 - **Cost:** 100–140 ms of Worker time per 3–5 s segment in headless
   Chromium (RTF ≈ 0.03), only while someone talks in passive mode.
 - **The cut:** the words after "Linky" start at the last token's timestamp
@@ -226,8 +246,8 @@ on the Mac now, behind the KWS hit: [local-stt.md](local-stt.md), "Voiceprint".
   the mic goes back to active (`kws-failed`), and an utterance that was
   waiting on it is sent as an active one would be (`unchecked`). The Worker
   keeps downloading; if it gets ready later, the next passive turn uses it.
-  The 15 s applies everywhere: on cellular nothing uncached is fetched
-  anyway. In `createMic`, a passive utterance never waits more than
+  The 15 s applies everywhere: uncached downloads require the network decision above; a network change
+  can cancel them, while a harmless slow Wi-Fi download can still finish. In `createMic`, a passive utterance never waits more than
   `WAKE_GATE_MS` (30 s) for its verdict, so a stalled check cannot hold back
   the transcripts after it in the ordered queue.
 - **The agents see the mode:** each owner line carries `wake` (`active` /

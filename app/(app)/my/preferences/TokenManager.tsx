@@ -11,8 +11,10 @@ import {
   type Expiry,
 } from "@/app/components/TokenPickers";
 import { RevokeConfirm } from "./RevokeConfirm";
+import ConnectedApps from "./ConnectedApps";
 import { AgentGuide, CopyGuideButton, useAgentGuide, useAgentGuidePointer } from "./AgentGuide";
 import { agentGuideWithToken } from "@/lib/agent-guide";
+import { McpConnectionCopy } from "./McpConnectionCopy";
 import { INVITE_PREFILL, invitePrefill } from "@lianki/debug-chat/presence";
 
 /**
@@ -254,6 +256,12 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
             >
               {shared ? s("copied") : s("shareCopy")}
             </button>
+            <McpConnectionCopy
+              token={secret.token}
+              label={s("copyMcp")}
+              copiedLabel={s("copied")}
+              onError={() => setError(s("errCopy"))}
+            />
             <button
               type="button"
               onClick={copy}
@@ -272,6 +280,7 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
               {s("done")}
             </button>
           </div>
+          <p className="text-sm">{s("mcpHint")}</p>
           <div className="space-y-1 pt-1">
             <CopyGuideButton
               text={pointer(secret)}
@@ -403,6 +412,7 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
           {busy ? s("creating") : s("create")}
         </button>
       </form>
+      <ConnectedApps />
     </section>
   );
 }

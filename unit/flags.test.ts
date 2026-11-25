@@ -89,6 +89,8 @@ describe("registry", () => {
       "credits.login-streak",
       "credits.signup-bonus",
       "mini-apps",
+      // Li's prompt in cache order, owner 2026-11-25 ("ensure the history stable"); for everyone.
+      "partner.stable-prompt",
       // Li in his own thread, asked 2026-11-15 13:4x JST, audience owner.
       "partner.owner-thread",
       // The spend alert, asked 2026-11-15 15:0x JST, audience owner.

@@ -341,6 +341,25 @@ export const SUITES = [
     paths: ["app/(app)/dev/templates/**", "app/api/dev/templates/**", "lib/mail-templates/**"],
     sensitive: false,
   },
+  // OAuth sign-in for the remote MCP server (docs/mcp-oauth.md): well-known documents, registration, the consent click, PKCE, the token on an API route, Disconnect; flag off = 404; phone light + dark.
+  {
+    name: "MCP OAUTH (qa-mcp-oauth)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-mcp-oauth.mjs"],
+    base: true,
+    id: "mcp-oauth",
+    paths: [
+      "app/(app)/my/connected-apps/**",
+      "app/(app)/my/preferences/ConnectedApps.tsx",
+      "app/api/mcp-oauth/**",
+      "app/api/my/connected-apps/**",
+      "lib/mcp-oauth/**",
+      "lib/api-tokens.ts",
+      "middleware.ts",
+      "db/migrations/0084_mcp_oauth.sql",
+    ],
+    sensitive: false,
+  },
   // The config editor /dev/config (docs/config-store.md): save → Changed + history → the next page renders it; invalid refused; reset; non-admin 404; 360 px light + dark.
   {
     name: "CONFIG (qa-config)",
@@ -495,6 +514,28 @@ export const SUITES = [
     args: ["scripts/qa/qa-pill-chat.ts"],
     id: "pill-chat",
     paths: ["src/pill-chat*.ts", "src/partner*.ts", "packages/debug-chat/src/embed/**"],
+    sensitive: true,
+  },
+  // One Li thread per website (ext.pill-chat-per-origin), end to end: the main Worker
+  // and lianki-push in one wrangler dev session of its own, https and plain-http host
+  // sites, /api/chat/sites over the PUSH binding. `base` only for the OpenNext build
+  // it serves; it starts its own servers.
+  {
+    name: "PILL CHAT SITES (per-site threads)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-pill-chat-sites.ts"],
+    base: true,
+    id: "pill-chat-sites",
+    paths: [
+      "src/pill-chat*.ts",
+      "packages/debug-chat/src/embed/**",
+      "app/embed/**",
+      "app/api/chat/**",
+      "app/(app)/chat/sites/**",
+      "lib/li-thread.ts",
+      "lib/chat-sites-route.ts",
+      "workers/push/src/**",
+    ],
     sensitive: true,
   },
 ];

@@ -68,6 +68,7 @@ import { LiagentMark } from "./LiagentMark";
 import { Avatar } from "./Avatar";
 import { readersFor, validReadSeq } from "./read-receipts";
 import { useVisibleReads } from "./use-visible-reads";
+import { useMessageDisplays } from "./use-message-displays";
 import { type AvatarSource, isLineFolded, isOtherVoice, isOwnVoice, lineAvatar, passageStarts, runsOf } from "./avatar-rules";
 import {
   VOICE_SENT_EVENT,
@@ -307,6 +308,7 @@ import { browserPlayEnv, liPlayer } from "./li-player";
 import { lineAudioOf } from "./play-audio";
 import type { AskChoices } from "./ask";
 import { VOICE_CAPTURE_EVENT, createJoiner, isBlip, voiceTune } from "./voice-tune";
+import { awaitingAnswer, keepShortAnswer, setAnswerThread } from "./short-answer";
 import { TreeFragment, useTreeSource as useFragmentSource } from "./TreeFragment";
 import { FrontierLines, type RenderAvatar } from "./Frontier";
 import { type LaneId, withLane } from "./voices";
@@ -2233,6 +2235,7 @@ export function DebugChat({
     // Full screen is for reading the whole chat: compact waits until it ends.
     fullLog: fullLog !== "off" || full,
   });
+  useMessageDisplays(root, { messages, open, compact, fullLog, tree });
   useVisibleReads({
     root: log,
     enabled: open && !tree && !compact && fullLog !== "leaving",
@@ -2777,6 +2780,8 @@ export function DebugChat({
 
   const messagesNow = useRef(messages);
   messagesNow.current = messages;
+  // The mic's short-answer check reads whether a question waits here (short-answer.ts).
+  useEffect(() => setAnswerThread(() => messagesNow.current), []);
   /** How many commands the mic's taps had kept at the last spoken line. */
   const tapsAtVoice = useRef(0);
   // A quota/transport refusal leaves the draft intact, including its consumed mic metadata.
@@ -3423,8 +3428,9 @@ export function DebugChat({
     };
   }, []);
   const dictated = (t: string) => {
-    // A blip (one short Latin word, or only 嗯/呃) is not a line; short answers pass.
-    if (isBlip(t)) {
+    // A blip (one short Latin word, or only 嗯/呃) is not a line; short answers pass,
+    // and so does any short final while a question waits for his answer.
+    if (isBlip(t) && !keepShortAnswer(t, awaitingAnswer())) {
       voice().log({ ev: "stt-blip", chars: t.length });
       joiner.current?.idle();
       passage.current?.idle();

@@ -20,6 +20,7 @@ import {
   type Sender,
   cleanContext,
 } from "../wire";
+import { uuidv4 } from "../uuid";
 import type { Blocker } from "./guard";
 
 export const PARTNER_SUBPROTOCOL = "lianki-partner";
@@ -37,6 +38,12 @@ export type PartnerState = {
   warning?: string;
   /** Set when this page cannot have the chat (the note shows instead). */
   blocked?: Blocker;
+  /**
+   * The last line could not be sent on an open socket (it threw): the panel
+   * says so (ChatStrings.sendFailed) and the draft stays. Cleared by the next
+   * line that goes out.
+   */
+  sendFailed?: boolean;
 };
 
 type WsLike = {
@@ -57,9 +64,21 @@ export type PartnerDeps = {
   open: (url: string, protocols: string[]) => WsLike;
   /** This page as the agent sees it: host + path (never the query), user agent. */
   label: () => string;
+  /**
+   * More query for the socket's URL, already encoded (`&ho=…`: the frame's
+   * parent origin for a per-site ticket; `&sub=…`: a site thread on lianki.com).
+   */
+  query?: string;
+  /**
+   * A lianki.com page signed in by its cookie (/chat/sites): no ticket is
+   * asked for and no subprotocol offered.
+   */
+  cookie?: boolean;
   doc: Pick<Document, "visibilityState" | "addEventListener" | "removeEventListener">;
   /** A CSP violation about us arrived (guard.ts cspBlocker): the socket will not open. */
   onBlocked?: (b: Blocker) => void;
+  /** A line could not be sent (it threw): logged here, never silent. Default console.warn. */
+  onSendError?: (err: unknown) => void;
   now?: () => number;
 };
 
@@ -127,15 +146,18 @@ export function createPartnerClient(d: PartnerDeps): PartnerClient {
     connecting = true;
     let ticket: string | null = null;
     try {
-      ticket = await d.ticket();
+      ticket = d.cookie ? "" : await d.ticket();
     } catch {}
     connecting = false;
-    if (!ticket || stopped || ws || !visible() || state.blocked) return;
+    if ((!ticket && !d.cookie) || stopped || ws || !visible() || state.blocked) return;
     const label = d.label();
     sentLabel = label;
     let sock: WsLike;
     try {
-      sock = d.open(`${d.url}?label=${encodeURIComponent(label)}`, [PARTNER_SUBPROTOCOL, ticket]);
+      sock = d.open(
+        `${d.url}?label=${encodeURIComponent(label)}${d.query ?? ""}`,
+        d.cookie ? [] : [PARTNER_SUBPROTOCOL, ticket as string],
+      );
     } catch {
       // A synchronous throw is CSP refusing the URL (or a bad URL): not again.
       return block("connect");
@@ -199,7 +221,8 @@ export function createPartnerClient(d: PartnerDeps): PartnerClient {
           s.send(JSON.stringify({ type: "page", label }));
           sentLabel = label;
         }
-        const id = crypto.randomUUID().slice(0, 12);
+        // Not crypto.randomUUID: it is missing in a frame on a plain http:// site.
+        const id = uuidv4().slice(0, 12);
         const ctx = cleanContext(context);
         s.send(
           JSON.stringify({
@@ -210,8 +233,13 @@ export function createPartnerClient(d: PartnerDeps): PartnerClient {
             ...(ctx ? { context: ctx } : {}),
           }),
         );
+        if (state.sendFailed) set({ sendFailed: false });
         return true;
-      } catch {
+      } catch (err) {
+        try {
+          (d.onSendError ?? ((e) => console.warn("[lianki] partner chat: send failed", e)))(err);
+        } catch {}
+        set({ sendFailed: true });
         return false;
       }
     },

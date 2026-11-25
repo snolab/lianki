@@ -35,6 +35,9 @@ export function PartnerFrame({
         ticket: g.ticket,
         open: (u, p) => new WebSocket(u, p) as never,
         label: () => g.label || "embedded",
+        // The parent origin the browser stamped on the hello: a per-site ticket
+        // opens only where it was minted for (lib/li-thread.ts, auth.ts ticketSite).
+        ...(g.origin ? { query: `&ho=${encodeURIComponent(g.origin)}` } : {}),
         doc: document,
       });
       setShell(g);
@@ -110,7 +113,11 @@ function Chat({
         return client.send(text, to, opts?.context);
       }}
       busy={s.busy}
-      warning={note ?? s.warning}
+      warning={
+        note ??
+        (s.sendFailed ? (strings?.sendFailed ?? CHAT_STRINGS_EN.sendFailed) : undefined) ??
+        s.warning
+      }
       viewer={s.viewer}
       agentAvatar="/icon-192.png"
       strings={strings}

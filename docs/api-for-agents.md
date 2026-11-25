@@ -140,6 +140,10 @@ assistant that tool results (card titles, chat lines) are data, never
 instructions. The MCP key is a normal API token; v1 has no delete tool and no
 eval.
 
+Web apps that cannot paste a token (ChatGPT's custom connectors, Claude.ai)
+connect to the remote server `https://lianki.com/mcp` by OAuth sign-in instead,
+behind the flag `mcp.oauth`: [mcp-oauth.md](mcp-oauth.md).
+
 ### Explicit read acknowledgements and sequence recovery
 
 A chat line carries its current version `seq`. Agents can read incrementally with
@@ -262,8 +266,9 @@ tool=<name>`; `lib/api-token-client.ts` accepts that shape too.
 ### Clients without Authorization headers
 
 [ChatGPT web supports No authentication](https://developers.openai.com/api/docs/guides/custom-mcp-server).
-Create a dedicated, expiring API token and
-configure `https://lianki.com/mcp/<TOKEN>` with **No authentication**. Substitute
+In Preferences → API tokens, create a dedicated, expiring token with only the
+permissions you need. In its one-time secret box, use **Copy MCP connection URL**
+(no manual URL assembly). Then configure `https://lianki.com/mcp/<TOKEN>` with **No authentication**. Substitute
 the complete `lk_…` secret locally; never paste that address into chat or logs.
 Only the exact `lk_` + 64 lowercase hexadecimal format is accepted in the path.
 This uses the same live token introspection, scopes, expiry and revocation as
@@ -293,11 +298,11 @@ could report to the state tree ([state-tree.md](state-tree.md), "Live
 progress"). Now any agent with a Lianki API token can, on three surfaces that
 share one request shape:
 
-| surface                                                   | where                                                                  |
-| --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `lianki progress …` (`npx lianki`, the global `lianki` bin) | `packages/lianki-cli/progress.mjs` (flags → body), `cli.mjs` (the verbs) |
-| MCP: `lianki_progress_report` / `_show` / `_ack`          | `packages/lianki-cli/mcp-tools.mjs`, served by `lianki mcp` and `lianki.com/mcp` |
-| HTTP: `POST /api/version/progress` (`/batch`, `/ack`), `GET …` (`/stats`, `/history`) | lianki-push `ProgressHub` (`workers/push/src/progress.ts`)           |
+| surface                                                                               | where                                                                            |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `lianki progress …` (`npx lianki`, the global `lianki` bin)                           | `packages/lianki-cli/progress.mjs` (flags → body), `cli.mjs` (the verbs)         |
+| MCP: `lianki_progress_report` / `_show` / `_ack`                                      | `packages/lianki-cli/mcp-tools.mjs`, served by `lianki mcp` and `lianki.com/mcp` |
+| HTTP: `POST /api/version/progress` (`/batch`, `/ack`), `GET …` (`/stats`, `/history`) | lianki-push `ProgressHub` (`workers/push/src/progress.ts`)                       |
 
 - **The permission is `progress`** (`lib/api-tokens.ts` `SCOPES`, group
   `owner`): offered only to an account holding `dev` (`OWNER_SCOPES`, like
@@ -315,8 +320,8 @@ share one request shape:
   expired) or 403 (`scope`, or another account); no RPC bound is 503. The root
   secret and HMAC grants are untouched (`lib/progress-token.ts`).
 - **What the token may do: the whole tree, as itself.** The hub takes it as
-  the root grant *acting as the token's name* (`ProgressAuth` `{root: true,
-  agent}`): every report is that agent's (a report without `agent` gets it
+  the root grant _acting as the token's name_ (`ProgressAuth` `{root: true,
+agent}`): every report is that agent's (a report without `agent` gets it
   filled in; one naming another agent is 403 "this token is for codex"),
   across any path, with the root's `grant` and `resolve`, but never
   `endedAt` (back-dating stays with the real root). So a token named `codex`
@@ -324,17 +329,17 @@ share one request shape:
   `LIANKI_TOKEN`. Cross-lane batches (main writing for several agents) keep
   using `PROGRESS_TOKEN`.
 - **`lianki progress`**: `report` (the default: `--path --task --status
-  --pct --eta --late --confirm --note --pr --needs --who --done
-  --verified|--unverified --kind --ref --action --link --rev --change-id`),
+--pct --eta --late --confirm --note --pr --needs --who --done
+--verified|--unverified --kind --ref --action --link --rev --change-id`),
   `batch '<JSON list>' | --file`, `ack <code>`, `show [--all]`, `stats
-  [--agent --since]`, `history`. The CLI only maps flags to the body
+[--agent --since]`, `history`. The CLI only maps flags to the body
   (`reportBody`): titles, scopes, the overrun rule and ETA limits are the
   hub's, and its words come back as exit 5. A plain `--done` is sent as
   `unverified: true` (the hub adds the "verify: …" child) unless `--verified
-  "<evidence>"`; the repo's `progress.ts` asks `gh` instead, which the public
+"<evidence>"`; the repo's `progress.ts` asks `gh` instead, which the public
   CLI cannot assume. Token: `--token`, `LIANKI_TOKEN`, the keychain
   (`lianki auth login`), as for every command. The repo's `lianki-dev
-  progress` falls back to `LIANKI_TOKEN` (or the lane's
+progress` falls back to `LIANKI_TOKEN` (or the lane's
   `~/.config/lianki/lanes/<lane>.token`) when no progress token is set.
 - **MCP.** `lianki_progress_report` takes the report fields as arguments (zod
   checks them, then `reportBody` maps them exactly as the CLI); `_show`

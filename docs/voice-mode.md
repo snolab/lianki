@@ -248,6 +248,41 @@ Voice mode uses the page's one mic session, `__lkMic`
   voice mode starting on a fresh page and the auto-resume both toggled, and
   the second toggle turned the mic straight off (found by the QA).
 
+## Short answers
+
+He answers an agent's question with one syllable ("要", "好", "嗯") or with
+the option code words agents offer ("小克 苹果", "批准"). Those are exactly
+what the mic's noise gates were built to drop, so they get their own rule
+(`packages/debug-chat/src/short-answer.ts`, `unit/short-answer.test.ts`).
+
+Where a short utterance could be lost, in order, from the mic to a line:
+
+| Gate | Where | Short answers |
+| ---- | ----- | ------------- |
+| VAD misfire: under `minSpeechMs` (250 ms normal, 150 whisper) of frames at the start threshold (0.5 since 2026-11-15) | vad-web, `MicButton.tsx`; `onMisfire` in `mic.ts` | **This is what dropped "要"**: one syllable rarely holds 8 frames over 0.5, and a misfire was thrown away untranscribed, with no log. Now a misfire with at least `stt.shortAnswerMinSpeechMs` of speech and real sound is transcribed (with up to `MISFIRE_PRE_ROLL_MS` of the same session's plain listening in front, cleared at every boundary: on, off, hold, enrolment, a cue, each utterance) and kept only as a short answer; otherwise the guard drops it as `short-speech`. No end cue plays for it. Every misfire logs `vad-misfire`. |
+| Silence guard: `no-speech-frames` (`stt.guardMinSpeechMs`, 160 ms at 0.5), `route-vad` (cloud turbo's own VAD share under 0.25) | `stt-guard.ts` `judgeFinal` | A short answer steps both down to `stt.shortAnswerMinSpeechMs`. `silent-audio`, stock phrases and loops stand. |
+| Blip guard: one Latin word or only 嗯/呃 | `voice-tune.ts` `isBlip`, `DebugChat.tsx` | Passes a short answer ("yeah" or "嗯" to a question). |
+| Echo guards | `echo.ts`, `lib/echo-reports.ts` | Unchanged. Under `ECHO_MIN_CHARS` / `voice.echoMinChars` (4) a line is an echo only when it equals a whole sentence. One exception: talk-over (`voice.talk-over`, echo cancellation off) drops a short line contained in the sentence Li is reading at that moment. |
+| Voiceprint `MIN_SPEECH_S` (1.5 s) | `scripts/local-stt/voiceprint.py` | Only the speaker decision ("unknown", "short"); never drops the line. The Mac's filter judges only 2 s or more of speech. |
+| Polish, summaries | `polish.ts` | Never hide a line: a summary needs two words and keeps the raw lines. |
+| Wake word (off by default) | `wake.ts` | In passive mode anything without the wake word is dropped, as designed. |
+
+A final is a **short answer** (`keepShortAnswer`) when:
+
+- it is one of `stt.shortAnswerWords`, alone or after a lane's name
+  ("小克 苹果" → "苹果"): kept always. The defaults are the option code
+  words (苹果 香蕉 橘子 葡萄 批准 驳回 搁置) and yes/no words of two
+  characters or more in several languages. A single character is left out of
+  the list on purpose: noise turns into 要/好/是/嗯 too.
+- or it is short (at most `stt.shortAnswerMaxChars` characters, default 2,
+  or one word of at most `stt.shortAnswerMaxWordChars`, default 8) **and** a
+  question waits: the latest line in his thread is an agent's line ending in
+  a question mark (any script's), or an ask card not answered, withdrawn or
+  expired (`awaitsAnswer`).
+
+Otherwise every gate works as before. All four keys are public config, live
+on the page without a deploy.
+
 ## Cues
 
 The owner, 2026-11-05 23:40–23:41 JST: "语音识别完发出去消息的时候要有声音",
@@ -581,6 +616,7 @@ nothing but the chat.
 | `lib/words/voice-mic.ts`                   | browser glue to `__lkMic` (lazy import)                     |
 | `packages/debug-chat/src/voice-merge.ts`   | continuous speech amending the last line (flag `stt.merge`); a kept command keeps lines apart |
 | `packages/debug-chat/src/mic-taps.ts`      | command taps and pins on the page's mic                     |
+| `packages/debug-chat/src/short-answer.ts`  | short spoken answers past the noise gates; "Short answers" above |
 | `packages/debug-chat/src/speaker-avatar.ts` | another voice's avatar from its id (pure); "Speaker avatars" above |
 | `packages/debug-chat/src/cluster-avatar.ts` | one avatar per voice cluster (pure); "Speaker clusters" above |
 | `app/(app)/words/VoiceMode.tsx`            | the hook, the switch (`useVoicePref`), the badge, its labels; any screen |

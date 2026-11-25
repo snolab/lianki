@@ -23,6 +23,7 @@
  * on, with its own Li chat ticket (`/api/chat/li-ticket`, M2: that account's
  * thread only). lianki.com says which, in the answer to the kill-switch check.
  */
+import { FLAG_CHANGED_EVENT, readFlagChanged } from "../lib/flag-events";
 import { isolatedWorld } from "../packages/debug-chat/src/embed/guard";
 import { EMBED_STRINGS, embedLang } from "../packages/debug-chat/src/ui-strings";
 import { readShare } from "../packages/debug-chat/src/embed/share";
@@ -42,6 +43,9 @@ import {
 } from "./pill-chat-trust";
 import { blockedNote, sitesDialog, trustDialog } from "./pill-chat-ui";
 
+/** lib/li-thread.ts HOST_ORIGIN_HEADER (unit/li-thread.test.ts keeps the two the same). */
+export const HOST_ORIGIN_HEADER = "x-lianki-host-origin";
+
 type GmFetch = (
   url: string,
   opts?: { method?: string; headers?: Record<string, string>; credentials?: string },
@@ -57,6 +61,8 @@ export type PillChatDeps = {
   report?: (what: string, detail: string) => void;
   /** The top window's hostname, top-window flag, document, window (tests pass fakes). */
   hostname?: string;
+  /** The top window's origin (tests pass one). */
+  hostOrigin?: string;
   path?: string;
   /** The page's full address, read only when he presses Share in the frame (tests pass one). */
   href?: () => string;
@@ -81,15 +87,78 @@ export type OpenResult =
   | "blocked"
   | "busy";
 
-/** On lianki.com: ask for this account's flag (at most once a minute) and keep the answer. */
+/**
+ * On lianki.com: ask for this account's flag (at most once a minute, unless
+ * `force`: the flag was just changed) and keep the answer.
+ */
 export async function mirrorPillChatFlag(
-  d: Pick<PillChatDeps, "origin" | "gmFetch" | "getValue" | "setValue" | "now">,
+  d: Pick<PillChatDeps, "origin" | "gmFetch" | "getValue" | "setValue" | "now"> & {
+    force?: boolean;
+  },
 ): Promise<boolean | null> {
   const now = d.now?.() ?? Date.now();
-  if (!flagRecheckDue(d.getValue(PILLCHAT_ON_KEY, null), now)) return null;
+  if (!d.force && !flagRecheckDue(d.getValue(PILLCHAT_ON_KEY, null), now)) return null;
   const on = await askFlag(d);
   d.setValue(PILLCHAT_ON_KEY, JSON.stringify({ on, at: now }));
   return on;
+}
+
+/** The server keeps flags this long at most (lib/flags-store.ts FLAG_CACHE_MS) when /dev/flags does not say. */
+const FLAG_CACHE_FALLBACK_S = 30;
+
+/**
+ * On lianki.com: keep the mirror fresh, event-driven. Asks on load, again when
+ * the tab comes back into view (throttled as above), and at once when
+ * /dev/flags saves an `ext.pill-chat*` flag (FLAG_CHANGED_EVENT), plus once
+ * more after the server's flag cache has run out, since the first answer may
+ * still be the old value. Without this, turning the flag on from /dev/flags
+ * left the mirror at the "off" read on that page's load, so the pill showed no
+ * Li on other sites until a lianki.com page was loaded again a minute later.
+ * Returns the unhook.
+ */
+export function watchPillChatFlag(
+  d: Pick<PillChatDeps, "origin" | "gmFetch" | "getValue" | "setValue" | "now"> & {
+    win?: Window;
+    doc?: Document;
+    signal?: AbortSignal;
+    /** setTimeout, returning its cancel (tests pass a fake clock). */
+    later?: (fn: () => void, ms: number) => () => void;
+  },
+): () => void {
+  const win = d.win ?? (globalThis as unknown as Window);
+  const doc = d.doc ?? document;
+  const run = (force = false) => void mirrorPillChatFlag({ ...d, force }).catch(() => {});
+  const later =
+    d.later ??
+    ((fn: () => void, ms: number) => {
+      const id = setTimeout(fn, ms);
+      return () => clearTimeout(id);
+    });
+  let cancel: (() => void) | undefined;
+  const onVisible = () => {
+    if (doc.visibilityState === "visible") run();
+  };
+  const onChanged = (e: Event) => {
+    // An unreadable detail still asks: one request, nothing lost.
+    const detail = readFlagChanged((e as CustomEvent).detail);
+    if (detail.key !== undefined && !detail.key.startsWith("ext.pill-chat")) return;
+    run(true);
+    const secs = detail.cacheSeconds ?? 0;
+    const wait = secs > 0 ? Math.min(secs, 300) : FLAG_CACHE_FALLBACK_S;
+    cancel?.();
+    cancel = later(() => run(true), (wait + 1) * 1000);
+  };
+  const opts = d.signal ? { signal: d.signal } : undefined;
+  doc.addEventListener("visibilitychange", onVisible, opts);
+  win.addEventListener(FLAG_CHANGED_EVENT, onChanged, opts);
+  const unhook = () => {
+    cancel?.();
+    doc.removeEventListener("visibilitychange", onVisible);
+    win.removeEventListener(FLAG_CHANGED_EVENT, onChanged);
+  };
+  d.signal?.addEventListener("abort", unhook);
+  run();
+  return unhook;
 }
 
 async function askFlag(d: Pick<PillChatDeps, "origin" | "gmFetch">): Promise<boolean> {
@@ -155,7 +224,13 @@ export function pillChat(d: PillChatDeps) {
     try {
       const r = await d.gmFetch(`${d.origin}${TICKET_PATHS[kind]}`, {
         method: "POST",
-        headers: { "x-lianki-userscript": "1" },
+        // The top window's origin (scheme, host, port: never the path or query),
+        // read here in the userscript's world: with ext.pill-chat-per-origin on,
+        // lianki.com binds the ticket to this site's own thread (lib/li-thread.ts).
+        headers: {
+          "x-lianki-userscript": "1",
+          [HOST_ORIGIN_HEADER]: d.hostOrigin ?? location.origin,
+        },
         credentials: "include",
       });
       if (!r.ok) return null;

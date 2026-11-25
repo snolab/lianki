@@ -19,6 +19,9 @@
 import { checkToken } from "@/lib/api-tokens";
 import type { D1Like } from "@/lib/d1/types";
 import { PARTNER_TICKET_AUD, PARTNER_TICKET_HEADER, signSttTicket } from "@/lib/stt-ticket";
+import { flagIn, type FlagValues } from "@/lib/flags";
+import { DISPATCH_THREAD } from "@/lib/dev-eval";
+import { HOST_ORIGIN_HEADER, PER_ORIGIN_FLAG, siteBinding } from "@/lib/li-thread";
 
 /** What a token needs for a partner ticket: the socket reads the thread and posts to it. */
 export const PARTNER_TOKEN_SCOPES = ["chat:read", "chat:write"] as const;
@@ -32,6 +35,10 @@ export type PartnerTicketDeps = {
   isDev: (email: string | null) => Promise<boolean>;
   /** STT_TICKET_KEY's private key, or null when it is not set or unreadable. */
   key: () => Promise<CryptoKey | null>;
+  /** The flags (ext.pill-chat-per-origin); absent = off. */
+  flags?: () => Promise<FlagValues>;
+  /** The site-hash key (lib/li-thread.ts), for a pill ticket bound to its site. */
+  threadKey?: () => Promise<CryptoKey | null>;
   now?: () => number;
 };
 
@@ -68,9 +75,19 @@ export async function partnerTicket(req: Request, deps: PartnerTicketDeps): Prom
   if (!email || !(await deps.isDev(email))) return json({ error: "Not found" }, 404);
   const key = await deps.key();
   if (!key) return json({ error: "Partner tickets are off" }, 503);
+  // The pill names its site (lib/li-thread.ts): with ext.pill-chat-per-origin on,
+  // the ticket opens only that site's thread under his own. The debug widget on
+  // every site names none: his own thread, as before.
+  let site: { ho?: string; th?: string } | null = {};
+  if (req.headers.has(HOST_ORIGIN_HEADER)) {
+    const on = deps.flags ? flagIn(await deps.flags(), PER_ORIGIN_FLAG) : false;
+    site = await siteBinding(req, on, DISPATCH_THREAD, deps.threadKey);
+    if (!site) return json({ error: "Not found" }, 404);
+  }
   // Audience and expiry only: a partner ticket is chat-only by its audience.
   const { ticket, exp } = await signSttTicket(key, {
     aud: PARTNER_TICKET_AUD,
+    ...site,
     now: deps.now?.(),
   });
   return json({ ticket, exp }, 200);

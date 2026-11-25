@@ -84,9 +84,11 @@ import preferredLangs from "@/app/components/preferred-langs.content";
 import privacyPage from "@/app/(app)/privacy/privacy.content";
 import myBoxes from "@/app/(app)/my/boxes/my-boxes.content";
 import apiTokens from "@/app/components/api-tokens.content";
+import connectedApps from "@/app/components/connected-apps.content";
 import agentGuide from "@/lib/agent-guide.content";
 import roadmapPage from "@/app/(app)/roadmap/page.content";
 import chatHistoryPage from "@/app/(app)/chat/history/page.content";
+import chatSitesPage from "@/app/(app)/chat/sites/page.content";
 import devDesign from "@/app/(app)/dev/design/page.content";
 import devRoadmap from "@/app/(app)/dev/roadmap/page.content";
 import devPages from "@/app/(app)/dev/dev-pages.content";
@@ -219,10 +221,12 @@ describe.each([
   ["sign-in-errors", signInErrors],
   ["privacy-page", privacyPage],
   ["api-tokens", apiTokens],
+  ["connected-apps", connectedApps],
   ["my-boxes", myBoxes],
   ["agent-guide", agentGuide],
   ["roadmap-page", roadmapPage],
   ["chat-history-page", chatHistoryPage],
+  ["chat-sites-page", chatSitesPage],
   ["dev-design", devDesign],
   ["dev-roadmap", devRoadmap],
   ["dev-pages", devPages],

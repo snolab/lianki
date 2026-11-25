@@ -33,3 +33,7 @@ Implementation: `lib/api-token-scopes.ts`, `/api/token/scopes`,
 `/my/tokens/scopes`, `packages/lianki-cli/mcp-tools.mjs`, and
 `workers/mcp/src/mcp.ts`. The localized agent guide explains the same sequence.
 See [API instructions](api-for-agents.md) and [token security](secrets-and-auth.md).
+
+Apps connected by OAuth (ChatGPT, Claude.ai) get the same kind of token with
+a fixed, smaller scope list; a scope request does not apply to them
+([mcp-oauth.md](mcp-oauth.md)).

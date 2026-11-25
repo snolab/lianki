@@ -686,6 +686,41 @@ do); a ↓ button at the right of the row above the input (the row stays
 click-through, only the button takes taps) scrolls to the end, with a dot
 when messages arrived below. The log's top edge fades once it overflows.
 
+#### Message timing and reply benchmark
+
+Developer accounts collect bounded, page-local message timestamps through
+`message-telemetry.ts`: accepted send, live socket receipt, first visible
+viewport intersection, actual playback start, and final natural playback end.
+History hydration is excluded. Cancellation and errors are separate outcomes;
+queueing, pausing, and refusing playback never imply completion. The timestamps
+share the observing client's clock; never subtract another device's send time
+or the server's timestamp without clock synchronization.
+
+The collector retains only message IDs, known sender metadata and timestamps,
+not message text, credentials, email addresses or URLs. It resets on account
+changes. `chat.telemetrySamplePct`, `chat.telemetryFlushMs` and
+`chat.telemetryBatchSize` control deterministic sampling and bounded batches.
+Batches use the existing developer-only `/api/dev/log` Worker-log endpoint;
+there is no telemetry table and no D1 write for each message. The in-memory
+`globalThis.__lkMessageTelemetry.snapshot()` is available for local diagnosis;
+it is not durable history. Background pages do not report visible rows.
+
+Read-only historical benchmark:
+
+```bash
+bun scripts/dev/reply-benchmark.ts --as <your-name> --threshold-ms 5000 --window-ms 300000 --limit 100
+```
+
+It uses the existing chat token and prints aggregates by input type and
+recipient. It excludes unaddressed ambient lines and known automatic receipt
+patterns. Matching is explicitly a same-thread, addressed-recipient,
+first-subsequent-response heuristic: the protocol has no causal reply ID.
+A reply after multiple pending requests is an ambiguous batch, excluded from
+clean percentiles. Missing replies and expired windows are counted separately.
+Server history timing excludes client/network/rendering latency, and a small
+history window cannot establish a service-wide latency guarantee. A five-second
+target is a measurement threshold, not a promise enforced by this collector.
+
 #### Voice latency
 
 Each line spoken into the mic gets one timing record, voice → reply
@@ -907,7 +942,6 @@ messages said while it was away are in `/dev/friends?thread=…`.
 Fallback, if lianki-push is down: run code in a desktop lianki.com tab of
 the owner's Chrome with `rech eval` — it reaches only that tab, not the phone.
 
-
 ### Remembering an eval controller
 
 The developer pairing modal offers **This approval only** (the existing finite
@@ -932,8 +966,7 @@ chain caps are unchanged. No previously issued grant is upgraded automatically.
 
 ## Chat hub idle work and cancellation
 
-`/dev/session` and `GET /api/dev/hub-diagnostics` (both `isDev`, otherwise
-404) read one snapshot through the private PUSH binding. It contains the
+`/dev/session` and `GET /api/dev/hub-diagnostics` (both `isDev`, otherwise 404) read one snapshot through the private PUSH binding. It contains the
 current wake cycle's start, last activity, pending service calls (method and
 start time only), and pending automatic-polish state. No identities, message
 text, tokens or polling. An inspection itself wakes the Durable Object: a
@@ -976,7 +1009,7 @@ and [Durable Object lifecycle](https://developers.cloudflare.com/durable-objects
 For online duration use Cloudflare's aggregate Analytics API, including
 `durableObjectsInvocationsAdaptiveGroups`, rather than the snapshot. A read-only baseline query of the DebugHub namespace from
 2026-11-11 14:00 UTC to 2026-11-14 14:01 UTC covered one object: about
-3,752.8 active seconds (62.5 minutes), 38.6 CPU seconds, and 480.36 GB*s of
+3,752.8 active seconds (62.5 minutes), 38.6 CPU seconds, and 480.36 GB\*s of
 reported duration. Day boundaries were UTC and the first/last days partial.
 These sampled aggregates show the existing hub is not continuously active;
 they do not establish which individual quiet periods hibernated. Request

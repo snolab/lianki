@@ -21,6 +21,7 @@
  * prefetches it.
  */
 import { flagIn } from "@/lib/flags";
+import { PER_ORIGIN_FLAG, siteBinding } from "@/lib/li-thread";
 import { pillChatAccess, type PillChatRouteDeps } from "@/lib/pill-chat-route";
 import {
   LI_CHAT_TICKET_AUD,
@@ -34,6 +35,8 @@ export type LiTicketDeps = PillChatRouteDeps & {
   key: () => Promise<CryptoKey | null>;
   /** One more ticket for this account this minute? (config chat.pillTicketsPerMinute) */
   allow: (userId: string) => Promise<boolean>;
+  /** The site-hash key (lib/li-thread.ts threadHashKeyFromJwk), or null when it is not set. */
+  threadKey?: () => Promise<CryptoKey | null>;
 };
 
 const json = (body: unknown, status: number) =>
@@ -46,13 +49,18 @@ export async function liTicket(req: Request, deps: LiTicketDeps): Promise<Respon
   // The owner's pill uses his partner ticket: an account ticket never names a dev account.
   if (!a || a.ticket !== "account" || !isTicketSub(a.user.id)) return none();
   // pillChatAccess read the users flag already; asked again here so a refactor there cannot widen this.
-  if (!flagIn(await deps.flags(), "ext.pill-chat-users")) return none();
+  const flags = await deps.flags();
+  if (!flagIn(flags, "ext.pill-chat-users")) return none();
+  // Per-site threads: this ticket opens only the thread of the site that asked for it.
+  const site = await siteBinding(req, flagIn(flags, PER_ORIGIN_FLAG), a.user.id, deps.threadKey);
+  if (!site) return none();
   if (!(await deps.allow(a.user.id))) return json({ error: "Too many tickets" }, 429);
   const key = await deps.key();
   if (!key) return json({ error: "Li chat tickets are off" }, 503);
   const { ticket, exp } = await signSttTicket(key, {
     aud: LI_CHAT_TICKET_AUD,
     sub: a.user.id,
+    ...site,
     now: deps.now?.(),
   });
   return json({ ticket, exp }, 200);

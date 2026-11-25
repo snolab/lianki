@@ -7,11 +7,13 @@
  *
  * Whose lines: a thread is "owner" (written to every account holding `dev`,
  * lib/permissions.ts) or a user id (that user's Learning Partner thread, written to
- * that account only). Every read and delete is by the session's user id; no
- * request can name another account.
+ * that account only). A site's thread (`<base>~<hash>`, lib/li-thread.ts) is
+ * its base's: kept under that thread id, never the origin. Every read and
+ * delete is by the session's user id; no request can name another account.
  */
 import { holderIds } from "./account-permission";
 import { isDispatchThread, isUserId } from "./dev-eval";
+import { baseThread } from "./li-thread";
 import {
   CHAT_LOG_MAX_LINES,
   type ChatLogAnswer,
@@ -71,13 +73,12 @@ export const ownerIds = (db: ChatLogDb): Promise<string[]> => holderIds(db, "dev
 
 /** The accounts a thread's lines belong to: the `dev` holders for the dispatch thread, else that user. */
 export async function accountsOf(db: ChatLogDb, thread: string): Promise<string[]> {
-  if (isDispatchThread(thread)) return ownerIds(db);
-  if (!isUserId(thread)) return [];
+  // A site's thread belongs to the account its base names.
+  const base = baseThread(thread);
+  if (isDispatchThread(base)) return ownerIds(db);
+  if (!isUserId(base)) return [];
   // A user's own thread is theirs alone; an owner's pages always use "owner".
-  const u = await db
-    .prepare(`SELECT id FROM user WHERE id = ?`)
-    .bind(thread)
-    .first<{ id: string }>();
+  const u = await db.prepare(`SELECT id FROM user WHERE id = ?`).bind(base).first<{ id: string }>();
   return u ? [u.id] : [];
 }
 

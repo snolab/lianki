@@ -12,7 +12,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.36
+// @version     2.24.39
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -3491,6 +3491,7 @@ Sasisha kadi kwa anwani mpya?`,
       "Shown in the pending push-to-talk speech bubble when a held recording reaches the configured memory/duration limit. Recording stops with an explicit failure; already recognized text remains available and is not silently sent as a complete recording.",
     voiceDetails:
       "Accessible label and heading of the small voice-information icon and its tap-open popover beside a spoken chat message. Shows recorded recognition, voiceprint and polishing metadata; not a playback action.",
+    lineReplay: `In ${CHAT}, the message details popover (opened by right-click or long press) on one of the user's OWN spoken messages: the name on a small play chip that plays back the user's own microphone recording of that message, exactly as it was recorded, before any recognition or polishing. Shown only when such a recording is kept in the user's account. A short imperative phrase, like a media app's 'Play recording'; 'original' means the untouched recorded sound, not the first version of the text.`,
     voiceDetailRoute:
       "Field label in a spoken message’s voice details: the recorded recognition route, local speech server or cloud. Does not identify a physical device or hostname.",
     voiceDetailRecognitionModel:
@@ -3568,6 +3569,10 @@ Sasisha kadi kwa anwani mpya?`,
     micFailed: `In ${CHAT}: small note by the mic button for any other failure of the mic or of speech recognition. Two short sentences: it failed, try again.`,
     endedElsewhere: `In ${CHAT}: a line above the chat box when the chat was closed from another open page of Lianki; it reconnects when the user comes back to this page.`,
     rateLimited: `In ${CHAT}: a line above the chat box when the user sent too many messages; the last one was not sent; {n} is how many minutes to wait. Keep {n}.`,
+    modelDownloadConfirm:
+      "Browser confirmation before uncached wake-word model/runtime download on cellular, metered, Data Saver or unknown network (Safari cannot tell). {mb} is the approximate total megabytes, localized separately. Explain possible mobile-data charges; OK downloads this batch only, Cancel keeps normal cloud speech recognition. Do not claim Wi-Fi was detected when network information is absent.",
+    modelDownloadWaiting:
+      "Mic tooltip after model download is declined or cancelled on a network change: no uncached model is downloading; ordinary speech recognition continues. Waiting for Wi-Fi or explicit download confirmation. Short status, no technical detail.",
     sttServersTitle: `In ${CHAT}: the heading of a small card shown once per device when the mic turns on and the user may use Lianki's own speech-to-text servers: they turn speech into text faster, while the user speaks. A short noun phrase.`,
     sttServersBody: `In ${CHAT}: the text of that card: the voice is sent to Lianki's speech servers, which write it out while the user speaks; the audio is not stored, only what the user sends is kept; free for now. Call them only 'Lianki's speech servers' (never a computer or a person). Two or three short sentences.`,
     sttServersAgree: `In ${CHAT}: the card's main button: agree and use Lianki's speech servers from now on, on this device. An imperative phrase.`,
@@ -4102,6 +4107,27 @@ Sasisha kadi kwa anwani mpya?`,
     return remove;
   }
 
+  // lib/flag-events.ts
+  var FLAG_CHANGED_EVENT = "lk:flag-changed";
+  function readFlagChanged(detail) {
+    let v = detail;
+    if (typeof v === "string") {
+      try {
+        v = JSON.parse(v);
+      } catch {
+        return {};
+      }
+    }
+    if (!v || typeof v !== "object") return {};
+    const o = v;
+    const out = {};
+    if (typeof o.key === "string") out.key = o.key;
+    if (typeof o.enabled === "boolean") out.enabled = o.enabled;
+    if (typeof o.cacheSeconds === "number" && Number.isFinite(o.cacheSeconds))
+      out.cacheSeconds = o.cacheSeconds;
+    return out;
+  }
+
   // src/pill-chat-trust.ts
   var LICHAT_SITES_KEY = "lianki_lichat_sites";
   var PILLCHAT_ON_KEY = "lianki_pillchat_on";
@@ -4510,12 +4536,49 @@ Sasisha kadi kwa anwani mpya?`,
   }
 
   // src/pill-chat.ts
+  var HOST_ORIGIN_HEADER = "x-lianki-host-origin";
   async function mirrorPillChatFlag(d) {
     const now = d.now?.() ?? Date.now();
-    if (!flagRecheckDue(d.getValue(PILLCHAT_ON_KEY, null), now)) return null;
+    if (!d.force && !flagRecheckDue(d.getValue(PILLCHAT_ON_KEY, null), now)) return null;
     const on = await askFlag(d);
     d.setValue(PILLCHAT_ON_KEY, JSON.stringify({ on, at: now }));
     return on;
+  }
+  var FLAG_CACHE_FALLBACK_S = 30;
+  function watchPillChatFlag(d) {
+    const win = d.win ?? globalThis;
+    const doc = d.doc ?? document;
+    const run = (force = false) => void mirrorPillChatFlag({ ...d, force }).catch(() => {});
+    const later =
+      d.later ??
+      ((fn, ms) => {
+        const id = setTimeout(fn, ms);
+        return () => clearTimeout(id);
+      });
+    let cancel;
+    const onVisible = () => {
+      if (doc.visibilityState === "visible") run();
+    };
+    const onChanged = (e) => {
+      const detail = readFlagChanged(e.detail);
+      if (detail.key !== undefined && !detail.key.startsWith("ext.pill-chat")) return;
+      run(true);
+      const secs = detail.cacheSeconds ?? 0;
+      const wait = secs > 0 ? Math.min(secs, 300) : FLAG_CACHE_FALLBACK_S;
+      cancel?.();
+      cancel = later(() => run(true), (wait + 1) * 1000);
+    };
+    const opts = d.signal ? { signal: d.signal } : undefined;
+    doc.addEventListener("visibilitychange", onVisible, opts);
+    win.addEventListener(FLAG_CHANGED_EVENT, onChanged, opts);
+    const unhook = () => {
+      cancel?.();
+      doc.removeEventListener("visibilitychange", onVisible);
+      win.removeEventListener(FLAG_CHANGED_EVENT, onChanged);
+    };
+    d.signal?.addEventListener("abort", unhook);
+    run();
+    return unhook;
   }
   async function askFlag(d) {
     return (await askAccess(d)) !== null;
@@ -4562,7 +4625,10 @@ Sasisha kadi kwa anwani mpya?`,
       try {
         const r = await d.gmFetch(`${d.origin}${TICKET_PATHS[kind]}`, {
           method: "POST",
-          headers: { "x-lianki-userscript": "1" },
+          headers: {
+            "x-lianki-userscript": "1",
+            [HOST_ORIGIN_HEADER]: d.hostOrigin ?? location.origin,
+          },
           credentials: "include",
         });
         if (!r.ok) return null;
@@ -5240,17 +5306,17 @@ Sasisha kadi kwa anwani mpya?`,
       location.hostname === "preview." + originHost
     ) {
       mirrorPartnerSwitch(localStorage, GM_setValue);
-      mirrorPillChatFlag({
+      const unwatchPillChat = watchPillChatFlag({
         origin: ORIGIN,
         gmFetch,
         getValue: GM_getValue,
         setValue: GM_setValue,
-      }).catch(() => {});
+      });
       const mirrorFilters = () => mirrorReviewFilters(localStorage, GM_setValue);
       mirrorFilters();
       window.addEventListener(REVIEW_FILTERS_EVENT, mirrorFilters);
       setTimeout(() => syncToSiteDB(), 500);
-      return () => {};
+      return unwatchPillChat;
     }
     const ac = new AbortController();
     const { signal } = ac;
@@ -6734,6 +6800,8 @@ ${state.errorDetails}`);
       return overrides[location.hostname] || (lang && lang.length <= 32 ? lang : undefined);
     }
     let watchSyncUnavailable = false;
+    let watchSyncSignedOut = false;
+    const isWatchAuthRefusal = (err) => err?.status === 401 || err?.status === 403;
     let watchAcc = null;
     let watchSavedAt = 0;
     const watchSnapshot = (acc) =>
@@ -6767,7 +6835,7 @@ ${state.errorDetails}`);
       }
     }
     async function flushWatch(acc = watchAcc) {
-      if (watchSyncUnavailable || !acc?.dirty) return;
+      if (watchSyncUnavailable || watchSyncSignedOut || !acc?.dirty) return;
       persistWatch(acc, true);
       if (acc.wall < WATCH_MIN_SYNC_S) return;
       const stats = watchSnapshot(acc);
@@ -6790,11 +6858,12 @@ ${state.errorDetails}`);
           );
           return;
         }
+        if (isWatchAuthRefusal(err)) watchSyncSignedOut = true;
         logFail("watch", `watch-time sync for ${acc.url}`, err);
       }
     }
     async function flushPendingWatch(max = 3) {
-      if (watchSyncUnavailable) return;
+      if (watchSyncUnavailable || watchSyncSignedOut) return;
       for (const url of watchDirtyList()
         .filter((u) => u !== watchAcc?.url)
         .slice(0, max)) {
@@ -6811,7 +6880,8 @@ ${state.errorDetails}`);
           });
           saveLocalWatch(url, stats, false);
           watchDirtyDrop(url);
-        } catch {
+        } catch (err) {
+          if (isWatchAuthRefusal(err)) watchSyncSignedOut = true;
           return;
         }
       }

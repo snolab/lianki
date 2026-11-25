@@ -902,3 +902,203 @@ describe("Li in the owner's thread: the main Worker", () => {
     expect(await balance("u_owner")).toBe(100);
   });
 });
+
+describe("Li's prompt in cache order (partner.stable-prompt): the hub", () => {
+  const on = {
+    flags: {
+      "partner.stable-prompt": true,
+      "voice.auto-polish": true,
+      "stt.polish": true,
+    },
+  };
+  const ok = (extra: Partial<PartnerResult & { ok: true }> = {}): PartnerResult => ({
+    ok: true,
+    text: "她可以先用 GitLab。",
+    tokensIn: 500,
+    tokensOut: 40,
+    ms: 900,
+    model: PARTNER_AI_MODEL,
+    ...extra,
+  });
+  const spoken = (id: string, text: string) => ({ type: "chat", id, text, source: "stt" });
+  const edits = (ws: FakeSocket) => ws.sent.filter((m) => m.type === "edited");
+
+  it("his unpolished spoken lines go with the request; Li's polish section lands through the edit path", async () => {
+    const s = setup(on);
+    const o = await s.ownerPage();
+    s.setReply(async (req) =>
+      ok({
+        polish: [{ id: req.polish![0]!.id, text: "Li，因为她的 GitHub 不怎么用。" }],
+        cachedIn: 300,
+      }),
+    );
+    await s.msg(o, spoken("v1", "Li 因为他的 GitHub 不怎么用"));
+    await s.timers.fire();
+    expect(s.calls).toHaveLength(1);
+    expect(s.calls[0]).toMatchObject({
+      stable: true,
+      polish: [{ id: "v1", text: "Li 因为他的 GitHub 不怎么用" }],
+    });
+    expect(edits(o).at(-1)).toMatchObject({
+      id: "v1",
+      text: "Li，因为她的 GitHub 不怎么用。",
+      raw: "Li 因为他的 GitHub 不怎么用",
+      edited: { by: "auto", count: 1 },
+    });
+    expect(chats(o).at(-1)).toMatchObject({ label: PARTNER_AI_LABEL, text: "她可以先用 GitLab。" });
+  });
+
+  it("no section, or one for ids never sent: nothing is edited, the reply posts", async () => {
+    const s = setup(on);
+    const o = await s.ownerPage();
+    s.setReply(async () => ok({ polish: [{ id: "someone-else", text: "x" }] }));
+    await s.msg(o, spoken("v1", "Li 因为他的 GitHub 不怎么用"));
+    await s.timers.fire();
+    expect(edits(o)).toHaveLength(0);
+    expect(chats(o).at(-1)).toMatchObject({ text: "她可以先用 GitLab。" });
+  });
+
+  it("never twice: a polished line is not sent again, and a line polished meanwhile is left alone", async () => {
+    const s = setup(on);
+    const o = await s.ownerPage();
+    // Polished by someone else while Li worked: Li's section for it is dropped.
+    s.setReply(async (req) => {
+      for (const [k, v] of s.storage.store)
+        if ((v as { id?: string }).id === req.polish![0]!.id)
+          s.storage.store.set(k, { ...(v as object), edited: { by: "agent", count: 1 } });
+      return ok({ polish: [{ id: req.polish![0]!.id, text: "Li，因为她的 GitHub 不怎么用。" }] });
+    });
+    await s.msg(o, spoken("v1", "Li 因为他的 GitHub 不怎么用"));
+    await s.timers.fire();
+    expect(edits(o)).toHaveLength(0);
+    // The next call: v1 already polished, so it is not offered again.
+    s.setReply(async () => ok({ polish: [{ id: "v1", text: "again" }] }));
+    s.tick(120_000);
+    await s.msg(o, { type: "chat", id: "t2", text: "Li 她现在学到哪了" });
+    await s.timers.fire();
+    expect(s.calls.at(-1)!.polish).toBeUndefined();
+    expect(edits(o)).toHaveLength(0);
+  });
+
+  it("the history is frozen: a later polish is appended as a correction, the first call's lines unchanged", async () => {
+    const s = setup(on);
+    const o = await s.ownerPage();
+    s.setReply(async (req) =>
+      ok({ polish: req.polish?.length ? [{ id: "v1", text: "Li，我老婆想学日语。" }] : undefined }),
+    );
+    await s.msg(o, spoken("v1", "Li 我老婆想学日语"));
+    await s.timers.fire();
+    const first = s.calls[0]!.history;
+    s.tick(120_000);
+    await s.msg(o, { type: "chat", id: "t2", text: "Li 她该从哪开始" });
+    await s.timers.fire();
+    const second = s.calls[1]!.history;
+    expect(second.slice(0, first.length)).toEqual(first);
+    expect(first[0]).toEqual({ role: "user", text: "Li 我老婆想学日语" });
+    // Edits to lines already sent come first, then the lines new to the window: his newest last.
+    expect(second.slice(first.length).map((h) => h.text)).toEqual([
+      '(correction: the earlier line "Li 我老婆想学日语" now reads: Li，我老婆想学日语。)',
+      "她可以先用 GitLab。",
+      "Li 她该从哪开始",
+    ]);
+  });
+
+  it("flag off: the old request, no window kept, no polish lines", async () => {
+    const s = setup({ flags: { "voice.auto-polish": true, "stt.polish": true } });
+    const o = await s.ownerPage();
+    await s.msg(o, spoken("v1", "Li 因为他的 GitHub 不怎么用"));
+    await s.timers.fire();
+    expect(s.calls[0]!.stable).toBeUndefined();
+    expect(s.calls[0]!.polish).toBeUndefined();
+    expect([...s.storage.store.keys()].some((k) => k.startsWith("ai:win:"))).toBe(false);
+  });
+});
+
+describe("Li's prompt in cache order: the main Worker", () => {
+  let d1: TestD1Database;
+  beforeEach(() => {
+    d1 = createTestD1(testSchema());
+    const db = d1.raw();
+    db.exec(
+      "INSERT INTO account_permission (email, permission, granted_by, granted_at) VALUES ('owner@x.com', 'dev', 'test', 1)",
+    );
+    db.exec(
+      `INSERT INTO user (id, email, createdAt, updatedAt) VALUES ('u_owner', 'owner@x.com', 'x', 'x')`,
+    );
+    db.exec(`INSERT INTO credit_balance (userId, balance, updatedAt) VALUES ('u_owner', 100, 'x')`);
+    db.exec(
+      `INSERT INTO feature_flags (key, enabled, updated_at, updated_by) VALUES ('${PARTNER_AI_FLAG}', 1, 0, 'owner')`,
+    );
+  });
+  const env = () => ({
+    DB: d1 as unknown as PartnerDb,
+    CLOUDFLARE_ACCOUNT_ID: "acct",
+    CLOUDFLARE_AI_TOKEN: "tok",
+  });
+  const call = async (content: string, extra: Record<string, unknown> = {}) => {
+    const seen: {
+      headers: Record<string, string>;
+      body: { messages: { role: string; content: string }[] };
+    }[] = [];
+    const f = (async (_u: string, init?: RequestInit) => {
+      seen.push({
+        headers: init?.headers as Record<string, string>,
+        body: JSON.parse(String(init?.body)),
+      });
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content } }],
+          usage: {
+            prompt_tokens: 800,
+            completion_tokens: 30,
+            prompt_tokens_details: { cached_tokens: 512 },
+          },
+        }),
+      );
+    }) as unknown as typeof fetch;
+    const res = await partnerReply(
+      env(),
+      {
+        userId: "u_owner",
+        msgId: `m${Math.random().toString(36).slice(2, 8)}`,
+        owner: true,
+        stable: true,
+        polish: [{ id: "v1", text: "因为他的 GitHub 不怎么用" }],
+        history: [{ role: "user", text: "因为他的 GitHub 不怎么用" }],
+        ...extra,
+      },
+      { fetch: f },
+    );
+    return { res, seen };
+  };
+
+  it("one call: the reply without its section, the polish held to the ids sent, cached tokens reported", async () => {
+    const { res, seen } = await call(
+      '她可以先用 GitLab。\n<polish>{"lines":[{"id":"v1","text":"因为她的 GitHub 不怎么用。"},{"id":"x9","text":"no"}]}</polish>',
+    );
+    expect(seen).toHaveLength(1);
+    expect(res).toMatchObject({
+      ok: true,
+      text: "她可以先用 GitLab。",
+      polish: [{ id: "v1", text: "因为她的 GitHub 不怎么用。" }],
+      cachedIn: 512,
+    });
+    expect(seen[0]!.headers["x-session-affinity"]).toMatch(/^ses_[0-9a-f]{32}$/);
+    const m = seen[0]!.body.messages;
+    expect(m[0]!.content).toContain("polish_lines block");
+    expect(m.at(-1)!.content).toContain("<polish_lines>");
+  });
+
+  it("a malformed section: no polish, the reply stands", async () => {
+    const { res } = await call("她可以先用 GitLab。\n<polish>{broken</polish>");
+    expect(res).toMatchObject({ ok: true, text: "她可以先用 GitLab。" });
+    expect((res as { polish?: unknown }).polish).toBeUndefined();
+  });
+
+  it("without the stable mark, a polish block in the text is not read as one", async () => {
+    const { res } = await call('好。<polish>{"lines":[{"id":"v1","text":"x"}]}</polish>', {
+      stable: false,
+    });
+    expect((res as { polish?: unknown }).polish).toBeUndefined();
+  });
+});

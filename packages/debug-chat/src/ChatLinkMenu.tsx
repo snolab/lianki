@@ -7,15 +7,12 @@ import { chatExtra } from "./chat-ui-locales";
  * ExternalLinkGuard sees this click and keeps all account bypass rules.
  * No app imports or new permission path in the standalone chat package.
  */
-export function openChatLink(href: string, onOpenPage?: (path: string) => void) {
+export function openChatLink(href: string, _onOpenPage?: (path: string) => void) {
   const url = new URL(href, location.href);
   if (!/^https?:$/.test(url.protocol)) return;
-  if (url.origin === location.origin && onOpenPage) {
-    onOpenPage(`${url.pathname}${url.search}${url.hash}`);
-    return;
-  }
   const link = document.createElement("a");
   link.href = url.href;
+  link.target = "_blank";
   link.rel = "noopener noreferrer";
   document.body.appendChild(link);
   link.click();

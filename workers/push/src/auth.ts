@@ -11,8 +11,10 @@ import {
   PARTNER_SUBPROTOCOL,
   PARTNER_TICKET_AUD,
   importTicketPublicKey,
+  type SttTicketPayload,
   verifySttTicket,
 } from "../../../lib/stt-ticket";
+import { HOST_ORIGIN_PARAM, hostOrigin, isSubHash } from "../../../lib/li-thread";
 
 type Fetcher = { fetch(url: string, init?: RequestInit): Promise<Response> };
 
@@ -96,8 +98,48 @@ async function ownerFallback(main: Fetcher, cookie: string): Promise<Identity | 
  */
 export const EMBED_HEADER = "x-debug-embed";
 
-/** The ticket's single-use id and expiry, for the hub to burn; null = refuse. */
-export type PartnerTicket = { jti: string; exp: number };
+/**
+ * The ticket's single-use id and expiry, for the hub to burn; null = refuse.
+ * `ho`/`th`: a pill ticket bound to one site (lib/li-thread.ts): its thread is
+ * that site's under the account, nothing else.
+ */
+export type PartnerTicket = { jti: string; exp: number; ho?: string; th?: string };
+
+/**
+ * A site-bound ticket's thread hash and host origin, for the hub alone. Set
+ * here after the ticket is verified, and deleted from every other request.
+ */
+export const SUB_THREAD_HEADER = "x-debug-sub-thread";
+export const SUB_ORIGIN_HEADER = "x-debug-sub-origin";
+/**
+ * The main Worker's /api/chat/sites over the PUSH binding (answered on the
+ * binding's hostname alone): an account's site threads (debug.ts subThreadsApi).
+ */
+export const SUB_THREADS_PATH = "/internal/sub-threads";
+
+/**
+ * A site-bound ticket (`ho` + `th`, lib/li-thread.ts) is good only from the
+ * lianki.com frame (origin exactly DEBUG_ORIGIN), and only when the frame
+ * names the same host origin in `?ho=`: the parent origin it saw at the
+ * handshake (the browser's `event.origin`, frame-protocol.ts helloFrom),
+ * never anything the page said. A ticket minted for site A, opened in a frame
+ * on site B, is refused. `{}` = an unbound ticket (the one thread, as before);
+ * null = refuse.
+ */
+export function ticketSite(
+  req: Request,
+  p: Pick<SttTicketPayload, "ho" | "th">,
+): { ho?: string; th?: string } | null {
+  if (p.ho === undefined && p.th === undefined) return {};
+  const ho = hostOrigin(p.ho);
+  if (!ho || !isSubHash(p.th)) return null;
+  if (req.headers.get("origin") !== DEBUG_ORIGIN) return null;
+  let said: string | null = null;
+  try {
+    said = new URL(req.url).searchParams.get(HOST_ORIGIN_PARAM);
+  } catch {}
+  return said === ho ? { ho, th: p.th } : null;
+}
 
 /** Seen in this isolate (the hub also burns each jti in its storage, across isolates). */
 const seenHere: JtiStore = new Map();
@@ -170,8 +212,13 @@ export async function partnerTicket(
   if (offered.length !== 2 || offered[0] !== PARTNER_SUBPROTOCOL) return null;
   try {
     const key = await importTicketPublicKey(pub);
-    const r = await verifySttTicket(offered[1], key, seen, now, PARTNER_TICKET_AUD);
-    return r.ok ? { jti: r.payload.jti, exp: r.payload.exp } : null;
+    const probe: JtiStore = new Map(seen);
+    const r = await verifySttTicket(offered[1], key, probe, now, PARTNER_TICKET_AUD);
+    if (!r.ok) return null;
+    const site = ticketSite(req, r.payload);
+    if (!site) return null;
+    seen.set(r.payload.jti, r.payload.exp);
+    return { jti: r.payload.jti, exp: r.payload.exp, ...site };
   } catch {
     return null;
   }
@@ -206,8 +253,10 @@ export async function liChatTicket(
     const probe: JtiStore = new Map(seen);
     const r = await verifySttTicket(offered[1], key, probe, now, LI_CHAT_TICKET_AUD);
     if (!r.ok || !isUserId(r.payload.sub)) return null;
+    const site = ticketSite(req, r.payload);
+    if (!site) return null;
     seen.set(r.payload.jti, r.payload.exp);
-    return { jti: r.payload.jti, exp: r.payload.exp, sub: r.payload.sub };
+    return { jti: r.payload.jti, exp: r.payload.exp, sub: r.payload.sub, ...site };
   } catch {
     return null;
   }

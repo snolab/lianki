@@ -2549,6 +2549,24 @@ const learningPartnerContent = {
       mr: "या पानाला शेअर करण्यासारखी वेब लिंक नाही.",
       ko: "이 페이지에는 공유할 웹 링크가 없습니다.",
     }),
+    sendFailed: t({
+      en: "Your message was not sent. Try again.",
+      zh: "消息没有发出去，请再试一次。",
+      hi: "आपका संदेश नहीं भेजा गया। फिर से कोशिश करें।",
+      es: "Tu mensaje no se envió. Inténtalo de nuevo.",
+      fr: "Votre message n’a pas été envoyé. Réessayez.",
+      ar: "لم تُرسَل رسالتك. حاول مرة أخرى.",
+      bn: "আপনার বার্তা পাঠানো হয়নি। আবার চেষ্টা করুন।",
+      pt: "Sua mensagem não foi enviada. Tente de novo.",
+      ru: "Сообщение не отправлено. Попробуйте ещё раз.",
+      ur: "آپ کا پیغام نہیں بھیجا گیا۔ دوبارہ کوشش کریں۔",
+      id: "Pesan Anda tidak terkirim. Coba lagi.",
+      de: "Deine Nachricht wurde nicht gesendet. Versuch es noch einmal.",
+      ja: "メッセージを送信できませんでした。もう一度お試しください。",
+      sw: "Ujumbe wako haukutumwa. Jaribu tena.",
+      mr: "तुमचा संदेश पाठवला गेला नाही. पुन्हा प्रयत्न करा.",
+      ko: "메시지를 보내지 못했습니다. 다시 시도하세요.",
+    }),
     attachDrop: t({
       en: "Drop to attach",
       zh: "松开即可附上",
@@ -4143,6 +4161,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Menu item in the chat's + menu, only in the Learning Partner window opened from the userscript's floating pill on another website, under the 'Attach to message' heading: puts that website page's title and its address (without the part after ? or #) into the chat input as text. Nothing is sent until the user presses send. Short verb phrase.",
   shareNoPage:
     "One-line note above the chat input in the Learning Partner window on another website, after the user chose 'Share page title and link' on a page whose address is not an ordinary web link (http or https, for example a local file): there is nothing to share. One short sentence, no blame.",
+  sendFailed:
+    "One-line note above the chat input in the Learning Partner window opened from the userscript's floating pill on another website: the message the user just typed and sent could not go out (a technical failure in this window). The text stays in the input so they can press send again. One short sentence saying it was not sent, then a short 'try again'; no blame, no technical detail.",
   attachDrop:
     "Big hint over the whole chat box while the user drags files from their computer over the page: letting go uploads them and attaches them to the message being typed. Short imperative phrase.",
   attachUploading:

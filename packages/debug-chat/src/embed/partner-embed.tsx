@@ -14,6 +14,7 @@ import { useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { DebugChat } from "../DebugChat";
 import { EMBED_NAME, EMBED_STRINGS, embedLang } from "../ui-strings";
+import { CHAT_STRINGS_EN } from "../wire";
 import { type Blocker, blockerText, cspBlocker } from "./guard";
 import { createShadowHost } from "./isolation";
 import { type PartnerClient, type PartnerDeps, createPartnerClient, pageLabel } from "./partner-client";
@@ -138,7 +139,7 @@ function Partner({ client, o, portal }: { client: PartnerClient; o: MountOptions
       messages={s.messages}
       onSend={(text, to, opts) => client.send(text, to, opts?.context)}
       busy={s.busy}
-      warning={s.warning}
+      warning={s.sendFailed ? CHAT_STRINGS_EN.sendFailed : s.warning}
       viewer={s.viewer}
       agentAvatar={`${o.appOrigin}/icon-192.png`}
       strings={{ name }}
@@ -163,6 +164,10 @@ export function mountPartner(o: MountOptions): Mounted {
     open: (url, protocols) => new o.WebSocket(url, protocols) as ReturnType<PartnerDeps["open"]>,
     label: () => pageLabel(win.location, win.navigator.userAgent),
     doc: o.doc,
+    // Errors go to the userscript's reporter when there is one, never the page.
+    ...(o.report
+      ? { onSendError: (e: unknown) => o.report?.("partner-send", String((e as Error)?.message ?? e)) }
+      : {}),
   };
   const client = createPartnerClient(deps);
   if (o.blocked) client.block(o.blocked);

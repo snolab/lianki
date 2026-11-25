@@ -125,14 +125,14 @@ describe("the keyword and the cut after it", () => {
 });
 
 describe("the first download waits for Wi-Fi", () => {
-  it("cellular or Save-Data with nothing cached: no; cached, Wi-Fi or unknown: yes", async () => {
+  it("cellular or Save-Data with nothing cached: no; cached or Wi-Fi: yes; unknown needs consent", async () => {
     const no = async () => false;
     const yes = async () => true;
     expect(await mayDownload({ connection: { type: "cellular" } }, no)).toBe(false);
     expect(await mayDownload({ connection: { type: "wifi", saveData: true } }, no)).toBe(false);
     expect(await mayDownload({ connection: { type: "cellular" } }, yes)).toBe(true);
     expect(await mayDownload({ connection: { type: "wifi" } }, no)).toBe(true);
-    expect(await mayDownload({}, no)).toBe(true); // Safari: no navigator.connection
+    expect(await mayDownload({}, no)).toBe(false); // Unknown network is not Wi-Fi.
   });
 });
 
@@ -213,7 +213,7 @@ describe("createKws: the page side of the spotter", () => {
       worker: () => (made++, fakeWorker(() => null).w),
       allowed: async () => false,
     });
-    await expect(k.load()).rejects.toThrow("needs-wifi");
+    await expect(k.load()).rejects.toThrow("model-download-blocked");
     expect(k.state()).toBe("needs-wifi");
     expect(made).toBe(0);
   });
@@ -294,14 +294,14 @@ describe("createKws: the page side of the spotter", () => {
       terminate() {}
     };
     try {
-      const k = createKws({ allowed: async () => true });
+      const k = createKws({ allowed: async () => true, prepare: async () => [] });
       await k.load();
       expect(made[0]?.opts).toEqual({ type: "module", name: "lk-wake" });
       expect(await blobs.get(made[0].url)!.text()).toContain("crypto.subtle.digest");
       k.dispose();
       expect(k.state()).toBe("idle");
       refuse = true;
-      const k2 = createKws({ allowed: async () => true });
+      const k2 = createKws({ allowed: async () => true, prepare: async () => [] });
       await expect(k2.load()).rejects.toThrow("no workers here");
       expect(k2.state()).toBe("failed");
       // The default check: no Cache API here, so "not cached".

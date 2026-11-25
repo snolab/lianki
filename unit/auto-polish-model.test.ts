@@ -1,7 +1,15 @@
-import { beforeEach, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { createTestD1, type TestD1Database } from "../lib/d1/testDb";
 import { testSchema } from "../lib/d1/testSchema";
-import { parsePolish, polishVerdict, polishLines, POLISH_PROMPT } from "../lib/chat-polish";
+import {
+  boundContext,
+  CONTEXT_POLISH_RULE,
+  parsePolish,
+  polishVerdict,
+  polishLines,
+  POLISH_PROMPT,
+} from "../lib/chat-polish";
+import { cachedTokens, chatAffinity } from "../lib/ai-affinity";
 import type { PartnerDb } from "../lib/partner-ai";
 import { getBalance } from "../lib/payments/credits-store";
 
@@ -334,4 +342,180 @@ test("polish retains both independently sourced candidates within the existing t
       lines: [{ id: "v1", text: "x", recheck: { ...recheck, engine: "bad engine" } }],
     }),
   ).toBeNull();
+});
+
+describe("earlier lines as read-only context", () => {
+  const wife = {
+    v: 1 as const,
+    requestId: "auto:ctx-1:1",
+    lines: [{ id: "v1", text: "因为他的 GitHub 不怎么用" }],
+    context: [
+      { from: "owner", text: "我老婆想学日语" },
+      { from: "agent", text: "好的，她现在是什么水平？" },
+      { from: "owner", text: "她刚开始学" },
+    ],
+  };
+  /** A fake model: records the request, answers `answer` (never a real model). */
+  const fake = (answer: unknown) => {
+    const requests: { messages: { role: string; content: string }[] }[] = [];
+    const request = (async (_url: string, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return Response.json({
+        choices: [{ message: { content: JSON.stringify(answer) } }],
+        usage: { prompt_tokens: 100, completion_tokens: 20 },
+      });
+    }) as unknown as typeof fetch;
+    return { requests, request };
+  };
+  const setConfig = (key: string, value: unknown) =>
+    d1
+      .raw()
+      .prepare(
+        "INSERT INTO config_values (key,value_json,updated_at,updated_by) VALUES (?,?,1,'test')",
+      )
+      .run(key, JSON.stringify(value));
+
+  test("the prompt marks the context read-only and resolves pronouns only when it is clear", () => {
+    expect(POLISH_PROMPT).toContain(CONTEXT_POLISH_RULE);
+    expect(CONTEXT_POLISH_RULE).toContain("READ-ONLY");
+    expect(CONTEXT_POLISH_RULE).toMatch(/pronouns and homophones/);
+    expect(CONTEXT_POLISH_RULE).toContain("她");
+    expect(CONTEXT_POLISH_RULE).toMatch(/he\/she/);
+    expect(CONTEXT_POLISH_RULE).toMatch(/does not make it clear, leave the word as it is/);
+    expect(CONTEXT_POLISH_RULE).toMatch(/return only the ids in "lines"/);
+  });
+
+  test("the context is sent with the lines, and nothing from it comes back as output", async () => {
+    const { requests, request } = fake({
+      lines: [
+        { id: "v1", text: "因为她的 GitHub 不怎么用。" },
+        // A model that echoes the context: no id of its own, and none the hub sent.
+        { id: "context", text: "我老婆想学日语。" },
+        { id: "0", text: "我老婆想学日语。" },
+        { text: "她刚开始学。" },
+      ],
+      merged: "我老婆想学日语。因为她的 GitHub 不怎么用。",
+    });
+    const res = await polishLines(env(), { userId: "u_test", input: wife }, { fetch: request });
+    expect(res).toMatchObject({ ok: true });
+    const sent = JSON.parse(requests[0]!.messages[1]!.content);
+    expect(sent.context).toEqual(wife.context);
+    // The context carries no ids, so the model cannot address it.
+    expect(sent.context.every((h: object) => !("id" in h))).toBe(true);
+    // Only the line sent comes back; `merged` needs two sent lines.
+    expect(res.ok && res.verdict).toEqual({
+      v: 1,
+      lines: [{ id: "v1", text: "因为她的 GitHub 不怎么用。" }],
+    });
+  });
+
+  test("bounded by voice.autoPolishContextLines / voice.autoPolishContextChars, newest kept, counted in the hold", async () => {
+    expect(boundContext(wife.context, 2, 1000).map((h) => h.text)).toEqual([
+      "好的，她现在是什么水平？",
+      "她刚开始学",
+    ]);
+    // The next-newest would pass the budget: it ends the window.
+    expect(boundContext(wife.context, 10, 10)).toEqual([{ from: "owner", text: "她刚开始学" }]);
+    expect(boundContext(wife.context, 0, 1000)).toEqual([]);
+    expect(boundContext([], 10, 1000)).toEqual([]);
+
+    setConfig("voice.autoPolishContextLines", 1);
+    const { requests, request } = fake({ lines: [{ id: "v1", text: "x" }] });
+    await polishLines(env(), { userId: "u_test", input: wife }, { fetch: request });
+    expect(JSON.parse(requests[0]!.messages[1]!.content).context).toEqual([
+      { from: "owner", text: "她刚开始学" },
+    ]);
+    // Past the hard caps the input is refused before any call.
+    const many = Array.from({ length: 21 }, () => ({ from: "owner", text: "x" }));
+    expect(parsePolish({ ...wife, context: many })).toBeNull();
+    expect(
+      parsePolish({ ...wife, context: [{ from: "owner", text: "x".repeat(9000) }] }),
+    ).toBeNull();
+  });
+
+  test("the context counts toward the call's limits: one call, the shared total cap", async () => {
+    const { requests, request } = fake({ lines: [{ id: "v1", text: "x" }] });
+    await polishLines(env(), { userId: "u_test", input: wife }, { fetch: request });
+    // One model call for lines and context together (the hold is sized from these messages).
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.messages[1]!.content).toContain("我老婆想学日语");
+    // Lines + context over the 9000-character total are refused before any hold or call.
+    const big = Array.from({ length: 5 }, () => ({ from: "agent", text: "长".repeat(1900) }));
+    expect(parsePolish({ ...wife, context: big })).toBeNull();
+  });
+
+  test("an empty context changes nothing: the same request and verdict as before", async () => {
+    const plain = { ...wife, context: [] };
+    const a = fake({ lines: [{ id: "v1", text: "因为他的 GitHub 不怎么用。" }] });
+    const res = await polishLines(env(), { userId: "u_test", input: plain }, { fetch: a.request });
+    const sent = JSON.parse(a.requests[0]!.messages[1]!.content);
+    expect(sent.context).toEqual([]);
+    expect(Object.keys(sent).sort()).toEqual(["context", "glossary", "lines"]);
+    expect(res.ok && res.verdict).toEqual({
+      v: 1,
+      lines: [{ id: "v1", text: "因为他的 GitHub 不怎么用。" }],
+    });
+  });
+});
+
+describe("prefix caching", () => {
+  const one = (requestId: string, context: { from: string; text: string }[]) => ({
+    v: 1 as const,
+    requestId,
+    lines: [{ id: "v1", text: "因为他的 GitHub 不怎么用" }],
+    context,
+  });
+  test("a stable hashed session affinity, the same system prompt, cached tokens reported", async () => {
+    const seen: { headers: Record<string, string>; body: any }[] = [];
+    const request = (async (_url: string, init?: RequestInit) => {
+      seen.push({
+        headers: init?.headers as Record<string, string>,
+        body: JSON.parse(String(init?.body)),
+      });
+      return Response.json({
+        choices: [{ message: { content: JSON.stringify({ lines: [] }) } }],
+        usage: {
+          prompt_tokens: 900,
+          completion_tokens: 10,
+          prompt_tokens_details: { cached_tokens: 640 },
+        },
+      });
+    }) as unknown as typeof fetch;
+    const a = await polishLines(
+      env(),
+      { userId: "u_test", input: one("auto:c-1:1", [{ from: "owner", text: "我老婆想学日语" }]) },
+      { fetch: request },
+    );
+    await polishLines(
+      env(),
+      {
+        userId: "u_test",
+        input: one("auto:c-2:1", [
+          { from: "owner", text: "我老婆想学日语" },
+          { from: "owner", text: "她刚开始学" },
+        ]),
+      },
+      { fetch: request },
+    );
+    const [h1, h2] = seen.map((x) => x.headers["x-session-affinity"]);
+    expect(h1).toBe(h2!);
+    expect(h1).toBe(await chatAffinity("u_test", "owner"));
+    expect(h1).toMatch(/^ses_[0-9a-f]{32}$/);
+    expect(h1).not.toContain("u_test");
+    expect(await chatAffinity("u_other", "owner")).not.toBe(h1);
+    // Byte-identical system prompt (no date, no per-call data), the context leads the payload.
+    expect(seen[0]!.body.messages[0]).toEqual(seen[1]!.body.messages[0]);
+    expect(
+      seen[1]!.body.messages[1].content.startsWith(
+        '{"context":[{"from":"owner","text":"我老婆想学日语"}',
+      ),
+    ).toBe(true);
+    expect(a).toMatchObject({ ok: true, usage: { tokensIn: 900, cachedIn: 640 } });
+  });
+  test("cached tokens: absent or odd usage counts as 0", () => {
+    expect(cachedTokens(undefined)).toBe(0);
+    expect(cachedTokens({ prompt_tokens: 5 })).toBe(0);
+    expect(cachedTokens({ cached_tokens: 12 })).toBe(12);
+    expect(cachedTokens({ prompt_tokens_details: { cached_tokens: "9" } })).toBe(0);
+  });
 });

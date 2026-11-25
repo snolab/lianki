@@ -350,7 +350,13 @@ import {
   USER_WINDOW_TOKENS_MAX,
   costUsd,
   reserveInTokens,
+  CHECKPOINT_KEEP_KEY,
+  CHECKPOINT_KEEP_PCT,
+  PARTNER_POLISH_LINE_CHARS,
+  PARTNER_POLISH_LINES,
+  PARTNER_STABLE_FLAG,
 } from "../../../lib/partner-ai-config";
+import { advanceWindow, parseWindow } from "../../../lib/partner-window";
 import {
   type HourBuckets,
   addToBucket,
@@ -374,7 +380,23 @@ import {
 import { AVATAR_PATH } from "../../../packages/debug-chat/src/svg-avatar";
 import { CHAT_PATH, REVOKED_PATH, TokenChat, partKey, tokenAtt } from "./token-chat";
 import { playRefusal, srcHost } from "../../../packages/debug-chat/src/play-audio";
-import { BOX_HEADER, EMBED_HEADER } from "./auth";
+import {
+  BOX_HEADER,
+  EMBED_HEADER,
+  SUB_ORIGIN_HEADER,
+  SUB_THREADS_PATH,
+  SUB_THREAD_HEADER,
+} from "./auth";
+import {
+  PER_ORIGIN_FLAG,
+  type SiteThread,
+  type SubThreadRecord,
+  hostOrigin,
+  isSubHash,
+  parseSubThread,
+  subRecordKey,
+  subThread,
+} from "../../../lib/li-thread";
 import { type ChatLogRequest, chatLogLine, passageLogId } from "../../../lib/chat-log-line";
 import {
   ETA_AGENT,
@@ -711,8 +733,14 @@ export const AUTO_POLISH_BY = "auto";
 const polishStands = (x: ChatMessage) => (x.edited?.count ?? 0) > 0 && x.edited?.by !== MERGE_BY;
 /** Lines further apart than this are never one automatic run (an old unpolished line is left alone). */
 export const AUTO_POLISH_RUN_MS = 60_000;
-/** Kept lines before the run sent as context (lines, each cut to AUTO_POLISH_CONTEXT_CHARS). */
-export const AUTO_POLISH_CONTEXT = 6;
+/**
+ * Kept lines before the run sent as read-only context: at most this many
+ * (config voice.autoPolishContextLines), together at most
+ * AUTO_POLISH_CONTEXT_TOTAL characters (voice.autoPolishContextChars), each
+ * cut to AUTO_POLISH_CONTEXT_CHARS.
+ */
+export const AUTO_POLISH_CONTEXT = 12;
+export const AUTO_POLISH_CONTEXT_TOTAL = 2000;
 export const AUTO_POLISH_CONTEXT_CHARS = 300;
 /** Defaults for the live config the hub reads (lib/config.ts: voice.autoPolish*). */
 export const AUTO_POLISH_TAIL_MS = 1500;
@@ -1576,7 +1604,8 @@ export class DebugHub {
     for (const { ws, a } of this.pages(m.thread))
       if (!only || (a.id && only.includes(a.id))) send(ws, toPage);
     // Listeners by node: that node's, and its ancestors' as observers (the root's sees all).
-    for (const { ws, a } of this.listeners()) {
+    // A site's thread (lib/li-thread.ts) is Li's alone: no lane hears it.
+    for (const { ws, a } of parseSubThread(m.thread) ? [] : this.listeners()) {
       const route = routeTo(a.node, m.to);
       if (route) send(ws, route === "observed" ? { ...out, observed: true } : out);
     }
@@ -2784,6 +2813,7 @@ export class DebugHub {
       );
     this.work.touch();
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
+    if (url.pathname === SUB_THREADS_PATH) return this.subThreadsApi(url);
     if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);
     if (url.pathname === ETA_PATH) return this.etaApi(req);
     if (url.pathname === SPEND_ALERT_PATH) return this.spendApi(req);
@@ -2834,6 +2864,10 @@ export class DebugHub {
     this.ctx.acceptWebSocket(ws);
     // Which box client a ticket socket is (index.ts verified its origin); only ever with a ticket.
     const box = embed ? (req.headers.get(BOX_HEADER) ?? undefined) : undefined;
+    // A site-bound pill ticket (index.ts, auth.ts ticketSite): only ever with a ticket.
+    const subHash = embed ? req.headers.get(SUB_THREAD_HEADER) : null;
+    const subOrigin = embed ? hostOrigin(req.headers.get(SUB_ORIGIN_HEADER)) : null;
+    const site = isSubHash(subHash) && subOrigin ? { hash: subHash, origin: subOrigin } : undefined;
     if (control)
       await this.connectController(
         ws,
@@ -2841,7 +2875,7 @@ export class DebugHub {
         req.headers.get(TOKEN_HEADER),
         req.headers.get(EVAL_TOKEN_HEADER),
       );
-    else await this.connectPage(ws, url, who, embed, box);
+    else await this.connectPage(ws, url, who, embed, box, site);
     // The browser fails a socket whose offered subprotocol is not selected.
     return new Response(null, {
       status: 101,
@@ -3095,7 +3129,13 @@ export class DebugHub {
   /** One automatic polish at a time; a line that lands meanwhile runs it again after. */
   private autoBusy = false;
   private autoAgain = false;
-  private autoConf?: { at: number; tailMs: number; minChars: number };
+  private autoConf?: {
+    at: number;
+    tailMs: number;
+    minChars: number;
+    contextLines: number;
+    contextChars: number;
+  };
 
   /**
    * One of the owner's voice lines was kept: the hub's own polish is due once
@@ -3143,17 +3183,20 @@ export class DebugHub {
   private async autoPolishConf() {
     const t = this.now();
     if (this.autoConf && t - this.autoConf.at < AUTO_POLISH_CONF_MS) return this.autoConf;
-    const num = async (key: string, dflt: number) => {
+    // `zero`: 0 is a value (no context), not "unset".
+    const num = async (key: string, dflt: number, zero = false) => {
       try {
         const v = await this.sessions?.config?.(key);
-        return typeof v === "number" && v > 0 ? v : dflt;
+        return typeof v === "number" && (v > 0 || (zero && v === 0)) ? v : dflt;
       } catch {
         return dflt;
       }
     };
     const tailMs = await num("voice.autoPolishTailMs", AUTO_POLISH_TAIL_MS);
     const minChars = await num("voice.autoPolishMinChars", AUTO_POLISH_MIN_CHARS);
-    return (this.autoConf = { at: t, tailMs, minChars });
+    const contextLines = await num("voice.autoPolishContextLines", AUTO_POLISH_CONTEXT, true);
+    const contextChars = await num("voice.autoPolishContextChars", AUTO_POLISH_CONTEXT_TOTAL, true);
+    return (this.autoConf = { at: t, tailMs, minChars, contextLines, contextChars });
   }
 
   /**
@@ -3161,9 +3204,15 @@ export class DebugHub {
    * hub's merge, a summary) has touched yet, newest first — ended by any
    * other line, a polished one, one still being spoken, one shorter than
    * voice.autoPolishMinChars, or one more than AUTO_POLISH_RUN_MS older than
-   * the newest. Then the kept lines before it, as context.
+   * the newest. Then the kept lines before it (his and everyone's replies),
+   * newest first, as read-only context within `bounds`: a line that would pass
+   * the character budget ends it.
    */
-  private autoPolishPick(kept: [string, ChatMessage][], minChars: number) {
+  private autoPolishPick(
+    kept: [string, ChatMessage][],
+    minChars: number,
+    bounds = { lines: AUTO_POLISH_CONTEXT, chars: AUTO_POLISH_CONTEXT_TOTAL },
+  ) {
     const run: [string, ChatMessage][] = [];
     let i = 0;
     for (; i < kept.length && run.length < MERGE_LINES; i++) {
@@ -3177,12 +3226,16 @@ export class DebugHub {
       run.push(kept[i]!);
     }
     const context: { from: string; text: string }[] = [];
-    for (; i < kept.length && context.length < AUTO_POLISH_CONTEXT; i++) {
+    let chars = 0;
+    for (; i < kept.length && context.length < bounds.lines; i++) {
       const [, x] = kept[i]!;
       if (x.collapsedInto || !x.text.trim()) continue;
+      const text = x.text.slice(0, AUTO_POLISH_CONTEXT_CHARS);
+      if (chars + text.length > bounds.chars) break;
+      chars += text.length;
       context.push({
         from: x.from === "owner" ? "owner" : x.from === "agent" ? "agent" : "friend",
-        text: x.text.slice(0, AUTO_POLISH_CONTEXT_CHARS),
+        text,
       });
     }
     // Oldest first, as spoken.
@@ -3217,7 +3270,10 @@ export class DebugHub {
     if (flag === "busy") return skip("flag-busy");
     const conf = await this.autoPolishConf();
     const { kept } = await this.editable();
-    const { run, context } = this.autoPolishPick(kept, conf.minChars);
+    const { run, context } = this.autoPolishPick(kept, conf.minChars, {
+      lines: conf.contextLines,
+      chars: conf.contextChars,
+    });
     if (!run.length) return;
     if (!page.user) return skip("no-user", { lines: run.length });
     const newest = run.at(-1)![0];
@@ -3230,7 +3286,14 @@ export class DebugHub {
     }));
     const requestId = `auto:${newest.replace(/[^\w.-]/g, "-")}:${run.length}`.slice(0, 120);
     const t0 = this.now();
-    let res: { ok?: boolean; error?: string; verdict?: unknown } | undefined;
+    let res:
+      | {
+          ok?: boolean;
+          error?: string;
+          verdict?: unknown;
+          usage?: { tokensIn?: unknown; cachedIn?: unknown };
+        }
+      | undefined;
     try {
       res = (await rpc.polishLines({
         userId: page.user,
@@ -3274,6 +3337,9 @@ export class DebugHub {
         merged,
         polished,
         ms: this.now() - t0,
+        // Prefix-cache hit rate (Workers AI usage): counts only, never text.
+        ...(typeof res.usage?.tokensIn === "number" ? { tokensIn: res.usage.tokensIn } : {}),
+        ...(typeof res.usage?.cachedIn === "number" ? { cachedIn: res.usage.cachedIn } : {}),
       }),
     );
   }
@@ -3483,7 +3549,14 @@ export class DebugHub {
    * history and its audience's state. A blocked friend is told and closed.
    * Called without an identity (the unit tests' shorthand) it is an owner page.
    */
-  async connectPage(ws: Socket, url: URL, who?: Identity, ticketSocket = false, box?: string) {
+  async connectPage(
+    ws: Socket,
+    url: URL,
+    who?: Identity,
+    ticketSocket = false,
+    box?: string,
+    site?: { hash: string; origin: string },
+  ) {
     // A page that says another site frames it (lib/frame-context.ts) is chat-only
     // like a ticket socket: no pairing, no Allow, no eval, no clips (defence in
     // depth: the page itself never connects from such a frame).
@@ -3506,7 +3579,38 @@ export class DebugHub {
         })
       : undefined;
     const me = sender && Object.keys(sender).length ? { sender } : {};
-    if (who && !who.owner) {
+    // A site's own thread (lib/li-thread.ts, flag ext.pill-chat-per-origin): from a
+    // site-bound pill ticket, or his lianki.com page opening one of his own sites'
+    // threads (/chat/sites, `?sub=`). Never another account's: the base is who.
+    // (Asked only when one is named: an owner page's state goes out with no wait, as before.)
+    const sub = (ticketSocket ? site : url.searchParams.has("sub"))
+      ? await this.subThreadFor(url, who, ticketSocket, site)
+      : undefined;
+    if (sub === null) return close(ws, 4404, "no such thread");
+    if (sub) {
+      if (sub.base !== OWNER_THREAD) {
+        const rec = await this.ctx.storage.get<FriendRecord>(friendKey(sub.base));
+        if (rec?.blocked) {
+          send(ws, { type: "friend-status", status: "blocked" });
+          return close(ws, 4403, "blocked");
+        }
+      }
+      ws.serializeAttachment({
+        role: "page",
+        label,
+        thread: sub.thread,
+        ...(sub.base !== OWNER_THREAD && who ? { email: cleanLabel(who.email, 320) } : {}),
+        ...me,
+        id,
+        at: this.now(),
+        // Chat only, always: no eval, no pairing, minimal state, wherever it is opened.
+        embed: true as const,
+        // The account Li's replies here are metered to (the owner's ticket names none).
+        ...(isUserId(who?.userId) ? { user: who.userId } : {}),
+      } satisfies PageAtt);
+      const ai = await this.aiOn();
+      send(ws, { type: "friend-status", status: "open", ...(ai ? { ai: true } : {}) });
+    } else if (who && !who.owner) {
       if (!isUserId(who.userId)) return close(ws, 4403, "no identity");
       const rec = await this.ctx.storage.get<FriendRecord>(friendKey(who.userId));
       if (rec?.blocked) {
@@ -4614,7 +4718,12 @@ export class DebugHub {
     accepted?: (seq?: number) => Promise<void>,
   ) {
     const t = this.now();
-    const userId = page.thread;
+    // A site's thread (lib/li-thread.ts) is its account's: blocks, the rate and the
+    // friend record go by the account; the line stays in the site's thread.
+    const thread = page.thread;
+    const userId = parseSubThread(thread)?.base ?? thread;
+    if (userId === OWNER_THREAD)
+      return this.ownerSiteChat(page, id, text, t, context, scene, spoken, accepted);
     const rec = await this.ctx.storage.get<FriendRecord>(friendKey(userId));
     if (rec?.blocked) {
       await this.rejectChat(ws, page.thread, id, "blocked");
@@ -4653,7 +4762,7 @@ export class DebugHub {
       label: page.label,
       text,
       at: t,
-      thread: userId,
+      thread,
       email,
       ...(page.sender ? { sender: page.sender } : {}),
       ...(context ? { context } : {}),
@@ -4666,6 +4775,125 @@ export class DebugHub {
     // The AI could not even be asked: the page says so, rather than leave the line unanswered.
     else if (ai === "unsure")
       for (const { ws } of this.pages(page.thread)) send(ws, { type: "ai-failed" });
+  }
+
+  /**
+   * His line in one of his sites' threads (lib/li-thread.ts): kept there, never
+   * in his own thread, and answered by Li with that thread's lines alone. No
+   * friend record and no rate, as in his own thread; no lane hears it (post).
+   */
+  private async ownerSiteChat(
+    page: PageAtt,
+    id: string,
+    text: string,
+    t: number,
+    context?: ChatContext,
+    scene?: SttScene,
+    spoken = false,
+    accepted?: (seq?: number) => Promise<void>,
+  ) {
+    const seq = await this.post({
+      id,
+      from: "owner",
+      label: page.label,
+      text,
+      at: t,
+      thread: page.thread,
+      ...(page.sender ? { sender: page.sender } : {}),
+      ...(context ? { context } : {}),
+      ...(spoken ? { source: "stt", ...(scene ? { scene } : {}) } : {}),
+    });
+    await accepted?.(seq);
+    const ai = await this.aiState();
+    if (ai === "on") await this.aiReply(page, "", t, context, scene, id);
+    else if (ai === "unsure")
+      for (const { ws } of this.pages(page.thread)) send(ws, { type: "ai-failed" });
+  }
+
+  /**
+   * Which site thread a page joins (lib/li-thread.ts): undefined = not one (its
+   * account's own thread, as before), null = refuse. A ticket socket's comes from
+   * its site-bound ticket (index.ts verified it, and that the frame named the
+   * same origin); its record (`subt:`) is kept with the origin, for his list. A
+   * lianki.com page asks with `?sub=<hash>`: only while the flag is on, and only
+   * for a thread the hub already holds under that page's own account.
+   */
+  private async subThreadFor(
+    url: URL,
+    who: Identity | undefined,
+    ticketSocket: boolean,
+    site?: { hash: string; origin: string },
+  ): Promise<{ thread: string; base: string } | null | undefined> {
+    // No identity is the unit tests' owner page, as elsewhere.
+    const base = who && !who.owner ? who.userId : OWNER_THREAD;
+    if (base !== OWNER_THREAD && !isUserId(base)) return null;
+    if (ticketSocket) {
+      if (!site) return undefined;
+      const thread = subThread(base, site.hash);
+      const key = subRecordKey(thread);
+      const rec = await this.ctx.storage.get<SubThreadRecord>(key);
+      // One hash, one origin: anything else is refused, never merged.
+      if (rec && rec.origin !== site.origin) return null;
+      const t = this.now();
+      await this.ctx.storage.put(key, {
+        origin: site.origin,
+        firstAt: rec?.firstAt ?? t,
+        at: t,
+      } satisfies SubThreadRecord);
+      return { thread, base };
+    }
+    const want = url.searchParams.get("sub");
+    if (want === null) return undefined;
+    if (!isSubHash(want)) return null;
+    let on: unknown = false;
+    try {
+      on = await this.flagValue(PER_ORIGIN_FLAG);
+    } catch {}
+    if (on !== true) return null;
+    const thread = subThread(base, want);
+    return (await this.ctx.storage.get<SubThreadRecord>(subRecordKey(thread)))
+      ? { thread, base }
+      : null;
+  }
+
+  /** An account's site threads, newest first, each with its last line (at most 100). */
+  async subThreads(base: string): Promise<SiteThread[]> {
+    if (base !== OWNER_THREAD && !isUserId(base)) return [];
+    const recs = await this.ctx.storage.list<SubThreadRecord>({
+      prefix: subRecordKey(`${base}~`),
+    });
+    const out: SiteThread[] = [];
+    for (const [key, rec] of recs) {
+      const thread = key.slice(subRecordKey("").length);
+      const sub = parseSubThread(thread);
+      if (!sub || sub.base !== base || !hostOrigin(rec?.origin)) continue;
+      const [last] = (
+        await this.ctx.storage.list<ChatMessage>({
+          prefix: threadKeys(thread).prefix,
+          reverse: true,
+          limit: 1,
+        })
+      ).values();
+      out.push({
+        id: sub.hash,
+        origin: rec.origin,
+        firstAt: rec.firstAt,
+        at: Math.max(rec.at, last?.at ?? 0),
+        ...(last ? { last: { text: last.text.slice(0, 200), from: last.from, at: last.at } } : {}),
+      });
+    }
+    return out.sort((a, b) => b.at - a.at).slice(0, 100);
+  }
+
+  /** GET /internal/sub-threads?base=: the main Worker's /api/chat/sites (it checked the session). */
+  private async subThreadsApi(url: URL): Promise<Response> {
+    const base = url.searchParams.get("base") ?? "";
+    if (base !== OWNER_THREAD && !isUserId(base))
+      return Response.json({ error: "bad base" }, { status: 400 });
+    return Response.json(
+      { threads: await this.subThreads(base) },
+      { headers: { "cache-control": "no-store" } },
+    );
   }
 
   /**
@@ -4750,10 +4978,16 @@ export class DebugHub {
     const rpc = this.sessions;
     // The owner's thread (owner-ai.ts schedules it): his account is the user, metered like any.
     const owner = thread === OWNER_THREAD;
+    // One of a site's threads (lib/li-thread.ts): its account's, with its own lines alone.
+    const base = parseSubThread(thread)?.base ?? thread;
+    // His account, in his thread or one of his sites': Li answers as for him.
+    const ownerAccount = base === OWNER_THREAD;
     // A chat-only page of his (embed, box) carries no session: his other page's id.
-    const userId = owner
-      ? (page.user ?? this.pages(OWNER_THREAD).find((p) => p.a.user)?.a.user)
-      : thread;
+    const userId = ownerAccount
+      ? (page.user ??
+        this.pages(thread).find((p) => p.a.user)?.a.user ??
+        this.pages(OWNER_THREAD).find((p) => p.a.user)?.a.user)
+      : base;
     if (!isUserId(userId) || !rpc?.partnerReply) return;
     const t = this.now();
     const hour = hourOf(t);
@@ -4766,18 +5000,49 @@ export class DebugHub {
     const userMap = await this.ctx.storage.get<HourBuckets>(userKey);
     const used = windowSum(userMap, hour, win);
     const site = windowSum(siteMap, hour, win);
-    const lines = (await this.history(thread))
-      .filter((m) => m.from === (owner ? "owner" : "friend") || m.from === "agent")
-      .slice(-HISTORY_LINES)
-      // Li's own lines as its own; every other agent's attributed, never as Li's (partner-lines.ts).
-      .map(partnerHistoryLine);
-    // The newest lines within HISTORY_MAX_CHARS (the latest one always).
-    const history: typeof lines = [];
+    const recent = (await this.history(thread))
+      .filter((m) => m.from === (ownerAccount ? "owner" : "friend") || m.from === "agent")
+      .slice(-HISTORY_LINES);
+    // Li's own lines as its own; every other agent's attributed, never as Li's (partner-lines.ts).
+    const lines = recent.map(partnerHistoryLine);
+    // Cache order (flag partner.stable-prompt, default on): the frozen window; unsure = the old order.
+    const stable = (await this.flagValue(PARTNER_STABLE_FLAG)) === true;
+    let history: typeof lines = [];
     let chars = 0;
-    for (const h of lines.toReversed()) {
-      if (history.length && chars + h.text.length > HISTORY_MAX_CHARS) break;
-      history.unshift(h);
-      chars += h.text.length;
+    if (stable) {
+      const keep = await this.sessions?.config?.(CHECKPOINT_KEEP_KEY).catch(() => undefined);
+      const keepPct =
+        typeof keep === "number" && keep >= 10 && keep <= 90 ? keep : CHECKPOINT_KEEP_PCT;
+      const winKey = `ai:win:${thread}`;
+      const win = advanceWindow(
+        parseWindow(await this.ctx.storage.get(winKey)),
+        recent.map((m, i) => ({ id: m.id, ...lines[i]! })),
+        { maxLines: HISTORY_LINES, maxChars: HISTORY_MAX_CHARS, keepPct },
+      );
+      await this.ctx.storage.put(winKey, win);
+      history = win.items;
+      chars = history.reduce((n, h) => n + h.text.length, 0);
+    } else {
+      // The newest lines within HISTORY_MAX_CHARS (the latest one always).
+      for (const h of lines.toReversed()) {
+        if (history.length && chars + h.text.length > HISTORY_MAX_CHARS) break;
+        history.unshift(h);
+        chars += h.text.length;
+      }
+    }
+    // His spoken lines no polish has touched yet go along for the reply's polish section:
+    // the same run the hub's own polish would take (it usually got there first, 1.5 s after he paused).
+    let polish: { id: string; text: string }[] = [];
+    if (stable && owner && (await this.flagValue(AUTO_POLISH_FLAG)) === true) {
+      const conf = await this.autoPolishConf();
+      const { run } = this.autoPolishPick((await this.editable()).kept, conf.minChars, {
+        lines: 0,
+        chars: 0,
+      });
+      polish = run
+        .slice(-PARTNER_POLISH_LINES)
+        .map(([, x]) => ({ id: x.id, text: x.text.slice(0, PARTNER_POLISH_LINE_CHARS) }));
+      chars += polish.reduce((n, l) => n + l.text.length + l.id.length, 0);
     }
     const path = page.label.split(" ")[0]?.slice(0, 300);
     const pageInfo: NonNullable<PartnerRequest["page"]> = {
@@ -4827,8 +5092,10 @@ export class DebugHub {
     const req: PartnerRequest = {
       userId,
       ...(msgId ? { msgId } : {}),
-      ...(owner ? { owner: true as const } : {}),
+      ...(ownerAccount ? { owner: true as const } : {}),
       ...(roster.length ? { roster } : {}),
+      ...(stable ? { stable: true as const } : {}),
+      ...(polish.length ? { polish } : {}),
       history,
       page: pageInfo,
     };
@@ -4873,6 +5140,10 @@ export class DebugHub {
               tokensOut,
               model: res.model,
               ...(res.charged !== undefined ? { charged: res.charged } : {}),
+              // Prefix-cache hits (Workers AI usage) and the reply's polish: counts only.
+              ...(stable ? { stable: true } : {}),
+              ...(res.cachedIn !== undefined ? { cachedIn: res.cachedIn } : {}),
+              ...(res.polish?.length ? { polishLines: res.polish.length } : {}),
             }
           : { error: res.error }),
         ...(res.ms !== undefined ? { ms: res.ms } : {}),
@@ -4893,6 +5164,8 @@ export class DebugHub {
         for (const { ws } of this.pages(thread)) send(ws, { type: "ai-failed" });
       return;
     }
+    // The polish section stands on its own: applied even when a lane's reply made Li's stale.
+    if (owner && res.polish?.length) await this.liPolish(polish, res.polish);
     if (stale) return;
     await this.post({
       id: crypto.randomUUID().slice(0, 8),
@@ -4905,6 +5178,30 @@ export class DebugHub {
       // In his thread: the main lane's (Li's) avatar and voice.
       ...(owner ? { lane: "main" as const } : {}),
     });
+  }
+
+  /**
+   * Li's polish section, through the same edit path as the hub's own polish
+   * (`polishLine`, stamped `by: "auto"`: raw kept for undo, the read-back
+   * fired). Only the ids sent, and only a line that still reads as sent and
+   * that no polish touched meanwhile (the hub's own, an agent's): never twice.
+   */
+  private async liPolish(
+    sent: readonly { id: string; text: string }[],
+    edits: readonly { id: string; text: string }[],
+  ) {
+    const now = new Map((await this.editable()).kept.map(([, x]) => [x.id, x]));
+    let polished = 0;
+    for (const e of edits) {
+      const was = sent.find((l) => l.id === e.id);
+      const x = now.get(e.id);
+      if (!was || !x || x.text !== was.text || polishStands(x) || x.collapsedInto || x.passage)
+        continue;
+      if (!(await this.polishLine({ id: e.id, text: e.text }, AUTO_POLISH_BY))) polished++;
+    }
+    console.log(
+      JSON.stringify({ msg: "partner.polish", sent: sent.length, edits: edits.length, polished }),
+    );
   }
 
   /**
