@@ -65,10 +65,14 @@ export const PLAY_OPEN_MAX_MS = 60_000;
  */
 export const PLAY_LEASE_MS = 30_000;
 
-/** Where an open report is taken to end now: its sentence cap, or its lease while it renews. */
+/**
+ * Where an open report is taken to end now: "played" wins; a sound that renews
+ * ends PLAY_LEASE_MS after its last renewal (even before the sentence cap); one
+ * that never renews ends at the PLAY_OPEN_MAX_MS sentence cap.
+ */
 export const openEnd = (r: { from: number; to?: number; renewed?: number }, hubNow: number) =>
   r.to ??
-  Math.min(hubNow, Math.max(r.from + PLAY_OPEN_MAX_MS, (r.renewed ?? -Infinity) + PLAY_LEASE_MS));
+  Math.min(hubNow, r.renewed !== undefined ? r.renewed + PLAY_LEASE_MS : r.from + PLAY_OPEN_MAX_MS);
 /** A page time this far from the hub's is not trusted: the receive time stands in. */
 const CLOCK_TRUST_MS = 30_000;
 /** Past this length of the transcript (normalized), the n-gram share joins the edit distance. */

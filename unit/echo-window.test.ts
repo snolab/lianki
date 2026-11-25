@@ -225,6 +225,9 @@ describe("long sounds: a lease renewed while playing (review of #1108)", () => {
     expect(openEnd({ from: 0, renewed: 100_000 }, 500_000)).toBe(130_000);
     expect(openEnd({ from: 0 }, 500_000)).toBe(PLAY_OPEN_MAX_MS);
     expect(openEnd({ from: 0, to: 5000, renewed: 100_000 }, 500_000)).toBe(5000);
+    // Renewed early, then the page went away: 30 s after that renewal, not the 60 s cap (review of #1110).
+    expect(openEnd({ from: 0, renewed: 20_000 }, 500_000)).toBe(50_000);
+    expect(openEnd({ from: 0, to: 30_000, renewed: 20_000 }, 500_000)).toBe(30_000);
   });
   it("a renewal after 'played' does not reopen it; one the hub never saw starts a lease", () => {
     const store = new PlayStore();
@@ -241,5 +244,24 @@ describe("long sounds: a lease renewed while playing (review of #1108)", () => {
       renew: true,
     });
     expect(parsePlayFrame(JSON.stringify({ ...stream, renew: "yes" }))).not.toHaveProperty("renew");
+  });
+});
+
+describe("an early renewal then a lost page (review of #1110)", () => {
+  it("speech 55–56 s is his: the lease ended at 50 s", () => {
+    const store = new PlayStore();
+    const stream = {
+      type: "playing" as const,
+      ref: "s",
+      voice: "li-player",
+      from: 0,
+      synced: true as const,
+    };
+    store.note("phone", stream, 0, 120_000);
+    store.note("phone", { ...stream, renew: true }, 20_000, 120_000);
+    const span = { from: 55_000, to: 56_000, known: true };
+    const recent = store.overlapping({ from: span.from - 15_000, to: span.to }, 1500, 57_000);
+    // 50 s + 2.5 s tail ends before 55 s.
+    expect(echoWindowMatch(recent, span, conf, 57_000, "phone")).toBeUndefined();
   });
 });
