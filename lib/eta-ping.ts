@@ -15,14 +15,13 @@
  * "blocked" on the owner) are read aloud and always posted.
  */
 import type { FlagKey } from "./flags";
-import { REPLY_DEFAULTS, REPLY_STATES, type ReplyState, replyText } from "./eta-reply";
+import { REPLY_DEFAULTS, REPLY_STATES, type ReplyState, replyText, whoShown } from "./eta-reply";
 import {
   AGENT_NAME_RE,
   OWNER_NAME,
   PROGRESS_LIMITS,
   RECEIPT_RE,
   WHO_RE,
-  agentLabel,
   isProgressId,
 } from "./progress";
 
@@ -118,17 +117,20 @@ export function compactSpan(ms: number): string {
 /**
  * The line's text. The owner's are in the words he chose (2026-11-08 20:24
  * JST); "late" gives the new time as whole minutes from `now`, a "silent"
- * repeat how long it has been over.
+ * repeat how long it has been over. Lanes are named by their display names
+ * (`lanes`: config chat.lanes as read; lib/eta-reply.ts whoShown); the
+ * command in a "due" line keeps the id.
  */
 export function etaLineText(
   p: EtaPing,
   now: number = Date.now(),
   replyWords: Partial<Record<ReplyState, string>> = {},
+  lanes: unknown = [],
 ): string {
   const name = nameOf(p.title);
   const lane = p.assignee ?? "<lane>";
-  // The owning agent as he reads it: "coco (codex)" for an agent in a lane.
-  const owner = p.assignee ? agentLabel(p.assignee) : lane;
+  // The owning agent as he reads it: "哈基米" for agy, "coco (哈基米)" for an agent in a lane.
+  const owner = p.assignee ? whoShown(p.assignee, lanes) : lane;
   if (p.kind === "reply") {
     const state = p.state ?? "ack";
     return replyText(replyWords[state] || REPLY_DEFAULTS[state], {
@@ -149,7 +151,7 @@ export function etaLineText(
   if (p.kind === "blocked") {
     if (p.lane === OWNER_NAME)
       return p.reason ? `${name} 卡住了，等你——${p.reason}` : `${name} 卡住了，等你`;
-    const to = p.agent ? `${p.agent} (${p.lane})` : p.lane;
+    const to = whoShown(p.agent ? `${p.agent}@${p.lane}` : (p.lane ?? ""), lanes);
     return (
       `@${to}: ${p.title} (${p.id}) is blocked on you${p.reason ? `: ${p.reason}` : ""}. ` +
       `${owner} cannot go on until you act; then tell ${owner}.`
@@ -157,7 +159,7 @@ export function etaLineText(
   }
   if (p.kind === "main")
     return (
-      `@${p.lane}: ${owner} has not acked the ETA line for ${p.title} (${p.id}, receipt ${p.code}). ` +
+      `@${whoShown(p.lane ?? "", lanes)}: ${owner} has not acked the ETA line for ${p.title} (${p.id}, receipt ${p.code}). ` +
       `Check on it: unless it reports a reason and a new ETA, the owner hears ` +
       `"${name} 超时，未说明原因"${p.ownerMin ? ` in ${p.ownerMin} min` : ""}.`
     );
