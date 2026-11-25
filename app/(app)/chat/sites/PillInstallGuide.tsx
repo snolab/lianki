@@ -22,6 +22,7 @@ export type PillInstallLabels = {
   trySite: string;
   tryHelp: string;
   versions: string;
+  notDetected: string;
 };
 
 export default function PillInstallGuide({
@@ -40,6 +41,8 @@ export default function PillInstallGuide({
       aria-labelledby="pill-install-title"
       data-testid="pill-install-guide"
       data-install-status={state.status}
+      data-required-version={latestVersion}
+      data-detected-version={state.version ?? ""}
       className="mb-6 rounded-xl border border-current/20 p-4"
     >
       <h2 id="pill-install-title" className="font-semibold">
@@ -48,9 +51,11 @@ export default function PillInstallGuide({
       <p role="status" className="mt-2 text-sm">
         {labels[state.status]}
       </p>
-      {state.version && (
+      {!checking && (
         <p className="mt-1 text-xs opacity-75">
-          {labels.versions.replace("{installed}", state.version).replace("{latest}", latestVersion)}
+          {labels.versions
+            .replace("{installed}", state.version ?? labels.notDetected)
+            .replace("{latest}", latestVersion)}
         </p>
       )}
       {!checking && (
