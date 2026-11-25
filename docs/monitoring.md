@@ -34,6 +34,40 @@ monitor as tail consumer: its requests land under `index1 = 'voice'` (same
 blobs and doubles), timings only — a clip it passes on is counted, and
 alerted on, again as the main Worker's request.
 
+## Request-rate and CPU budget signals
+
+On each existing main-Worker tail event, the monitor also counts requests in
+at most 128 grouped paths, with at most 60 minute buckets per path. Successful
+requests count too: `monitor.pathRateMax` (default 1,500) alerts above the last
+ten buckets; `monitor.repeat401Max` (default 300) alerts above the last sixty
+401 buckets. These are bounded, isolate-local approximations, not account-wide
+exact rolling windows. Idle paths expire after an hour. The existing raw MCP
+and push invocation tails are not enabled for these counters.
+
+`monitor.cpuMsMonthAlert` (default 60,000,000 CPU ms) compares a rough monthly
+projection against the observed main-Worker CPU total for the UTC day. It uses
+`cpuTime`, never request wall time or a WebSocket's lifetime. The projection
+uses the calendar month's length and at least one elapsed hour to avoid a
+midnight spike. The running total resumes from `cpu:<UTC date>` in existing KV,
+writes at most once a minute on a later request, and expires after three days.
+KV races between isolates and eviction before a flush can lose increments;
+this is a warning signal, not a bill or an exact global accounting ledger.
+
+All three thresholds use the existing private config binding and a ten-minute
+cache, with code defaults on failure. Alerts use the existing Slack path and
+thirty-minute KV suppression. No polling, cron, D1 writes, new credential, or
+per-request durable write is added. Counter failures do not suppress existing
+reliability alerts. Only already-grouped path labels and numeric totals enter
+these counters; no body, identity, raw URL, or credential is retained.
+
+The broader cost-watch plan is still incomplete: a daily GraphQL cost/AI-neuron
+summary needs a separate least-privilege Account Analytics Read credential;
+cached prompt usage additionally needs Workers Observability Read. Neither is
+created or granted here. Hub storage-write counts need instrumentation of the
+current KV/transaction API rather than the plan's obsolete `sql.exec` wording.
+Object-instance age or time since a socket message cannot prove billed Durable
+Object awake time; no such billing metric is claimed or fabricated here.
+
 ## MCP latency without credential-bearing invocation tails
 
 `lianki-mcp` intentionally keeps raw tails, invocation logs and tracing off:

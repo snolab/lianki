@@ -14,6 +14,7 @@
  * the repo's root tsconfig type-checks this folder with the DOM lib.
  */
 import { post } from "./slack";
+import { recordBudget } from "./budget";
 export { McpMetrics } from "./mcp-entrypoint";
 import {
   ERROR_BURST,
@@ -40,6 +41,7 @@ type Env = {
   SLACK_BOT_TOKEN?: string;
   STATE: KV;
   METRICS: Metrics;
+  SESSIONS?: { config(key: string): Promise<unknown> };
 };
 type Ctx = { waitUntil(p: Promise<unknown>): void };
 /** The parts of a tail TraceItem this reads. */
@@ -132,6 +134,11 @@ async function onTail(env: Env, traces: Trace[]) {
       indexes: ["req"],
       blobs: ["req", path, String(status), t.outcome, req.method ?? ""],
       doubles: [wall, cpu],
+    });
+    // Only the already grouped path and numbers enter budget accounting.
+    // A failed counter must not suppress the existing reliability alerts.
+    await recordBudget(env, path, status, cpu, now).catch(() => {
+      console.log(JSON.stringify({ msg: "monitor.budget.unavailable" }));
     });
     const failed = t.outcome !== "ok" || status >= 500 || (t.exceptions?.length ?? 0) > 0;
     if (failed)

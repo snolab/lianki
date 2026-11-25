@@ -1,4 +1,5 @@
 import { MCP_MONITOR_DEFAULTS } from "./mcp-metrics";
+import { MONITOR_BUDGET_DEFAULTS } from "./monitor-budget";
 import { HUB_RPC_LIMITS } from "./hub-rpc-config";
 import {
   CAP_WINDOW_HOURS,
@@ -2260,6 +2261,34 @@ export const CONFIG = {
     group: "monitor",
     audience: "server",
     description: "最近十分钟至少多少次 MCP 实时消息投递样本后才判断 p95 延迟告警。",
+  }),
+  "monitor.pathRateMax": int({
+    default: MONITOR_BUDGET_DEFAULTS.pathRateMax,
+    min: 1,
+    max: 10000000,
+    unit: "requests/10min",
+    group: "monitor",
+    audience: "server",
+    description: "同一路径最近十个分钟桶请求数超过多少时告警，成功请求也计入；分区近似计数。",
+  }),
+  "monitor.repeat401Max": int({
+    default: MONITOR_BUDGET_DEFAULTS.repeat401Max,
+    min: 1,
+    max: 10000000,
+    unit: "401/hour",
+    group: "monitor",
+    audience: "server",
+    description: "同一路径最近六十个分钟桶返回 401 超过多少时告警；分区近似计数。",
+  }),
+  "monitor.cpuMsMonthAlert": int({
+    default: MONITOR_BUDGET_DEFAULTS.cpuMsMonthAlert,
+    min: 1,
+    max: 1000000000000,
+    unit: "CPU ms/month",
+    group: "monitor",
+    audience: "server",
+    description:
+      "按当日观察到的主 Worker CPU 粗略推算整月超过多少毫秒时告警；KV 并发和休眠可能漏计，不是账单。",
   }),
 } as const satisfies Record<string, ConfigDef>;
 
