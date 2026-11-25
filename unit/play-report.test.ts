@@ -13,8 +13,10 @@ import {
   ECHO_REPORTS_FLAG,
   PLAY_TEXT_MAX,
   type PlayFrame,
+  type PlayingFrame,
   echoReportsOn,
   hubSpanOf,
+  renewPlaying,
   reportPlayed,
   reportPlaying,
   setEchoReports,
@@ -59,12 +61,15 @@ describe("the flag and the sender", () => {
     expect(FLAGS[ECHO_REPORTS_FLAG]).toMatchObject({ default: true, audience: "owner" });
   });
 
-  it("sends nothing with the flag off, with no socket, or with no words", () => {
+  it("sends nothing with the flag off or with no socket; no words is a time-only report", () => {
     setEchoReports(false);
     expect(echoReportsOn()).toBe(false);
     expect(reportPlaying({ text: "hello", voice: "device", at: 1 })).toBeNull();
     setEchoReports(true);
-    expect(reportPlaying({ text: "   ", voice: "device", at: 1 })).toBeNull();
+    const ref = reportPlaying({ text: "   ", voice: "li-player", at: 1 });
+    expect(ref).not.toBeNull();
+    expect(sent.at(-1)).toEqual({ type: "playing", ref: ref!, voice: "li-player", from: 1 });
+    sent.length = 0;
     setPlaySender(null);
     expect(reportPlaying({ text: "hello", voice: "device", at: 1 })).toBeNull();
     reportPlayed("p1", 2);
@@ -261,5 +266,18 @@ describe("who reports", () => {
     expect(run(true, true)).toEqual({ spoken: [], cloud: ["好的。"] });
     expect(run(false, true)).toEqual({ spoken: ["好的。"], cloud: [] });
     expect(run(true, false)).toEqual({ spoken: ["好的。"], cloud: [] });
+  });
+});
+
+describe("renewals (a long sound's lease)", () => {
+  it("resends the same frame with renew while open, nothing once it ended", () => {
+    const ref = reportPlaying({ text: "", voice: "li-player", at: 5 })!;
+    expect(renewPlaying(ref)).toBe(true);
+    expect(sent.at(-1)).toEqual({ ...(sent[0] as PlayingFrame), renew: true });
+    reportPlayed(ref, 9);
+    sent.length = 0;
+    expect(renewPlaying(ref)).toBe(false);
+    expect(renewPlaying("never")).toBe(false);
+    expect(sent).toEqual([]);
   });
 });

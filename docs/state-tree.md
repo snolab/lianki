@@ -191,7 +191,8 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   Waiting-owner reminders keep #823's day spacing (below).
 
   Blocked and paused (2026-11-11). `blocked` means someone can act now:
-  --who names them ("owner" or a lane; an "@" in front is dropped) and
+  --who names them ("owner", a lane, or an agent in a lane, below; an "@"
+  in front is dropped) and
   --needs what (the CLI refuses --status blocked without --who). The hub
   nudges that one at once and then at chat.nudgeBackoffMin spacing until
   the node leaves blocked or who/needs change (a change starts over;
@@ -199,7 +200,43 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   卡住了，等你——<needs>"; a lane by a quiet line "@<lane>: <task> (<id>) is
   blocked on you: <needs>…" with eta.lane set, which the root listener sees
   and lane-listen hands to that lane's agent. A lane's nudge with no
-  listener is held (nudgeQueued) for the next one to connect. `waiting`
+  listener is held (nudgeQueued) for the next one to connect.
+  Name the agent, not just its lane (owner, 2026-11-26): when one session
+  or sub-agent can unblock it, --who <agent>@<lane> (or "<agent> (<lane>)";
+  stored as coco@codex; lib/progress.ts parseWho). The agent is any name up
+  to 40 characters with no spaces, "@", "()" or ":" (coco, 哈基米, a child
+  token's name); the lane still routes the line (eta.lane = codex), so
+  lane-listen hands it to the codex lane, and the line names the agent:
+    "@coco (codex): R键重播 (/words/r-replay) is blocked on you: 中文 TTS 修复.
+     agy cannot go on until you act; then tell agy."
+  The owning side is the node's assignee, shown the same way: an agent that
+  reports as --agent coco@codex (or a grant for that name) reads
+  "coco (codex) cannot go on"; so do its "ETA reached" and "has not acked"
+  lines. A bare --who codex reads "@codex" as before.
+  Sender (owner, 2026-11-26: 「状态树发给我们的任务提醒应该用另一个名字」). Every
+  automatic line (ETA reached, not acked, blocked, late, silent, waiting)
+  carries the state tree's own sender name as its label — config key
+  chat.stateTreeSender, default 「状态树提醒」, editable at /dev/config — and
+  the chat draws it with a tree mark (avatar-rules.ts STATE_TREE_AVATAR),
+  never an agent's avatar, so "@codex: …" is not read as codex speaking.
+  Old lines (label "ETA timer (automatic)") show the localized name
+  (stateTreeName, learning-partner.content.ts).
+  Replies (owner, 2026-11-26: 「被提醒的那个 agent 应该在这里回一条消息」;
+  lib/eta-reply.ts). Once a reminder went out — an "ETA reached" line, or a
+  blocked nudge that reached a listener — the agent's next ack
+  (`progress.ts ack <code>`) or report on that node makes the hub post ONE
+  short quiet line in the thread in that agent's name (label "coco (codex)",
+  agentId the name, eta.kind "reply", eta.re = the reminder line's id),
+  quoting the task:
+    「coco (codex)：收到「R键重播」，处理中」              ack, no new time
+    「coco (codex)：收到「R键重播」，处理中（ETA 20 分钟）」  a report with a future ETA
+    「coco (codex)：「R键重播」已处理」                    done
+  Generated from the ack or report itself, so no agent has to remember it.
+  The words are config keys chat.etaReplyAck / chat.etaReplyDoing /
+  chat.etaReplyDone ({agent}, {task}, {min}; their descriptions are the
+  translators' context). One reply per reminder (replyFor = "eta:<etaAt>" or
+  "nudge:<who|needs>"); a blocked node re-reported unchanged answers nothing.
+  `waiting`
   means paused on an outside event: no nudges, no overrun. Neither gets an
   "ETA reached" line or "未说明原因", and a new --eta needs no --late; coming
   back to work with the same, passed etaAt marks it pinged and silent, as

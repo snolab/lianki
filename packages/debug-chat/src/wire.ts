@@ -232,6 +232,10 @@ export type ChatMessage = {
     code?: string;
     /** "main" / "blocked": the lane (or "owner") it is for. */
     lane?: string;
+    /** "blocked": the specific agent in that lane it waits on ("coco"). */
+    agent?: string;
+    /** "reply": the reminder line (its id) this agent's reply answers. */
+    re?: string;
   };
   /**
    * Stamped by the hub only (workers/push/src/lane-registry.ts): a system line
@@ -307,10 +311,12 @@ export type EchoMark = {
    * Which evidence (docs/echo-suppression.md, "The verdict"): "report" = a
    * page said it was playing these words then (lib/echo-reports.ts);
    * "landed" = the agent line or his line it copies landed lately; "self" =
-   * the Mac's voiceprint said it was our own TTS voice (signed). Absent on
-   * echoes kept before play reports.
+   * the Mac's voiceprint said it was our own TTS voice (signed); "window" =
+   * spoken while one of his pages played (or in its short tail), whatever
+   * the words; "noise" = a known STT hallucination while something played
+   * lately. Absent on echoes kept before play reports.
    */
-  layer?: "report" | "landed" | "self";
+  layer?: "report" | "landed" | "self" | "window" | "noise";
   /** The voice that played it (play-report.ts), with layer "report". */
   voice?: string;
   /** How long the utterance overlapped what played, ms, with layer "report". */
@@ -975,6 +981,8 @@ export type ChatStrings = {
   /** Tooltip and screen-reader label of a tiny check mark after a voice-typed chat line: Lianki's speech server confirmed the line was spoken in his own voice. Short phrase, no full stop. */
   vpVerified: string;
   /** Tooltip and screen-reader name of the small coloured avatar on a voice-typed chat line that was spoken by someone other than the account's owner (a family member or guest near the mic; each such person gets their own stable colour and shape). It names that person without knowing who they are. Short noun phrase, no full stop: "Another voice". */
+  /** Sender name of the state tree's automatic reminder lines (with their tree avatar): "State tree reminder". */
+  stateTreeName: string;
   vpOtherVoice: string;
   /** Label of the folded one-line button for another person's voice in the chat log: "Another voice · tap to expand". */
   vpOtherVoiceFolded: string;
@@ -1244,6 +1252,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpMacRecDeleted: "Recordings deleted from the speech servers.",
   vpMacRecKept: "The recordings stay on the speech servers.",
   vpVerified: "Your voice, verified",
+  stateTreeName: "State tree reminder",
   vpOtherVoice: "Another voice",
   vpVoiceCluster: "Voice {label}",
   vpHouseholdVoice: "Household voice",

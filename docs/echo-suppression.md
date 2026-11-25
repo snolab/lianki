@@ -57,6 +57,66 @@ M4 (layer (c)), as built:
   minimum 0.62–0.68; against his print at most 0.28–0.35. Every channel copy
   was "self" at 0.45 / 0.15. The cloud voices and the real room are M5.
 
+## The play window (2026-11-26)
+
+**Incident**, 2026-11-26 00:30–00:55 JST: lines such as 「明镜需要您的支持
+欢迎收看订阅明镜」, 「Sennsjánssjánssjáns」, 「Eða er ennig að það er hann」 and
+"One, two, six and serial in the group" (for an agent line ending "items
+1/2/6") were posted as his. All came from his Android phone on /words. Its mic
+heard the phone's own read-aloud (agent lines, word examples) and sent it to
+cloud Whisper (`sttServerMs` 2–8 s). Whisper turned it into words that share
+nothing with what played: its stock subtitle credits, or a wrong language.
+Every layer above needs the words to match (page Dice 0.6, report
+containment 0.6, landed 0.8). Layer (c) runs only on the Mac's STT, so
+nothing caught them.
+
+**The fix** (flag **`voice.echo-window`**, on by default, audience owner,
+<https://lianki.com/dev/flags#voice.echo-window>):
+
+- **Time alone.** A voice line is an echo, whatever its words, when at least
+  `voice.echoWindowShare` (0.5) of its span lies inside a play window of any
+  of his pages: from `voice.echoWindowLeadMs` (300 ms) before a sound starts
+  to `voice.echoWindowTailMs` (2500 ms) after it ends (twice both for an
+  unsynced page). On the page that played: always. From another of his
+  devices: only for a line from the cloud recogniser with no voiceprint tag
+  (the path that hallucinates and has no self print). A line from the Mac's
+  own STT on another device is left to the words and the self print, so
+  his answers spoken over a phone's reading ("120", "20") stay his. Only a span
+  the hub knows counts (`utteranceSpan` `known`). Layer `window`, kind
+  `read-aloud`, shown collapsed with "This was me". The share rule keeps a
+  long instruction of his that Li started reading into near its end. The
+  strong-`me` exception of layer (b) applies: a line the Mac signed as him
+  is posted, unless his clone voice played.
+- **Time-only reports.** A sound with no text still reports `playing`/`played`
+  with no words: `li-player` (`say --play` files and streams, voice
+  `li-player`), and `pageAudio().start({voice})` with no text. An unnamed
+  `start()` (live-monitor playing his own mic back) never reports.
+- **Any language, fuzzily.** `normalizeEcho` (`lib/echo-match.ts`) folds
+  accents and widths (NFKD, marks dropped). Text matching against reports
+  reaches back `voice.echoRecentMs` (15 s) past the slack.
+- **STT noise.** A line containing a known recogniser hallucination
+  (`voice.echoHallucinations`, data in any language, default
+  `ECHO_HALLUCINATIONS`) while something played within `voice.echoRecentMs`
+  is an echo, layer `noise`. With nothing played lately it is left alone.
+- **Eligible reports first.** For a line that is not eligible cross-device
+  (a Mac-STT line), only its own page's reports go into the window, before
+  the union, so another device's longer sound never takes the place of the
+  page's own (review of #1108).
+- **Long sounds renew a lease.** `li-player` resends its report every
+  `PLAY_RENEW_MS` (20 s) while playing (`renew: true`, same ref and start).
+  The hub then treats an open report as ending `PLAY_LEASE_MS` (30 s) after
+  its last renewal instead of at the 60 s sentence cap. Stop, retire or
+  "played" ends it; a closed page lets the lease run out.
+- Order in `echoVerdict`: self, report, landed, window, noise.
+
+Known cost: his own words on the device that is reading aloud, or on another
+device using cloud STT, are folded too while it reads (unless the Mac signs
+them as his). One tap on "This was me" restores them. A replay of that night
+(every agent line assumed read on the phone) folded no Mac line.
+
+Tests: `unit/echo-window.test.ts` and `unit/debug-hub-echo-reports.test.ts`,
+"the play window: 2026-11-26 replay" (that night's transcripts).
+
 The owner, 2026-11-19 ~14:25 JST (voice):
 his phone read an agent's line aloud, a mic heard it, and
 "先放一个占位首页，通过 GitHub Actions 自动部署…" (the agent's own words) was
@@ -347,15 +407,15 @@ Logged `debug.echo` as today, plus `layer` (`report`, `landed`, `self`),
 
 ### Config keys (lib/config.ts, `cfg()`)
 
-| key                                                      | default        | what                                                                 |
-| -------------------------------------------------------- | -------------- | -------------------------------------------------------------------- |
-| `voice.echoPlaySimilarity`                               | 0.6            | text line when a play report overlaps in time                        |
-| `voice.echoSlackMs`                                      | 1500           | slack each side of a play report                                     |
-| `voice.echoPlayKeepMs`                                   | 120000         | how long the chat hub keeps play reports in memory                   |
-| `voice.echoSimilarity`                                   | 0.8 (exists)   | the no-report fallback line                                          |
-| `voice.echoReadWindowMs`                                 | 60000 (exists) | the no-report fallback window                                        |
-| `voice.echoShowMax`                                      | 50             | echoes kept for the collapsed rows (today's `ECHO_KEEP`)             |
-| `voice.cloudWhileMic`                                    | `android`      | prefer cloud TTS while the mic is open: `never`, `android`, `always` |
+| key                                                      | default           | what                                                                           |
+| -------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------ |
+| `voice.echoPlaySimilarity`                               | 0.6               | text line when a play report overlaps in time                                  |
+| `voice.echoSlackMs`                                      | 1500              | slack each side of a play report                                               |
+| `voice.echoPlayKeepMs`                                   | 120000            | how long the chat hub keeps play reports in memory                             |
+| `voice.echoSimilarity`                                   | 0.8 (exists)      | the no-report fallback line                                                    |
+| `voice.echoReadWindowMs`                                 | 60000 (exists)    | the no-report fallback window                                                  |
+| `voice.echoShowMax`                                      | 50                | echoes kept for the collapsed rows (today's `ECHO_KEEP`)                       |
+| `voice.cloudWhileMic`                                    | `android`         | prefer cloud TTS while the mic is open: `never`, `android`, `always`           |
 | `stt.selfAccept` / `stt.selfMargin` / `stt.selfMeMargin` | 0.45 / 0.15 / 0.1 | the self decision lines (also `LIANKI_STT_SELF_ACCEPT` / `_MARGIN` on the Mac) |
 
 ### Flags (lib/flags.ts, positive names, default **on**, audience owner)
@@ -422,4 +482,4 @@ backstop for lines whose text STT mangles.
 7. **Keep `self` lines in history?** Default **no**: they are our words, not
    his.
 8. **Do lanes get a count of echoes?** Default: **no** text; `lianki-dev
-   doctor` shows today's echo count by layer, for tuning.
+doctor` shows today's echo count by layer, for tuning.
