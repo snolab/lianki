@@ -30,7 +30,11 @@ The rules are pure, in `packages/core/src/externalLink.ts`
 
 ## Chat link actions
 
-Chat message links first show their own action menu (production too). Open
+An ordinary click or context menu on a chat message link shows its action menu
+(production too). Cmd/Ctrl-click follows the real anchor in a new tab/window,
+without opening the chat menu; middle-click stays native too. Modified clicks
+still reach this delegated guard and follow the account's external-link policy.
+Dragging selects text instead of navigating. Open
 uses a temporary normal anchor outside the message tree, with no bypass
 attribute, so this same delegated guard receives it. Copy and System menu
 operate on the selected effective URL; the latter calls native share when
