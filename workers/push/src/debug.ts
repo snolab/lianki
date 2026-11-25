@@ -281,8 +281,15 @@ import {
   ECHO_SHOW_MAX,
   ECHO_SLACK_MAX,
   ECHO_SLACK_MS,
+  ECHO_HALLUCINATIONS,
+  ECHO_RECENT_MS,
+  ECHO_WINDOW_LEAD_MS,
+  ECHO_WINDOW_SHARE,
+  ECHO_WINDOW_TAIL_MS,
   PlayStore,
+  echoHallucinated,
   echoReportMatch,
+  echoWindowMatch,
   echoVerdict,
   SELF_ME_MARGIN,
   signedSelf,
@@ -712,7 +719,19 @@ type EchoReportsConf = {
   slackMs: number;
   keepMs: number;
   showMax: number;
+  /** Flag voice.echo-window: spoken while a page played (or in the tail) is an echo, whatever the words. */
+  windowOn: boolean;
+  leadMs: number;
+  tailMs: number;
+  share: number;
+  /** A report ended this long before the utterance still counts for words and STT noise. */
+  recentMs: number;
+  hallucinations: readonly string[];
 };
+/** Flag: the play window (lib/echo-reports.ts echoWindowMatch; on by default, owner). */
+export const ECHO_WINDOW_FLAG = "voice.echo-window";
+/** The widest voice.echoRecentMs the config takes: the hub's cheap first look uses it. */
+const ECHO_RECENT_MAX = 120_000;
 /**
  * A kept echo as his pages get it (the `echo` frame, the `echoes` snapshot):
  * the words, who and when, its echo mark; never the hub's undo bookkeeping.
@@ -2036,6 +2055,15 @@ export class DebugHub {
     try {
       selfOn = (await this.flagValue(SELF_VOICE_FLAG)) !== false;
     } catch {}
+    let windowOn = true;
+    try {
+      windowOn = (await this.flagValue(ECHO_WINDOW_FLAG)) !== false;
+    } catch {}
+    let hallucinations: readonly string[] = ECHO_HALLUCINATIONS;
+    try {
+      const v = await this.sessions?.config?.("voice.echoHallucinations");
+      if (Array.isArray(v)) hallucinations = v.filter((x): x is string => typeof x === "string");
+    } catch {}
     const reports: EchoReportsConf = {
       on: reportsOn,
       selfOn,
@@ -2044,6 +2072,12 @@ export class DebugHub {
       slackMs: await num("voice.echoSlackMs", ECHO_SLACK_MS),
       keepMs: await num("voice.echoPlayKeepMs", ECHO_PLAY_KEEP_MS),
       showMax: Math.max(1, await num("voice.echoShowMax", ECHO_KEEP)),
+      windowOn,
+      leadMs: await num("voice.echoWindowLeadMs", ECHO_WINDOW_LEAD_MS),
+      tailMs: await num("voice.echoWindowTailMs", ECHO_WINDOW_TAIL_MS),
+      share: Math.min(1, await num("voice.echoWindowShare", ECHO_WINDOW_SHARE)),
+      recentMs: Math.min(ECHO_RECENT_MAX, await num("voice.echoRecentMs", ECHO_RECENT_MS)),
+      hallucinations,
     };
     this.echoConf = { at: t, on, conf, reports };
     return this.echoConf;
@@ -2095,22 +2129,61 @@ export class DebugHub {
     // The cheap first look: a play report near it in time, or a line it could echo.
     const span = utteranceSpan(line.at, line.timing, page?.hubSpan);
     this.plays.prune(t, this.echoConf?.reports.keepMs ?? ECHO_PLAY_KEEP_MS);
-    const nearPlays = this.plays.overlapping(span, ECHO_SLACK_MAX, t).length > 0;
+    // Reports that ended up to the widest recent reach before it count too (words, STT noise).
+    const reach = (ms: number) => ({ from: span.from - ms, to: span.to });
+    const nearPlays = this.plays.overlapping(reach(ECHO_RECENT_MAX), ECHO_SLACK_MAX, t).length > 0;
     const maybeLanded = !!echoMatch(await this.newestLines(ECHO_SCAN), cur, widest);
     // Our own TTS voice, signed by the Mac (layer (c)): an echo whatever the text says.
     const maybeSelf = signedSelf(line.speaker);
     if (!nearPlays && !maybeLanded && !maybeSelf) return false;
     const { on, conf, reports } = await this.echoOn();
     if (!on) return false;
-    const report =
+    const recent =
       reports.on && nearPlays
-        ? echoReportMatch(
-            line.text,
-            this.plays.overlapping(span, reports.slackMs, t),
+        ? this.plays.overlapping(reach(reports.recentMs), reports.slackMs, t)
+        : [];
+    const report = recent.length
+      ? echoReportMatch(
+          line.text,
+          recent,
+          span,
+          { similarity: reports.similarity, minChars: conf.minChars, slackMs: reports.slackMs },
+          page?.key,
+        )
+      : undefined;
+    // Spoken while one of his pages played, or in its tail: an echo whatever the words
+    // (2026-11-26: Whisper on his phone turned read-aloud into "明镜需要您的支持", Icelandic).
+    // On the device that played, always. From another device only for a line from the
+    // cloud recogniser with no voiceprint tag (the path that hallucinates and has no
+    // self print); a line from the Mac's own STT is left to the words and the self
+    // print there, so his answers spoken over a phone's reading ("120", "20") stay his.
+    const windowHit =
+      reports.windowOn && recent.length
+        ? echoWindowMatch(
+            recent,
             span,
-            { similarity: reports.similarity, minChars: conf.minChars, slackMs: reports.slackMs },
+            { leadMs: reports.leadMs, tailMs: reports.tailMs, share: reports.share },
+            t,
             page?.key,
           )
+        : undefined;
+    const unvouched = !line.speaker && line.stt?.route !== "local";
+    const inWindow = windowHit && (windowHit.samePage || unvouched) ? windowHit : undefined;
+    // A known STT hallucination while something played lately: what it made of our sound.
+    const noisePhrase =
+      reports.windowOn && recent.length
+        ? echoHallucinated(line.text, reports.hallucinations)
+        : undefined;
+    const last = recent.at(-1);
+    const noise =
+      noisePhrase && last
+        ? {
+            sim: 1,
+            voice: last.voice,
+            ...(last.ref.includes("#") ? { of: last.ref.slice(0, last.ref.lastIndexOf("#")) } : {}),
+            overlapMs: 0,
+            samePage: last.page === page?.key,
+          }
         : undefined;
     // Read again: other lines may have landed while the main Worker answered.
     const landed = maybeLanded
@@ -2119,6 +2192,8 @@ export class DebugHub {
     const verdict = echoVerdict({
       ...(report ? { report } : {}),
       ...(landed ? { landed, landedOf: landed.entry[1].id } : {}),
+      ...(inWindow ? { window: inWindow } : {}),
+      ...(noise ? { noise } : {}),
       ...(line.speaker ? { speaker: line.speaker } : {}),
       selfOn: reports.selfOn,
       selfMeMargin: reports.selfMeMargin,

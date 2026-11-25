@@ -88,6 +88,7 @@ function setup(
   const all: Record<string, unknown> = {
     "voice.echo-dedupe": true,
     "voice.echo-reports": true,
+    "voice.echo-window": true,
     ...flags,
   };
   const history: { op: string; lines: { id: string }[] }[] = [];
@@ -270,18 +271,39 @@ describe("play reports in the hub", () => {
     expect((await s.page("/ pwa iPad", "ipad1")).all("echoes")).toEqual([]);
   });
 
-  it("his own words while the phone reads, or the same words at another time: his lines", async () => {
+  it("other words while the phone reads: collapsed by the play window; the same words later: his", async () => {
     const s = setup();
     const phone = await s.page("/ pwa iPhone", "phone1");
     const mac = await s.page("/dev mac Chrome", "mac1");
     await play(s, phone, "x#1", AGENT, 8000);
     s.tick(500);
     await s.msg(mac, s.voice("m1", "我们明天去公园散步吧", { endAgo: 3500 }));
+    // Spoken while the phone read (2026-11-26): an echo whatever the words, one tap restores it.
+    expect(
+      (mac.last("echo") as { line: { id: string; echo: { layer: string } } }).line,
+    ).toMatchObject({
+      id: "m1",
+      echo: { layer: "window", kind: "read-aloud", shown: true },
+    });
     // 30 s later, nothing playing: reading it aloud himself is his line.
     s.tick(30_000);
     await s.msg(mac, s.voice("m2", HEARD));
-    expect(s.posted().map((x) => x.id)).toEqual(["m1", "m2"]);
-    expect(mac.all("echo")).toEqual([]);
+    expect(s.posted().map((x) => x.id)).toEqual(["m2"]);
+    // From the Mac's own recogniser (another device): left to the words, his line.
+    await play(s, phone, "z#1", AGENT, 8000);
+    await s.msg(mac, {
+      ...s.voice("m3", "我们明天去公园散步吧", { endAgo: 3500 }),
+      stt: { route: "local", engine: "sensevoice" },
+    });
+    expect(s.posted().map((x) => x.id)).toEqual(["m2", "m3"]);
+    // Flag voice.echo-window off: the words alone decide, as before.
+    const off = setup({ "voice.echo-window": false });
+    const p2 = await off.page("/ pwa iPhone", "phone1");
+    const m2 = await off.page("/dev mac Chrome", "mac1");
+    await play(off, p2, "x#1", AGENT, 8000);
+    off.tick(500);
+    await off.msg(m2, off.voice("m1", "我们明天去公园散步吧", { endAgo: 3500 }));
+    expect(off.posted().map((x) => x.id)).toEqual(["m1"]);
   });
 
   it("uses the page's own hub span when it sent one", async () => {
@@ -331,8 +353,10 @@ describe("play reports in the hub", () => {
     const mac = await s.page("/dev mac Chrome", "mac1");
     // Read the config once (a first line near a report), so the store keeps reports 10 s.
     await play(s, phone, "w#1", "今天的天气非常好", 1000);
+    // Past the play window's tail: his.
+    s.tick(3000);
     await s.msg(mac, s.voice("m0", "好的我先看一下再说", { endAgo: 0, len: 500 }));
-    // Garbled (no words): dropped, nothing answered.
+    // No words: a time-only report, nothing answered.
     const before = phone.sent.length;
     await s.msg(phone, { type: "playing", ref: "x#1", voice: "device", from: s.now() });
     expect(phone.sent.length).toBe(before);
@@ -513,5 +537,112 @@ describe("our own TTS voice (the Mac's self print, M4)", () => {
       speakerProof: [await sign(HEARD, "m2", clear)],
     });
     expect(s.posted().map((x) => x.id)).toEqual(["m2"]);
+  });
+
+  it("the play window: a Mac-checked line from another device is left to its words; the playing device's own is not", async () => {
+    const unknownTag = {
+      ...selfTag,
+      decision: "unknown",
+      score: 0.3,
+      selfScore: 0.2,
+      selfVoice: undefined,
+    };
+    const { s, sign } = await rig();
+    const phone = await s.page("/ pwa iPhone", "phone1");
+    const macPage = await s.page("/dev mac Chrome", "mac1");
+    await play(s, phone, "x#1", AGENT, 8000);
+    await s.msg(macPage, {
+      ...s.voice("m1", "120", { endAgo: 1000, len: 1500 }),
+      speakerProof: [await sign("120", "m1", unknownTag)],
+    });
+    expect(s.posted().map((x) => x.id)).toEqual(["m1"]);
+    // The same short answer on the phone that is reading: folded.
+    await play(s, phone, "y#1", AGENT, 8000);
+    await s.msg(phone, s.voice("p1", "120", { endAgo: 1000, len: 1500 }));
+    expect(s.posted().map((x) => x.id)).toEqual(["m1"]);
+    expect(s.storage.store.get("echo:p1")).toMatchObject({ echo: { layer: "window" } });
+  });
+});
+
+/**
+ * 2026-11-26 00:30–00:55 JST: his phone on /words read agent lines and word
+ * examples aloud; its own mic sent them to cloud Whisper, which wrote back
+ * words sharing nothing with what played. The transcripts below are the ones
+ * posted as his lines that night (/tmp/lianki-chat-fast.jsonl), replayed with
+ * the timing of a phone that reports what it plays.
+ */
+describe("the play window: 2026-11-26 replay", () => {
+  const MCP =
+    "MCP metrics 超时：Verification waits on card c8d97cc0. Resuming instrumentation items 1/2/6";
+  it("garbled read-aloud on the same phone is collapsed, never routed; his words after the tail are his", async () => {
+    const s = setup();
+    const phone = await s.page("/words pwa Android", "phone1");
+    const mac = await s.page("/home mac Chrome", "mac1");
+    const lane = await s.agent(mac);
+    await s.msg(lane, { type: "say", text: MCP });
+    const agentLine = s.posted().find((x) => x.from === "agent")!;
+    // The phone reads it for 6 s; its mic hears it, Whisper writes nonsense.
+    await play(s, phone, `${agentLine.id}#1`, MCP, 6000);
+    await s.msg(phone, s.voice("w1", "面对超时 给互相优惯存在87群。", { endAgo: 500, len: 3000 }));
+    // Just after the end, inside the tail.
+    s.tick(1500);
+    await s.msg(
+      phone,
+      s.voice("w2", "One, two, six and serial in the group.", { endAgo: 200, len: 1200 }),
+    );
+    // A word clip with no words reported (a file: time only), heard as Icelandic.
+    await s.msg(phone, {
+      type: "playing",
+      ref: "p9",
+      voice: "li-player",
+      from: s.now(),
+      synced: true,
+    });
+    s.tick(2000);
+    await s.msg(phone, { type: "played", ref: "p9", to: s.now(), synced: true });
+    await s.msg(phone, s.voice("w3", "Sennsjánssjánssjánssjánssjáns.", { endAgo: 300, len: 1500 }));
+    // 10 s on, past the tail: Whisper's subtitle credit, with something read lately.
+    s.tick(10_000);
+    await s.msg(
+      phone,
+      s.voice("w4", "明镜需要您的支持 欢迎收看订阅明镜。", { endAgo: 300, len: 5000 }),
+    );
+    const echoes = ["w1", "w2", "w3", "w4"];
+    expect(s.posted().map((x) => x.id)).toEqual([agentLine.id]);
+    for (const id of echoes) {
+      expect(s.heard(lane)).not.toContain(id);
+      expect(s.logged()).not.toContain(id);
+    }
+    expect(lane.all("echo")).toEqual([]);
+    const shown = mac
+      .all("echo")
+      .map((e) => (e as { line: { id: string; echo: { layer: string } } }).line);
+    expect(shown.map((l) => [l.id, l.echo.layer])).toEqual([
+      ["w1", "window"],
+      ["w2", "window"],
+      ["w3", "window"],
+      ["w4", "noise"],
+    ]);
+    expect(shown[0]).toMatchObject({ echo: { kind: "read-aloud", of: agentLine.id, shown: true } });
+    // Numbers only in the log, never the words.
+    for (const l of logs.filter((x) => x.includes('"debug.echo"'))) expect(l).not.toContain("超时");
+    // A minute later, nothing playing: his own line, routed as always.
+    s.tick(60_000);
+    await s.msg(
+      mac,
+      s.voice("m1", "你听到了没？这一大堆乱乱的东西都是你听到你自己念出来的东西的。"),
+    );
+    expect(s.posted().map((x) => x.id)).toEqual([agentLine.id, "m1"]);
+    expect(s.heard(lane)).toContain("m1");
+    // "This was me" on a window echo posts it after all.
+    await s.msg(mac, { type: "unmerge", id: "w2" });
+    expect(s.heard(lane)).toContain("w2");
+  });
+
+  it("a subtitle credit with nothing played lately is left alone (not ours to call an echo)", async () => {
+    const s = setup();
+    const phone = await s.page("/words pwa Android", "phone1");
+    await s.msg(phone, s.voice("w1", "明镜需要您的支持 欢迎收看订阅明镜。"));
+    expect(s.posted().map((x) => x.id)).toEqual(["w1"]);
   });
 });

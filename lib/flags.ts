@@ -220,6 +220,14 @@ export const FLAGS = {
     group: "stt",
     audience: "owner",
   },
+  // docs/echo-suppression.md, "The play window" (2026-11-26 00:30–00:55 JST incident).
+  "voice.echo-window": {
+    description:
+      "朗读时间窗：打开（默认，只对你）后，你的任何一台设备正在朗读（Li 读消息、/words 读单词和例句、阅读器、播放的语音文件）或刚读完的几秒内，麦克风识别出来的话不看内容，直接当朗读回声：不转给助手、Li 不回、不润色、不进聊天记录，只折叠成一行「朗读声被录回」，点「这是我说的」照常发出。因为语音识别常把听到的朗读声写成毫不相干的话（「明镜需要您的支持」、冰岛语），按内容比不出来。Mac 声纹明确签名说「是你」的那句照常发出。收尾时长和比例在 /dev/config 的 voice.echoWindowTailMs、voice.echoWindowShare，识别噪声短语在 voice.echoHallucinations。关闭 = 照旧，只按内容比对。",
+    default: true,
+    group: "stt",
+    audience: "owner",
+  },
   // docs/echo-suppression.md, layer (c), M4 (owner approved 2026-11-21).
   "stt.self-voice": {
     description:

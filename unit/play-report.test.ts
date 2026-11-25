@@ -59,12 +59,15 @@ describe("the flag and the sender", () => {
     expect(FLAGS[ECHO_REPORTS_FLAG]).toMatchObject({ default: true, audience: "owner" });
   });
 
-  it("sends nothing with the flag off, with no socket, or with no words", () => {
+  it("sends nothing with the flag off or with no socket; no words is a time-only report", () => {
     setEchoReports(false);
     expect(echoReportsOn()).toBe(false);
     expect(reportPlaying({ text: "hello", voice: "device", at: 1 })).toBeNull();
     setEchoReports(true);
-    expect(reportPlaying({ text: "   ", voice: "device", at: 1 })).toBeNull();
+    const ref = reportPlaying({ text: "   ", voice: "li-player", at: 1 });
+    expect(ref).not.toBeNull();
+    expect(sent.at(-1)).toEqual({ type: "playing", ref: ref!, voice: "li-player", from: 1 });
+    sent.length = 0;
     setPlaySender(null);
     expect(reportPlaying({ text: "hello", voice: "device", at: 1 })).toBeNull();
     reportPlayed("p1", 2);

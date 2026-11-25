@@ -65,7 +65,6 @@ describe("play frames", () => {
       J({ type: "clock", t0: 1 }),
       J({ type: "played", ref: "x", to: -1 }),
       J({ type: "played", ref: "bad ref!", to: 1 }),
-      J({ type: "playing", ref: "x", voice: "melo", from: 1 }),
       J({ type: "playing", ref: "x", text: "hi", voice: "no spaces", from: 1 }),
       J({ type: "playing", ref: "x", text: "hi", voice: "melo", from: Number.NaN }),
       J({ type: "playing", ref: "x", text: "hi", voice: "melo" }),
@@ -112,12 +111,22 @@ describe("play frames", () => {
       J({ type: "playing", ref: "p3", text: "hi", g2: ["ab"], voice: "reader", from: 1 }),
     );
     expect(both).toEqual({ type: "playing", ref: "p3", text: "hi", voice: "reader", from: 1 });
-    expect(
-      parsePlayFrame(J({ type: "playing", ref: "p4", g2: [], voice: "r", from: 1 })),
-    ).toBeNull();
+    // No words at all: a time-only report (the play window), never a text match.
+    expect(parsePlayFrame(J({ type: "playing", ref: "x", voice: "melo", from: 1 }))).toEqual({
+      type: "playing",
+      ref: "x",
+      voice: "melo",
+      from: 1,
+    });
+    expect(parsePlayFrame(J({ type: "playing", ref: "p4", g2: [], voice: "r", from: 1 }))).toEqual({
+      type: "playing",
+      ref: "p4",
+      voice: "r",
+      from: 1,
+    });
     expect(
       parsePlayFrame(J({ type: "playing", ref: "p5", g2: "ab", voice: "r", from: 1 })),
-    ).toBeNull();
+    ).toEqual({ type: "playing", ref: "p5", voice: "r", from: 1 });
   });
 });
 

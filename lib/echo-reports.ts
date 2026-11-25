@@ -21,6 +21,36 @@ export const ECHO_PLAY_SIMILARITY = 0.6;
 export const ECHO_SLACK_MS = 1500;
 export const ECHO_PLAY_KEEP_MS = 120_000;
 export const ECHO_SHOW_MAX = 50;
+/** Play window (flag voice.echo-window): after a sound ends, its tail still reaches a mic this long. */
+export const ECHO_WINDOW_TAIL_MS = 2500;
+/** Play window: before a sound's reported start (clock error, output latency). */
+export const ECHO_WINDOW_LEAD_MS = 300;
+/** Play window: this share of the utterance inside a play window makes it an echo, whatever its words. */
+export const ECHO_WINDOW_SHARE = 0.5;
+/** A report that ended this long before the utterance still counts for the text and the STT-noise match. */
+export const ECHO_RECENT_MS = 15_000;
+/**
+ * What speech recognisers are known to write for sound that is not speech
+ * (music, a TTS voice half heard): subtitle credits from their training data.
+ * Data, any language; the live list is config voice.echoHallucinations.
+ * Matched folded (normalizeEcho) as a stretch of the line.
+ */
+export const ECHO_HALLUCINATIONS: readonly string[] = [
+  "明镜需要您的支持",
+  "欢迎订阅明镜",
+  "欢迎收看订阅明镜",
+  "请不吝点赞订阅转发打赏支持明镜与点点栏目",
+  "字幕由Amara.org社区提供",
+  "ご視聴ありがとうございました",
+  "Thank you for watching",
+  "Thanks for watching",
+  "Untertitel der Amara.org-Community",
+  "Untertitelung des ZDF",
+  "Sous-titres réalisés par la communauté d'Amara.org",
+  "Subtítulos realizados por la comunidad de Amara.org",
+  "Продолжение следует",
+  "시청해주셔서 감사합니다",
+];
 /** The widest slack the config takes: the hub's cheap first look uses it. */
 export const ECHO_SLACK_MAX = 10_000;
 /** Reports kept at most, whatever their age (a runaway page cannot fill the memory). */
@@ -67,7 +97,8 @@ export function parsePlayFrame(raw: unknown): PlayFrame | null {
   const alt = str(m.alt);
   const g2 = hashes(m.g2);
   const g3 = hashes(m.g3);
-  if (!text && !g2?.length && !g3?.length) return null;
+  // No words at all is a time-only report (a sound with no text: say --play, a
+  // stream): it still opens the play window (echoWindowMatch), never a text match.
   return {
     type: "playing",
     ref: m.ref,
@@ -274,6 +305,88 @@ export function echoReportMatch(
   };
 }
 
+/** A report's play window on the hub's clock: [from − lead, end + tail], twice the margins for an unsynced page. */
+function playWindow(
+  r: PlayReport,
+  conf: { leadMs: number; tailMs: number },
+  hubNow: number,
+): { from: number; to: number } {
+  const k = r.synced ? 1 : 2;
+  const end = r.to ?? Math.min(hubNow, r.from + PLAY_OPEN_MAX_MS);
+  return { from: r.from - k * conf.leadMs, to: end + k * conf.tailMs };
+}
+
+/**
+ * The play window (owner, 2026-11-26 00:30–00:55 JST): a voice line spoken
+ * while one of his pages was playing Lianki audio, or within the short tail
+ * after it, is an echo whatever its words, because heard-back TTS often comes
+ * back from STT as words that share nothing with what played ("明镜需要您的支持",
+ * Icelandic for a Chinese line). At least `share` of the utterance's span
+ * must lie inside the union of the windows, so a long instruction of his that
+ * Li started reading into near its end stays his. Only a span the hub knows
+ * (`known`) is judged: a guessed one says nothing about "while".
+ */
+export function echoWindowMatch(
+  reports: readonly PlayReport[],
+  span: { from: number; to: number; known?: boolean },
+  conf: { leadMs: number; tailMs: number; share: number },
+  hubNow: number,
+  page?: string,
+): ReportHit | undefined {
+  if (span.known === false || !reports.length) return undefined;
+  const wins = reports
+    .map((r) => ({ r, w: playWindow(r, conf, hubNow) }))
+    .filter(({ w }) => w.from <= span.to && w.to >= span.from)
+    .sort((a, b) => a.w.from - b.w.from);
+  if (!wins.length) return undefined;
+  const len = span.to - span.from;
+  // The union of the windows, clipped to the span.
+  let covered = 0;
+  let curFrom = -Infinity;
+  let curTo = -Infinity;
+  for (const { w } of wins) {
+    const from = Math.max(w.from, span.from);
+    const to = Math.min(w.to, span.to);
+    if (from > curTo) {
+      if (curTo > curFrom) covered += curTo - curFrom;
+      curFrom = from;
+      curTo = to;
+    } else curTo = Math.max(curTo, to);
+  }
+  if (curTo > curFrom) covered += curTo - curFrom;
+  const share = len > 0 ? covered / len : 1;
+  if (share < conf.share) return undefined;
+  // Which sound it was: the one overlapping the utterance longest.
+  const over = (w: { from: number; to: number }) =>
+    Math.max(0, Math.min(w.to, span.to) - Math.max(w.from, span.from));
+  let top = wins[0]!;
+  for (const x of wins) if (over(x.w) >= over(top.w)) top = x;
+  const of = top.r.ref.includes("#") ? top.r.ref.slice(0, top.r.ref.lastIndexOf("#")) : undefined;
+  return {
+    sim: Math.round(share * 1000) / 1000,
+    voice: top.r.voice,
+    ...(of ? { of } : {}),
+    overlapMs: Math.round(covered),
+    samePage: page !== undefined && top.r.page === page,
+  };
+}
+
+/**
+ * A known STT hallucination (ECHO_HALLUCINATIONS, config
+ * voice.echoHallucinations) inside the line, folded: the phrase, or undefined.
+ * The hub counts it as an echo only while something played lately (it is
+ * what the recogniser made of our sound, not of his words).
+ */
+export function echoHallucinated(text: string, phrases: readonly string[]): string | undefined {
+  const t = normalizeEcho(text);
+  if (!t) return undefined;
+  for (const p of phrases) {
+    const n = normalizeEcho(p);
+    if (n.length >= 4 && t.includes(n)) return p;
+  }
+  return undefined;
+}
+
 /** The speaker tag fields the verdict reads (wire.ts SpeakerTag). */
 export type VerdictSpeaker = {
   decision: string;
@@ -305,7 +418,7 @@ export const strongMe = (s?: VerdictSpeaker, selfMeMargin = SELF_ME_MARGIN): boo
 /** Our own TTS voice, heard back (the Mac's self print, M4): signed, so never a page's say-so. */
 export const signedSelf = (s?: VerdictSpeaker): boolean => s?.decision === "self" && signedTag(s);
 
-export type EchoLayer = "report" | "landed" | "self";
+export type EchoLayer = "report" | "landed" | "self" | "window" | "noise";
 export type EchoVerdict = {
   kind: "read-aloud" | "other-device" | "self-voice";
   layer: EchoLayer;
@@ -329,12 +442,19 @@ export type EchoVerdict = {
  * 2. today's landed-time rule (echoMatch) → its kind (layer "landed"):
  *    an agent line or a polish read back → read-aloud; his line from his
  *    other device → other-device, hidden;
- * 3. else none: it is his line.
+ * 3. the play window (echoWindowMatch, flag voice.echo-window): spoken while
+ *    one of his pages played, whatever the words → read-aloud (layer
+ *    "window"), with the same strong-"me" exception as 1;
+ * 4. a known STT hallucination while something played lately (`noise`) →
+ *    read-aloud (layer "noise"), the same exception;
+ * 5. else none: it is his line.
  */
 export function echoVerdict<K>(o: {
   report?: ReportHit;
   landed?: EchoHit<K>;
   landedOf?: string;
+  window?: ReportHit;
+  noise?: ReportHit;
   speaker?: VerdictSpeaker;
   /** Flag stt.self-voice (default on): off = a "self" tag is no evidence here. */
   selfOn?: boolean;
@@ -371,5 +491,19 @@ export function echoVerdict<K>(o: {
       ...(o.landedOf ? { of: o.landedOf } : {}),
       hidden: l.kind === "other-device",
     };
+  for (const [layer, h] of [
+    ["window", o.window],
+    ["noise", o.noise],
+  ] as const)
+    if (h && !(strongMe(o.speaker, o.selfMeMargin) && h.voice !== "clone"))
+      return {
+        kind: "read-aloud",
+        layer,
+        sim: h.sim,
+        ...(h.of ? { of: h.of } : {}),
+        voice: h.voice,
+        overlapMs: h.overlapMs,
+        hidden: false,
+      };
   return undefined;
 }

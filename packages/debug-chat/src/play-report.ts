@@ -92,7 +92,7 @@ const deliver = (f: PlayFrame): boolean => {
 /**
  * A sentence (or a word, a passage) starts playing at page time `at`: the
  * report goes out, and its ref comes back for reportPlayed (null when nothing
- * was sent: the flag off, no socket, no words).
+ * was sent: the flag off, no socket). Empty `text` sends a time-only report.
  */
 export function reportPlaying(o: {
   text: string;
@@ -103,13 +103,16 @@ export function reportPlaying(o: {
   line?: string;
 }): string | null {
   const r = reporter();
-  if (!r.on || !r.send || !o.text.trim()) return null;
+  if (!r.on || !r.send) return null;
   const n = ++r.n;
   const ref = o.line ? `${o.line.slice(0, 64)}#${n}` : `p${n}`;
   const { t, synced } = onHub(o.at);
-  const text = o.text.slice(0, PLAY_TEXT_MAX);
-  const alt = o.alt && o.alt !== o.text ? o.alt.slice(0, PLAY_TEXT_MAX) : undefined;
-  const words = privateScreen()
+  const text = o.text.trim() ? o.text.slice(0, PLAY_TEXT_MAX) : "";
+  const alt = text && o.alt && o.alt !== o.text ? o.alt.slice(0, PLAY_TEXT_MAX) : undefined;
+  // No words (a file, a stream): a time-only report, which still opens the hub's play window.
+  const words = !text
+    ? {}
+    : privateScreen()
     ? {
         g2: gramHashes(`${text} ${alt ?? ""}`, 2),
         g3: gramHashes(`${text} ${alt ?? ""}`, 3),
