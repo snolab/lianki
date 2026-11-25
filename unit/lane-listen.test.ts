@@ -740,15 +740,59 @@ describe("makeDeliverer interrupt on timeout", () => {
       { pid: 300, cwd: "/w", cli: "codex", status: "exited", started_at: 5 },
     ];
     expect(pinTarget(rows, "100")).toEqual({ pid: "100", session: "2026-11-25T10:00:00Z" });
-    expect(pinTarget(rows, "200")).toEqual({ pid: "200" });
     expect(pinTarget(rows, ".")).toBeUndefined();
     expect(pinTarget(rows, "codex")).toBeUndefined();
+    // No live row with a session: not pinned (an explicit --deliver pid included).
+    expect(pinTarget(rows, "200")).toBeUndefined();
+    expect(pinTarget(rows, "300")).toBeUndefined();
     const t = { pid: "100", session: "2026-11-25T10:00:00Z" };
     expect(sameSession(rows, t)).toBe(true);
     // The pid now belongs to a new agent, or it ended: not the one the line went to.
     expect(sameSession([{ ...rows[0]!, started_at: "2026-11-25T11:00:00Z" }], t)).toBe(false);
     expect(sameSession(rows, { pid: "300", session: "5" })).toBe(false);
     expect(sameSession([], t)).toBe(false);
+  });
+
+  it("the first lookup failed (ay ls gave nothing): not pinned, so never pressed later", () => {
+    // ayRows() returns [] when `ay ls` fails or is slow.
+    expect(pinTarget([], "100")).toBeUndefined();
+  });
+
+  it("a row without a usable started_at: not pinned; a target without a session never matches", () => {
+    const base = { pid: 100, cwd: "/w", cli: "codex", status: "active" };
+    expect(pinTarget([base], "100")).toBeUndefined();
+    expect(pinTarget([{ ...base, started_at: null }], "100")).toBeUndefined();
+    expect(pinTarget([{ ...base, started_at: "  " }], "100")).toBeUndefined();
+    expect(pinTarget([{ ...base, started_at: 0 }], "100")).toEqual({ pid: "100", session: "0" });
+    // Whatever the row says now, a pinned target with no session fails closed.
+    expect(sameSession([{ ...base, started_at: "x" }], { pid: "100" })).toBe(false);
+    expect(sameSession([base], { pid: "100" })).toBe(false);
+    expect(sameSession([base], { pid: "100", session: "x" })).toBe(false);
+  });
+
+  it("pid reuse: a new session on the same pid is never pressed for the old line", async () => {
+    let rows = [{ pid: 100, cwd: "/w", cli: "codex", status: "active", started_at: "s1" }];
+    const pinned = pinTarget(rows, "100")!;
+    const pressed: string[] = [];
+    const d = makeDeliverer(
+      { lane: "codex", repo: "/r" },
+      async () => ({ code: 0, target: pinned }),
+      async () => false,
+      undefined,
+      10,
+      0,
+      {
+        afterMs: 10,
+        // As the runtime does: the screen counts only while it is that same session.
+        queued: async (t) => sameSession(rows, t),
+        release: async (t) => (sameSession(rows, t) ? (pressed.push(t.pid), 0) : -2),
+      },
+    );
+    await d.add({ id: "p1", thread: "owner", from: "owner", text: "codex，在吗" });
+    // The agent restarts and the OS hands pid 100 to the new session.
+    rows = [{ pid: 100, cwd: "/w", cli: "codex", status: "active", started_at: "s2" }];
+    await Bun.sleep(30);
+    expect(pressed).toEqual([]);
   });
 
   it("a target switch while the screen check is pending never sends Esc to the other pid", async () => {
@@ -788,7 +832,12 @@ describe("makeDeliverer interrupt on timeout", () => {
   });
 
   it("coalesces only for the same agent; an unknown target is never pressed", async () => {
-    const targets = [{ pid: "100", session: "a" }, { pid: "100", session: "b" }, undefined];
+    const targets = [
+      { pid: "100", session: "a" },
+      { pid: "100", session: "b" },
+      undefined,
+      { pid: "100" },
+    ];
     let i = 0;
     const checked: (string | undefined)[] = [];
     const d = makeDeliverer(
@@ -807,6 +856,7 @@ describe("makeDeliverer interrupt on timeout", () => {
     await d.add({ id: "c1", thread: "owner", from: "owner", text: "codex，一" });
     await d.add({ id: "c2", thread: "owner", from: "owner", text: "codex，二" });
     await d.add({ id: "c3", thread: "owner", from: "owner", text: "codex，三" });
+    await d.add({ id: "c4", thread: "owner", from: "owner", text: "codex，四" });
     await Bun.sleep(30);
     expect(checked.sort()).toEqual(["a", "b"]);
   });

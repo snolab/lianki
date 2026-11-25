@@ -387,8 +387,11 @@ Choices:
   session (`ay ls` started_at). The screen check and the Esc use that pair,
   never "the current target", so a lane that restarts as another pid during
   the check is never pressed by mistake. The session is checked again right
-  before the key. A hand-off to `.` or a keyword is not pinned, so it is never
-  pressed.
+  before the key. It fails closed: the line is pinned only when `ay ls` gave a
+  live row for that pid with a usable started_at. A hand-off to `.` or a
+  keyword, a failed or slow `ay ls`, an explicit `--deliver <pid>` with no such
+  row, or a row without started_at is still delivered, but never pressed. A
+  pid reused by a new session never matches.
 - One check per wave of urgent lines **to the same agent**: a second urgent
   line to it inside the window joins the pending check, and one Esc submits
   everything held. Another pid or session gets its own check.

@@ -394,8 +394,9 @@ export const queuedOnScreen = (screen: string): boolean =>
   screen.split("\n").some((line) => QUEUED_BANNER.test(line));
 
 /**
- * The agent one hand-off went to: its pid, and its session (`ay ls` started_at)
- * when known, so a pid reused by a new agent is not taken for it.
+ * The agent one hand-off went to: its pid and its session (`ay ls` started_at),
+ * so a pid reused by a new agent is not taken for it. A target without a
+ * session is never pressed (scheduleRelease, sameSession fail closed).
  */
 export type SendTarget = { pid: string; session?: string };
 /** What `send` reports: ay's exit code, and the agent it went to (absent: unknown). */
@@ -493,8 +494,8 @@ export function makeDeliverer(
   };
   const scheduleRelease = (target: SendTarget | undefined, ids: string[]) => {
     const it = interruptOnTimeout;
-    // An unknown target is never pressed: Esc goes only where the line went.
-    if (!it || it.afterMs <= 0 || !ids.length || !target) return;
+    // An unknown target or session is never pressed: Esc goes only to the agent the line went to.
+    if (!it || it.afterMs <= 0 || !ids.length || !target?.session) return;
     const key = targetKey(target);
     const r = releases.get(key);
     if (r) r.ids.push(...ids);
@@ -592,26 +593,35 @@ export function pickTarget(rows: readonly AyRow[], cwd: string, cli?: string): s
   return String(alive[0]!.pid);
 }
 
-/** A row's session id: its start time, as `ay ls` gives it (absent: unknown). */
-const sessionOf = (r: AyRow | undefined) =>
-  r?.started_at === undefined || r.started_at === null ? undefined : String(r.started_at);
+/** A row's session id: its start time, as `ay ls` gives it (absent or empty: unknown). */
+const sessionOf = (r: AyRow | undefined) => {
+  const v = r?.started_at;
+  if (v === undefined || v === null) return undefined;
+  const s = String(v).trim();
+  return s ? s : undefined;
+};
 
 /**
  * The exact agent a hand-off goes to, pinned for the interrupt check: a
- * concrete pid and its session. A keyword or `.` is not pinned (undefined), so
- * such a hand-off is never pressed: ay could resolve it to another agent later.
+ * concrete pid with a live `ay ls` row and a usable started_at. Anything less
+ * (a keyword or `.`, `ay ls` failed or slow, no row, an exited row, no
+ * started_at) is not pinned: the line is still delivered, but nothing is ever
+ * pressed for it, because a later session on the same pid could not be told apart.
  */
 export function pinTarget(rows: readonly AyRow[], target: string): SendTarget | undefined {
   if (!/^\d+$/.test(target)) return undefined;
-  const session = sessionOf(rows.find((r) => String(r.pid) === target));
-  return session === undefined ? { pid: target } : { pid: target, session };
+  const r = rows.find((x) => String(x.pid) === target);
+  if (!r || r.status === "exited") return undefined;
+  const session = sessionOf(r);
+  return session ? { pid: target, session } : undefined;
 }
 
-/** Is the pinned agent still that same session, alive? A pid reused by a new agent is not. */
+/** Is the pinned agent still that same session, alive? Fails closed: no pinned session, no row, or a new session on the pid → false. */
 export function sameSession(rows: readonly AyRow[], t: SendTarget): boolean {
+  if (!t.session) return false;
   const r = rows.find((x) => String(x.pid) === t.pid);
   if (!r || r.status === "exited") return false;
-  return t.session === undefined || sessionOf(r) === t.session;
+  return sessionOf(r) === t.session;
 }
 
 export const RECONNECT_RESET_MS = 60_000;
