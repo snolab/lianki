@@ -187,6 +187,21 @@ into its transaction, and it applies on a GET, which a mail scanner would trigge
   a row under the old address. It would stay behind under that address; the window
   is one request's length.
 
+## Gmail addresses with and without dots
+
+Gmail ignores dots, so `a.b@gmail.com` and `ab@gmail.com` are one mailbox.
+Sign-in (email code, magic link, and Google when the Google account is not yet
+linked) looks the user up by the exact lowercased address first. When that finds
+nobody, `lib/gmail-dot-signin.ts` (a wrapper on the kysely adapter's `findOne`
+for `user` by `email`) tries the address with its dots ignored, for gmail.com and
+googlemail.com only, keeping any `+tag`, and takes the account only when exactly
+one matches. The stored and shown address is never rewritten. Candidates come
+from `user.email_canonical`; an account whose column is still empty is missed.
+
+It cannot join two accounts that already exist: the exact address wins, so each
+keeps signing in to its own. A Google account already linked to a user always
+lands there (matched by provider account id before any email lookup).
+
 ## Google OAuth
 
 Credentials (`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`) are shared between

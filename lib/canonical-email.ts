@@ -1,8 +1,10 @@
 /**
  * The canonical form of an email address, used ONLY to tell that two accounts
  * are one person (owner, 2026-11-05, Slack 14:31 JST): the 90-day trial, invite
- * and gift-code rewards, and per-person rate limits. Identity and sign-in keep
- * the address as given (lowercased) — this never merges or renames accounts.
+ * and gift-code rewards, and per-person rate limits. Identity keeps the address
+ * as given (lowercased) — this never merges or renames accounts. One exception
+ * (2026-11-27): sign-in falls back to the Gmail dots rule alone, never the
+ * +tag, when the exact address finds nobody (lib/gmail-dot-signin.ts).
  *
  * Stored as `user.email_canonical` (db/migrations/0043_email_canonical.sql,
  * whose SQL backfill mirrors these rules; unit/canonical-email.test.ts pins
