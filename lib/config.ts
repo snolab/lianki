@@ -502,6 +502,25 @@ export const CONFIG = {
     description:
       "被 @ 的记录（chat_mention，唤醒代理用）保留几天；过期的在下次写入或读取时删除。只存那一行的文字，不存历史。",
   }),
+  "chat.wakeMaxPerToken": int({
+    default: 500,
+    min: 10,
+    max: 10000,
+    unit: "mentions",
+    group: "chat",
+    audience: "server",
+    description: "同一个令牌最多保留几条被 @ 的记录；超出时删最旧的（代理翻页时会被告知有缺口）。",
+  }),
+  "chat.wakePurgeBatch": int({
+    default: 100,
+    min: 1,
+    max: 1000,
+    unit: "rows",
+    group: "chat",
+    audience: "server",
+    description:
+      "每写一条被 @ 的记录，顺带最多删掉几条已过保留期的旧记录（任何令牌的，包括从不来查的令牌；不用定时任务）。",
+  }),
   "chat.wakePerMinute": int({
     default: 10,
     min: 1,

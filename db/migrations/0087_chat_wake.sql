@@ -19,8 +19,10 @@ CREATE TABLE IF NOT EXISTS chat_mention (
   author TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_chat_mention_token ON chat_mention(token_id, seq);
-CREATE INDEX IF NOT EXISTS idx_chat_mention_age ON chat_mention(token_id, created_at);
+-- Paging: (created_at, seq) per token, the cursor's stable order.
+CREATE INDEX IF NOT EXISTS idx_chat_mention_token ON chat_mention(token_id, created_at, seq);
+-- Retention across all tokens (a bounded purge on every write, no cron).
+CREATE INDEX IF NOT EXISTS idx_chat_mention_age ON chat_mention(created_at);
 
 -- Revocation: a token row deleted (revoke, sign out everywhere, the account
 -- deleted) takes its mentions with it, and so does disconnecting an OAuth app.

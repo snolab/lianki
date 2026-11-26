@@ -138,15 +138,47 @@ async function record(
     )
     .bind(id, t.tokenHash, t.thread, line.id, text, line.from, now)
     .first<{ seq: number }>();
-  if (row) report.recorded++;
+  if (row) {
+    report.recorded++;
+    // Every write also clears a bounded batch of expired rows of any token,
+    // so a token that is never polled or named again still loses its old rows.
+    await purgeExpired(d.db, now, l);
+  }
   return { ...ev, fresh: !!row };
 }
 
-/** Retention: a token's rows older than chat.wakeRetentionDays. */
+/**
+ * Retention for every token: at most `chat.wakePurgeBatch` rows older than
+ * chat.wakeRetentionDays, oldest first. Bounded, so one write never stalls;
+ * each write keeps it moving, with no cron.
+ */
+export async function purgeExpired(db: D1Like, now: number, l: WakeLimits) {
+  await db
+    .prepare(
+      `DELETE FROM chat_mention WHERE seq IN (
+         SELECT seq FROM chat_mention WHERE created_at < ? ORDER BY created_at, seq LIMIT ?)`,
+    )
+    .bind(now - l.retentionMs, l.purgeBatch)
+    .run();
+}
+
+/**
+ * One token: its rows past retention, and past the cap
+ * (`chat.wakeMaxPerToken`), oldest first. A cursor that pointed at a deleted
+ * row then reads `truncated: true`.
+ */
 export async function prune(db: D1Like, tokenHash: string, now: number, l: WakeLimits) {
   await db
     .prepare("DELETE FROM chat_mention WHERE token_id = ? AND created_at < ?")
     .bind(tokenHash, now - l.retentionMs)
+    .run();
+  await db
+    .prepare(
+      `DELETE FROM chat_mention WHERE token_id = ?1 AND seq NOT IN (
+         SELECT seq FROM chat_mention WHERE token_id = ?1
+         ORDER BY created_at DESC, seq DESC LIMIT ?2)`,
+    )
+    .bind(tokenHash, l.maxPerToken)
     .run();
 }
 

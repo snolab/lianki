@@ -124,14 +124,18 @@ describe("rules", () => {
   });
 
   test("the cursor round-trips and refuses anything else", () => {
-    const c = { seq: 42, issued: now };
+    const c = { at: now, seq: 42 };
     expect(decodeCursor(encodeCursor(c))).toEqual(c);
-    for (const bad of ["", "w2.1.2", "w1.x.2", "w1.1", 7, null, `w1.${"9".repeat(40)}.1`])
+    for (const bad of ["", "w1.1.2", "w2.x.2", "w2.1", 7, null, `w2.${"9".repeat(40)}.1`])
       expect(decodeCursor(bad)).toBeNull();
-    expect(cursorTruncated({ seq: 1, issued: now - limits.retentionMs - 1 }, now, limits)).toBe(
+    // A cursor naming a row: truncated exactly when that row is gone.
+    expect(cursorTruncated({ at: now, seq: 1 }, false, now, limits)).toBe(true);
+    expect(cursorTruncated({ at: now - 30 * DAY, seq: 1 }, true, now, limits)).toBe(false);
+    // A cursor naming no row: truncated when older than retention.
+    expect(cursorTruncated({ at: now - limits.retentionMs - 1, seq: 0 }, false, now, limits)).toBe(
       true,
     );
-    expect(cursorTruncated({ seq: 1, issued: now - 1000 }, now, limits)).toBe(false);
+    expect(cursorTruncated({ at: now - 1000, seq: 0 }, false, now, limits)).toBe(false);
   });
 
   test("page size: the default, at most 100, a whole number", () => {
@@ -520,5 +524,130 @@ describe("the MCP tool and the remote server", () => {
     );
     expect(((await res.json()) as { result: { cursor: string } }).result.cursor).toBe("w1.0.1");
     expect(seen).toEqual([`Bearer ${TOKEN}|events/poll`]);
+  });
+});
+
+describe("review fixes: a stable cursor across expiry, retention for idle tokens", () => {
+  const texts = (r: Res) => (r.result!.mentions as { text: string }[]).map((m) => m.text);
+  const at = (i: number) => Date.parse("2026-11-27T00:00:00Z") + i * DAY;
+
+  test("rows expiring between pages: nothing still kept is skipped, and the gap is reported", async () => {
+    // m0..m4 one day apart; page through two at a time while time moves on.
+    for (let i = 0; i < 5; i++) {
+      now = at(i);
+      await mentionEvents(deps(), put(`@Arden ${i}`, `m${i}`));
+    }
+    const p1 = await rpc(arden.token, "chat/mentions", { limit: 2, cursor: "w2.0.0" });
+    expect(texts(p1)).toEqual(["@Arden 0", "@Arden 1"]);
+    // m0 and m1 (the cursor's own row) pass retention; m2..m4 are still kept.
+    now = at(1) + limits.retentionMs + 1;
+    const p2 = await rpc(arden.token, "chat/mentions", { limit: 2, cursor: p1.result!.cursor });
+    expect(texts(p2)).toEqual(["@Arden 2", "@Arden 3"]);
+    expect(p2.result!.truncated).toBe(true);
+    const p3 = await rpc(arden.token, "chat/mentions", { limit: 2, cursor: p2.result!.cursor });
+    expect(texts(p3)).toEqual(["@Arden 4"]);
+    expect(p3.result!.truncated).toBe(false);
+  });
+
+  test("rows before the cursor expiring do not shift it, and are not a gap", async () => {
+    for (let i = 0; i < 3; i++) {
+      now = at(i);
+      await mentionEvents(deps(), put(`@Arden ${i}`, `m${i}`));
+    }
+    const p1 = await rpc(arden.token, "chat/mentions", { limit: 2, cursor: "w2.0.0" });
+    now = at(0) + limits.retentionMs + 1; // only m0 expires
+    const p2 = await rpc(arden.token, "chat/mentions", { cursor: p1.result!.cursor });
+    expect(texts(p2)).toEqual(["@Arden 2"]);
+    expect(p2.result!.truncated).toBe(false);
+  });
+
+  test("an empty page after a gap reports it once, then moves on", async () => {
+    await mentionEvents(deps(), put("@Arden"));
+    const c = (await rpc(arden.token, "chat/mentions")).result!.cursor;
+    now += limits.retentionMs + 1;
+    const r1 = (await rpc(arden.token, "chat/mentions", { cursor: c })).result!;
+    expect(r1.truncated).toBe(true);
+    const r2 = (await rpc(arden.token, "chat/mentions", { cursor: r1.cursor })).result!;
+    expect(r2.truncated).toBe(false);
+    await mentionEvents(deps(), put("@Arden again", "l2"));
+    expect(texts(await rpc(arden.token, "chat/mentions", { cursor: r2.cursor }))).toEqual([
+      "@Arden again",
+    ]);
+  });
+
+  test("rows written in the same millisecond page one by one, none lost", async () => {
+    const people = [0, 1, 2].map((i) => ({
+      id: `s${i}`,
+      from: "owner",
+      text: `@Arden ${i}`,
+      at: now,
+    }));
+    await mentionEvents(deps(), { op: "put", thread: "owner", lines: people });
+    let c: unknown = "w2.0.0";
+    const got: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const r = await rpc(arden.token, "chat/mentions", { limit: 1, cursor: c });
+      got.push(...texts(r));
+      c = r.result!.cursor;
+    }
+    expect(got).toEqual(["@Arden 0", "@Arden 1", "@Arden 2"]);
+  });
+
+  test("events/poll pages by the same stable cursor", async () => {
+    const boot = (await rpc(arden.token, "events/poll", { name: "chat.mention", cursor: null }))
+      .result!;
+    for (let i = 0; i < 3; i++) {
+      now = at(i);
+      await mentionEvents(deps(), put(`@Arden ${i}`, `m${i}`));
+    }
+    const first = (
+      await rpc(arden.token, "events/poll", {
+        name: "chat.mention",
+        cursor: boot.cursor,
+        maxEvents: 1,
+      })
+    ).result!;
+    now = at(0) + limits.retentionMs + 1;
+    const next = (
+      await rpc(arden.token, "events/poll", { name: "chat.mention", cursor: first.cursor })
+    ).result!;
+    expect((next.events as { data: { id: string } }[]).map((e) => e.data.id)).toEqual(["m1", "m2"]);
+    expect(next.truncated).toBe(true);
+  });
+
+  test("a token that never polls and is never named again still loses its expired rows", async () => {
+    await mentionEvents(deps(), put("@Bo one", "b1"));
+    await mentionEvents(deps(), put("@Bo two", "b2"));
+    now += limits.retentionMs + 1;
+    // Only Arden is named from now on; Bo is idle.
+    await mentionEvents(deps(), put("@Arden", "a1"));
+    expect(rows().map((m) => m.line_id)).toEqual(["a1"]);
+  });
+
+  test("the cleanup per write is bounded", async () => {
+    limits = { ...limits, purgeBatch: 1 };
+    for (let i = 0; i < 3; i++) await mentionEvents(deps(), put("@Bo", `b${i}`));
+    now += limits.retentionMs + 1;
+    await mentionEvents(deps(), put("@Arden", "a1"));
+    expect(rows().map((m) => m.line_id)).toEqual(["b1", "b2", "a1"]);
+    await mentionEvents(deps(), put("@Arden", "a2"));
+    expect(rows().map((m) => m.line_id)).toEqual(["b2", "a1", "a2"]);
+  });
+
+  test("the per-token cap keeps the newest rows; a cursor on a dropped row is a gap", async () => {
+    limits = { ...limits, maxPerToken: 3 };
+    await mentionEvents(deps(), put("@Arden 0", "m0"));
+    const c = (await rpc(arden.token, "chat/mentions")).result!.cursor;
+    for (let i = 1; i < 6; i++) {
+      now += 1000;
+      await mentionEvents(deps(), put(`@Arden ${i}`, `m${i}`));
+    }
+    expect(rows().map((m) => m.line_id)).toEqual(["m3", "m4", "m5"]);
+    const r = await rpc(arden.token, "chat/mentions", { cursor: c });
+    expect(texts(r)).toEqual(["@Arden 3", "@Arden 4", "@Arden 5"]);
+    expect(r.result!.truncated).toBe(true);
+    // Another token's rows are not counted against Arden's cap.
+    await mentionEvents(deps(), put("@Bo", "b0"));
+    expect(rows().filter((m) => m.token_id === bo.id)).toHaveLength(1);
   });
 });

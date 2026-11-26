@@ -82,7 +82,11 @@ When the hub puts new lines of a thread (`DebugSessions.chatLog`, below):
    are `lib/mcp-events/rules.ts`), one `chat_mention` row. Its id is the event
    id, `men_` + SHA-256(token hash, line id), so a line put again is the same
    row (`fresh: false`). New rows are capped by `chat.wakePerMinute` per token.
-   Rows older than `chat.wakeRetentionDays` are deleted at the same time.
+   The named token's rows older than `chat.wakeRetentionDays`, and beyond
+   `chat.wakeMaxPerToken` (oldest first), are deleted at the same time. Every
+   new row also deletes at most `chat.wakePurgeBatch` expired rows of **any**
+   token, oldest first. So a token that is never polled or named again still
+   loses its old rows, with no cron.
 6. **`wake(target, events)`**: the events, deduped on their id, go to every
    enabled adapter. If one adapter throws, the others still run.
 
@@ -93,7 +97,7 @@ POSTed again with the same `eventId`, and ChatGPT dedupes on `webhook-id`.
 
 | column       | meaning                                                         |
 | ------------ | --------------------------------------------------------------- |
-| `seq`        | AUTOINCREMENT, never reused: the cursor's position              |
+| `seq`        | AUTOINCREMENT, never reused: the tie-break in the cursor order  |
 | `id`         | the event id `men_…`, unique                                    |
 | `token_id`   | the API token's public id (`api_tokens.token_hash`)             |
 | `thread`     | the token's own thread when it was named                        |
@@ -103,8 +107,9 @@ POSTed again with the same `eventId`, and ChatGPT dedupes on `webhook-id`.
 | `created_at` | ms                                                              |
 
 When a token row is deleted, or its OAuth grant is, a trigger deletes that
-token's rows in the same statement. Not applied anywhere yet: apply it with
-0085 before turning the flags on.
+token's rows in the same statement. Indexes: `(token_id, created_at, seq)` for
+paging, and `(created_at)` for the purge across tokens. Not applied anywhere
+yet: apply it with 0085 before turning the flags on.
 
 ## Pull: `lianki_chat_mentions_since` and `events/poll`
 
@@ -132,9 +137,18 @@ no arguments for naming another thread or token.
   subscribe step: a `null` cursor bootstraps "from now" and returns no events.
   `maxAgeMs` is a floor (capped at `chat.wakePullTtlMin`). `nextPollMs` is
   `chat.wakeNextPollMs`. `data` is the webhook's payload.
-- **Cursor**: opaque `w1.<seq>.<issued ms>`. `truncated` is true when the
-  cursor is older than the retention, because rows after it may already be
-  deleted.
+- **Cursor**: an opaque, stable position, `w2.<created_at>.<seq>`, holding
+  the last row seen. Rows are ordered by `(created_at, seq)`, and the next page
+  starts strictly after that position (`created_at > at OR (created_at = at AND
+  seq > seq)`). It is a value, not a row, so rows deleted before or at it never
+  shift a page or skip a row that is still kept. `seq` 0 names no row ("up to
+  `at`"): a bootstrap, or a token with nothing yet.
+- **`truncated`**: retention and the cap delete oldest first. So rows after a
+  cursor can be gone only if the cursor's own row is gone, and then the next
+  page says `truncated: true` while still returning every row that is kept. A
+  row-less cursor older than the retention says the same. If such a page is
+  empty, the cursor moves to the token's newest row, so the gap is reported
+  once.
 - **Rate**: `chat.wakePullPerMinute` calls per token (tool and poll together),
   then `-32005` with `retryAfterMs`.
 
@@ -151,6 +165,8 @@ used either. We keep the codes the webhook already answers (-32602, -32005,
 | ------------------------ | ------- | -------------------------------------------------------- |
 | `chat.wakeRetentionDays` | 7       | how long a `chat_mention` row is kept                    |
 | `chat.wakePerMinute`     | 10      | new rows per token per minute                            |
+| `chat.wakeMaxPerToken`   | 500     | rows kept per token at most (oldest dropped)             |
+| `chat.wakePurgeBatch`    | 100     | expired rows of any token deleted per new row            |
 | `chat.wakeMaxTokens`     | 50      | the thread's own tokens compared per line                |
 | `chat.wakePullTtlMin`    | 1440    | the tool's window without a cursor; `maxAgeMs` cap       |
 | `chat.wakePullLimit`     | 20      | rows per pull by default (at most 100)                   |

@@ -99,6 +99,10 @@ export type WakeLimits = {
   pullLimit: number;
   pullPerMinute: number;
   nextPollMs: number;
+  /** Rows kept per token at most; the oldest go first. */
+  maxPerToken: number;
+  /** Expired rows of any token deleted per write (bounded cleanup, no cron). */
+  purgeBatch: number;
 };
 
 const MIN = 60_000;
@@ -111,30 +115,44 @@ export function wakeLimits(c: ConfigValues): WakeLimits {
     pullLimit: c["chat.wakePullLimit"],
     pullPerMinute: c["chat.wakePullPerMinute"],
     nextPollMs: c["chat.wakeNextPollMs"],
+    maxPerToken: c["chat.wakeMaxPerToken"],
+    purgeBatch: c["chat.wakePurgeBatch"],
   };
 }
 
 // ------------------------------------------------------------ the cursor
 
 /**
- * Opaque to clients: `w1.<seq>.<issued ms>`. `seq` is the last row seen (the
- * table's AUTOINCREMENT, never reused); `issued` tells whether rows past it
- * may already have been deleted by retention (then `truncated`).
+ * A stable position, opaque to clients: `w2.<created_at>.<seq>`, the last row
+ * seen. Rows are ordered by (created_at, seq) and the next page starts strictly
+ * after it, so it never depends on which rows still exist. `seq` 0 names no
+ * row: "everything up to `at`" (a bootstrap, or a page with nothing in it).
  */
-export type Cursor = { seq: number; issued: number };
+export type Cursor = { at: number; seq: number };
 
-export const encodeCursor = (c: Cursor) => `w1.${c.seq}.${c.issued}`;
+export const encodeCursor = (c: Cursor) => `w2.${c.at}.${c.seq}`;
 
 export function decodeCursor(raw: unknown): Cursor | null {
   if (typeof raw !== "string" || raw.length > 64) return null;
-  const m = /^w1\.(\d{1,15})\.(\d{1,15})$/.exec(raw);
+  const m = /^w2\.(\d{1,15})\.(\d{1,15})$/.exec(raw);
   if (!m) return null;
-  return { seq: Number(m[1]), issued: Number(m[2]) };
+  return { at: Number(m[1]), seq: Number(m[2]) };
 }
 
-/** May rows after this cursor already be gone (older than retention)? */
-export const cursorTruncated = (c: Cursor, now: number, l: WakeLimits) =>
-  c.issued < now - l.retentionMs;
+/**
+ * Could rows after this cursor be gone? Retention and the per-token cap
+ * delete oldest first, so while the cursor's own row exists nothing after it
+ * was deleted. `rowExists`: whether the row it names is still there.
+ */
+export function cursorTruncated(
+  c: Cursor,
+  rowExists: boolean,
+  now: number,
+  l: WakeLimits,
+): boolean {
+  if (c.seq > 0) return !rowExists;
+  return c.at < now - l.retentionMs;
+}
 
 /** The most rows one pull returns, whatever is asked or configured. */
 export const MAX_PAGE = 100;

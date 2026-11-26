@@ -19,6 +19,7 @@ import { hit, type ThrottleDb } from "@/lib/security/throttle";
 import { MENTION_EVENT, type Refusal } from "@/lib/mcp-events/rules";
 import { limitsOf, prune, type WakeDeps } from "./core";
 import {
+  type Cursor,
   type MentionRow,
   type WakeAdapter,
   type WakeLimits,
@@ -52,38 +53,69 @@ const fail = (code: number, message: string, data?: Record<string, unknown>): An
 type Who = { tokenHash: string; thread: string };
 
 /** Rows of this token in its thread after `seq`, oldest first, at most `n`. */
+/**
+ * Rows of this token in its thread strictly after `from` in (created_at, seq)
+ * order, not older than `since`, at most `n`. The position is a value, not a
+ * row, so rows deleted before it (retention, the cap) never shift a page.
+ */
 async function after(
   d: WakeDeps,
   who: Who,
-  seq: number,
+  from: Cursor,
   since: number,
   n: number,
 ): Promise<MentionRow[]> {
   const { results } = await d.db
     .prepare(
-      `SELECT * FROM chat_mention WHERE token_id = ? AND thread = ? AND seq > ? AND created_at >= ?
-       ORDER BY seq LIMIT ?`,
+      `SELECT * FROM chat_mention
+       WHERE token_id = ?1 AND thread = ?2 AND created_at >= ?3
+         AND (created_at > ?4 OR (created_at = ?4 AND seq > ?5))
+       ORDER BY created_at, seq LIMIT ?6`,
     )
-    .bind(who.tokenHash, who.thread, seq, since, n)
+    .bind(who.tokenHash, who.thread, since, from.at, from.seq, n)
     .all<MentionRow>();
   return results;
 }
 
-async function lastSeq(d: WakeDeps, who: Who): Promise<number> {
+/** Is the row a cursor names still there (for `truncated`)? */
+async function rowExists(d: WakeDeps, who: Who, c: Cursor): Promise<boolean> {
+  if (c.seq <= 0) return false;
   const r = await d.db
-    .prepare("SELECT MAX(seq) AS s FROM chat_mention WHERE token_id = ?")
-    .bind(who.tokenHash)
-    .first<{ s: number | null }>();
-  return Number(r?.s ?? 0);
+    .prepare("SELECT 1 AS ok FROM chat_mention WHERE token_id = ? AND seq = ? AND created_at = ?")
+    .bind(who.tokenHash, c.seq, c.at)
+    .first<{ ok: number }>();
+  return r?.ok === 1;
 }
 
-/** One page: rows, whether more wait, and the cursor after them. */
-async function page(d: WakeDeps, who: Who, from: number, since: number, n: number) {
+/** The position after everything this token has now: its newest row, or "now". */
+async function latest(d: WakeDeps, who: Who): Promise<Cursor> {
+  const r = await d.db
+    .prepare(
+      "SELECT created_at, seq FROM chat_mention WHERE token_id = ? ORDER BY created_at DESC, seq DESC LIMIT 1",
+    )
+    .bind(who.tokenHash)
+    .first<{ created_at: number; seq: number }>();
+  return r ? { at: Number(r.created_at), seq: Number(r.seq) } : { at: d.now(), seq: 0 };
+}
+
+/**
+ * One page after `from`: rows, whether more wait, the cursor after them, and
+ * whether rows after `from` may be gone (its row deleted). An empty page keeps
+ * `from` while it is sound, else moves to the newest row, so `truncated` is
+ * reported once, not on every later call.
+ */
+async function page(d: WakeDeps, who: Who, from: Cursor, since: number, n: number, l: WakeLimits) {
+  const truncated = cursorTruncated(from, await rowExists(d, who, from), d.now(), l);
   const rows = await after(d, who, from, since, n + 1);
   const hasMore = rows.length > n;
   const shown = rows.slice(0, n);
-  const seq = shown.length ? Number(shown[shown.length - 1].seq) : from;
-  return { shown, hasMore, cursor: encodeCursor({ seq, issued: d.now() }) };
+  const last = shown[shown.length - 1];
+  const next: Cursor = last
+    ? { at: Number(last.created_at), seq: Number(last.seq) }
+    : truncated
+      ? await latest(d, who)
+      : from;
+  return { shown, hasMore, truncated, cursor: encodeCursor(next) };
 }
 
 /**
@@ -118,11 +150,9 @@ export async function pullRpc(
     const n = pageSize(p.limit, l);
     if (n === null) return fail(-32602, "limit: a whole number from 1");
     if (p.cursor === undefined || p.cursor === null) {
-      const out = await page(d, who, 0, now - l.pullTtlMs, n);
+      const out = await page(d, who, { at: 0, seq: 0 }, now - l.pullTtlMs, n, l);
       // Nothing in the window: the cursor still starts after what exists now.
-      const cursor = out.shown.length
-        ? out.cursor
-        : encodeCursor({ seq: await lastSeq(d, who), issued: now });
+      const cursor = out.shown.length ? out.cursor : encodeCursor(await latest(d, who));
       return {
         result: {
           mentions: out.shown.map(toolItem),
@@ -134,13 +164,13 @@ export async function pullRpc(
     }
     const c = decodeCursor(p.cursor);
     if (!c) return fail(-32602, "cursor: pass back the cursor a previous call returned");
-    const out = await page(d, who, c.seq, 0, n);
+    const out = await page(d, who, c, 0, n, l);
     return {
       result: {
         mentions: out.shown.map(toolItem),
         cursor: out.cursor,
         hasMore: out.hasMore,
-        truncated: cursorTruncated(c, now, l),
+        truncated: out.truncated,
       },
     };
   }
@@ -163,7 +193,7 @@ export async function pullRpc(
       result: {
         ...base,
         events: [],
-        cursor: encodeCursor({ seq: await lastSeq(d, who), issued: now }),
+        cursor: encodeCursor(await latest(d, who)),
         truncated: false,
         hasMore: false,
       },
@@ -175,13 +205,13 @@ export async function pullRpc(
     return fail(-32602, "maxAgeMs: a positive number");
   // Whichever is later: the cursor, or now − maxAgeMs (never past our own window).
   const floor = typeof m === "number" ? now - Math.min(m, l.pullTtlMs) : 0;
-  const out = await page(d, who, c.seq, floor, n);
+  const out = await page(d, who, c, floor, n, l);
   return {
     result: {
       ...base,
       events: out.shown.map(pollEvent),
       cursor: out.cursor,
-      truncated: cursorTruncated(c, now, l),
+      truncated: out.truncated,
       hasMore: out.hasMore,
     },
   };
