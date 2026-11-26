@@ -4,6 +4,12 @@ Status: **draft for review**. UI and this contract: agy lane; broker, hub and br
 Nothing is built. Flag **`portable.mic-route`**, default **off**, audience
 **owner** (lib/flags.ts), switched on for the owner when it ships.
 
+**Scope.** **v1:** dictated text is routed into the active page's 随身Li draft
+only, with **no selection chip** (#1125's page.read is not deployed yet). It
+needs the same per-site consent as 随身Li chat, the owner-only flag, no raw
+audio and no host-page mic. **v2**, after #1125 deploys: the page's selection
+is attached as below ("Selection").
+
 The owner, 2026-11-27 04:06 JST: 随身Li shows a mic button on every site. It
 does not open a mic on that site: it borrows the mic of the lianki.com tab next
 to it (on a PC, usually), so he can speak there and the words land in the site
@@ -91,7 +97,7 @@ thread line, dropped once read or after 60 s.
   window, `pagehide`: `route off`.
 - Each routed final is appended to the composer draft (a space between), never
   sent by itself. The draft scope stays `portable~<account>~<origin>`.
-- **Selection**: when a final arrives and this page has a selection, it is
+- **Selection (v2, after #1125 deploys; not in v1)**: when a final arrives and this page has a selection, it is
   attached the way #1125's `page.read` selection attachment does it (the chat's
   `context` chip: text, cleaned and capped by `chat.pillShareChars`, http(s)
   link only), from **this** page only, read at that moment. No selection → no
@@ -141,7 +147,8 @@ thread line, dropped once read or after 60 s.
 - Hub: target change fan-out, stale id ignored, other account refused.
 - lianki.com tab: final → `chat-dictation` only while a target is set; partials
   stay local; stop label clears.
-- 随身Li: button states, append without sending, selection chip only from this
-  page, `route off` on close / pagehide / Escape.
+- 随身Li: button states, append without sending, `route off` on close /
+  pagehide / Escape, only on a site with 随身Li consent; v2 adds the selection
+  chip only from this page.
 - Real browser: two tabs (lianki.com fixture with a fake STT final, example.com
-  with 随身Li), the text lands in the composer with the selection chip.
+  with 随身Li), the text lands in the composer (v2: with the selection chip).
