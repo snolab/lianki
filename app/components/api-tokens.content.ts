@@ -119,6 +119,24 @@ const dictionary = {
       mr: "ChatGPT मध्ये सानुकूल MCP सर्व्हर जोडा, हा URL पेस्ट करा आणि No authentication निवडा. URL मध्ये गुप्त टोकन आहे; तो खाजगी ठेवा.",
       ko: "ChatGPT에서 사용자 지정 MCP 서버를 추가하고 이 URL을 붙여넣은 뒤 No authentication을 선택하세요. URL에 비밀 토큰이 포함되어 있으니 공개하지 마세요.",
     }),
+    appsGuide: t({
+      en: "Step-by-step guide: connect ChatGPT, Claude or Gemini",
+      zh: "分步教程：连接 ChatGPT、Claude 或 Gemini",
+      hi: "कदम-दर-कदम गाइड: ChatGPT, Claude या Gemini जोड़ें",
+      es: "Guía paso a paso: conecta ChatGPT, Claude o Gemini",
+      fr: "Guide pas à pas : connecter ChatGPT, Claude ou Gemini",
+      ar: "دليل خطوة بخطوة: اربط ChatGPT أو Claude أو Gemini",
+      bn: "ধাপে ধাপে নির্দেশিকা: ChatGPT, Claude বা Gemini যুক্ত করুন",
+      pt: "Guia passo a passo: conecte o ChatGPT, o Claude ou o Gemini",
+      ru: "Пошаговая инструкция: подключить ChatGPT, Claude или Gemini",
+      ur: "قدم بہ قدم گائیڈ: ChatGPT، Claude یا Gemini جوڑیں",
+      id: "Panduan langkah demi langkah: hubungkan ChatGPT, Claude, atau Gemini",
+      de: "Schritt-für-Schritt-Anleitung: ChatGPT, Claude oder Gemini verbinden",
+      ja: "手順ガイド：ChatGPT・Claude・Gemini をつなぐ",
+      sw: "Mwongozo wa hatua kwa hatua: unganisha ChatGPT, Claude au Gemini",
+      mr: "टप्प्याटप्प्याने मार्गदर्शक: ChatGPT, Claude किंवा Gemini जोडा",
+      ko: "단계별 안내: ChatGPT, Claude, Gemini 연결하기",
+    }),
     scopeAppsPublish: t({
       en: "Publish mini apps",
       zh: "发布迷你应用",
@@ -1505,6 +1523,8 @@ const context: Record<keyof typeof dictionary.content, string> = {
 
   copyMcp:
     "Button in the one-time newly-created API token box: copies the entire secret-bearing remote MCP URL to the clipboard, only on an explicit click. Keep MCP and URL.",
+  appsGuide:
+    "Link under the intro of the API tokens section (Settings and the MCP connections page) that opens the public step-by-step guide /guides/ai-apps for connecting the AI chat apps ChatGPT, Claude or Gemini. A short noun phrase, a colon, then an imperative; keep the product names.",
   mcpHint:
     "Instructions below the one-time token copy buttons: paste the copied MCP URL into ChatGPT custom MCP server setup and select the exact UI option No authentication. Warn that the URL contains the secret and must stay private. Do not imply the server grants anonymous access.",
   scopeRequestDevRequired:

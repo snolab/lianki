@@ -16,6 +16,7 @@ import ConnectedApps from "./ConnectedApps";
 import { AgentGuide, CopyGuideButton, useAgentGuide, useAgentGuidePointer } from "./AgentGuide";
 import { agentGuideWithToken } from "@/lib/agent-guide";
 import { McpConnectionCopy } from "./McpConnectionCopy";
+import { AI_APPS_GUIDE_PATH } from "@/lib/ai-apps-guide";
 import { INVITE_PREFILL, invitePrefill } from "@lianki/debug-chat/presence";
 
 /**
@@ -214,6 +215,13 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
         {!hideHeading && <h2 className="text-xl font-semibold mb-2">{s("heading")}</h2>}
         <p className="text-sm text-gray-600 dark:text-gray-400">{s("intro")}</p>
         <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">{s("aiIntro")}</p>
+        <a
+          href={AI_APPS_GUIDE_PATH}
+          data-testid="token-apps-guide"
+          className="mt-2 inline-block text-sm font-medium text-primary underline"
+        >
+          {s("appsGuide")}
+        </a>
         {list && (
           <p className="text-sm mt-2">
             {s("account")

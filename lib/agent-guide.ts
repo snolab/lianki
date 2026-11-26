@@ -30,6 +30,7 @@
  */
 import { CHAT_LIMITS } from "@/lib/chat-limits";
 import { SCOPE_IDS, type ScopeId } from "@/lib/api-tokens";
+import { AI_APPS_GUIDE_URL } from "@/lib/ai-apps-guide";
 
 export const GUIDE_BASE = "https://lianki.com";
 export const GUIDE_PATH = "/api/agent-guide";
@@ -100,6 +101,7 @@ export const GUIDE_KEYS = [
   "mcpIntro",
   "mcpEnv",
   "mcpRemote",
+  "mcpApps",
   "scopesHeading",
   "scopeRequest",
   "scopeStudy",
@@ -232,6 +234,7 @@ export function agentGuide({ scopes, t, name, expires }: GuideInput): string {
     t.mcpRemote,
     "",
     ...MCP_REMOTE_CLIENTS.flatMap((c) => [`${c.label}:`, "```" + c.lang, c.code, "```", ""]),
+    fill(t.mcpApps, { url: AI_APPS_GUIDE_URL }),
   );
 
   p(

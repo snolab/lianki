@@ -11,6 +11,7 @@ type Copy = {
   lead: string;
   steps: [string, string, string];
   tokenLink: string;
+  appsLink: string;
   chatgpt: string;
   chatgptSteps: string;
   codeTitle: string;
@@ -28,6 +29,7 @@ const EN: Copy = {
     "Add a remote MCP server in your AI app with the address below and the header Authorization: Bearer <your token>.",
   ],
   tokenLink: "Open MCP connections",
+  appsLink: "Step-by-step guide for ChatGPT, Claude and Gemini",
   chatgpt: "ChatGPT",
   chatgptSteps:
     "Create a dedicated token with only the permissions you need and an expiry. In its one-time box, choose Copy MCP connection URL. In ChatGPT, add a custom MCP server, paste the URL and select No authentication, then install the resulting plugin. Treat the entire URL as a password; never post it in a chat. If you lost the secret, revoke it and create a new token.",
@@ -46,6 +48,7 @@ const ZH: Copy = {
     "在 AI 应用里添加远程 MCP 服务器：地址填下面这个，请求头填 Authorization: Bearer <你的 token>。",
   ],
   tokenLink: "打开 MCP 连接",
+  appsLink: "ChatGPT、Claude、Gemini 分步教程",
   chatgpt: "ChatGPT",
   chatgptSteps:
     "创建专用 token，只勾选所需权限并设置有效期。在仅显示一次的凭证框中选择「复制 MCP 连接地址」。在 ChatGPT 添加自定义 MCP 服务器，粘贴地址，认证选择 No authentication（无认证），然后安装生成的插件。整个地址等同密码，不要发到聊天里。若丢失凭证，请撤销并重新创建 token。",
@@ -80,7 +83,7 @@ export function guide(req: Request, origin: string): Response {
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,sans-serif}
 main{max-width:40rem;margin:0 auto;padding:2rem 16px}
 h1{font-size:1.5rem;margin:0 0 .5rem;color:var(--seal)}
-p,li{color:var(--fg)} .mute{color:var(--mute);font-size:.9rem}
+p,li{color:var(--fg)} a{color:var(--seal)} .mute{color:var(--mute);font-size:.9rem}
 a.btn{display:inline-block;margin:.5rem 0 1rem;padding:.6rem 1rem;border-radius:.6rem;background:var(--seal);color:oklch(0.99 0 0);text-decoration:none;font-weight:600}
 pre{background:var(--code);padding:.75rem;border-radius:.5rem;overflow-x:auto;font-size:.85rem;white-space:pre-wrap;word-break:break-all}
 code{font-family:ui-monospace,monospace}
@@ -89,6 +92,7 @@ code{font-family:ui-monospace,monospace}
 <p>${esc(c.lead)}</p>
 <ol>${c.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>
 <a class="btn" href="${origin}/my/mcp">${esc(c.tokenLink)}</a>
+<p><a href="${origin}/guides/ai-apps${c.lang === "zh" ? "?lang=zh" : ""}">${esc(c.appsLink)}</a></p>
 <h2>${esc(c.chatgpt)}</h2><p>${esc(c.chatgptSteps)}</p>
 <p><strong>URL</strong></p><pre><code>${esc(url)}</code></pre>
 <p><strong>${esc(c.codeTitle)}</strong></p><pre><code>${esc(cli)}</code></pre>
