@@ -39,9 +39,21 @@ export default async function AiAppsGuidePage() {
   const f = (text: unknown) => fillGuide(text, vars);
 
   const steps: Record<(typeof AI_APPS)[number]["id"], { items: unknown[]; note?: unknown }> = {
-    chatgpt: { items: [g.chatgpt1, g.chatgpt2, g.chatgpt3, g.chatgpt4, g.chatgptTry] },
-    claude: { items: [g.claude1, g.claude2, g.claude3, g.claudeTry], note: g.claudeNote },
+    chatgpt: {
+      items: [g.chatgpt1, g.chatgpt2, g.chatgpt3, g.chatgpt4, g.chatgptTry],
+      note: g.chatgptWork,
+    },
+    claude: {
+      items: [g.claude1, g.claude2, g.claudeAuth, g.claude3, g.claudeTry],
+      note: g.claudeNote,
+    },
     gemini: { items: [g.gemini1, g.gemini2, g.gemini3, g.geminiTry], note: g.geminiNote },
+  };
+
+  const avail: Record<(typeof AI_APPS)[number]["id"], unknown> = {
+    chatgpt: g.availChatgpt,
+    claude: g.availClaude,
+    gemini: g.availGemini,
   };
 
   const card =
@@ -133,6 +145,28 @@ export default async function AiAppsGuidePage() {
             ) : null}
           </section>
         ))}
+      </section>
+
+      <section aria-labelledby="avail" className={card}>
+        <h2 id="avail" className={h2}>
+          {g.availHeading}
+        </h2>
+        <ul className="mt-3 list-disc ps-6 space-y-2">
+          {AI_APPS.map((a) => (
+            <li key={a.id}>
+              {f(avail[a.id])}{" "}
+              <a
+                href={a.help}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+              >
+                {g.helpLink}
+              </a>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3">{g.availText}</p>
       </section>
 
       <section aria-labelledby="safety" className={card}>

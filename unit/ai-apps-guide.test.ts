@@ -76,6 +76,15 @@ describe("ai-apps guide", () => {
     expect(checkedOn("en")).toContain("2026");
   });
 
+  it("each app links its maker's own official help page", () => {
+    const hosts = AI_APPS.map((a) => new URL(a.help).host);
+    expect(hosts).toEqual(["help.openai.com", "support.claude.com", "support.google.com"]);
+    const g = guideDict.content as unknown as Record<string, Tr>;
+    for (const k of ["availChatgpt", "availClaude", "availGemini", "availText", "claudeAuth"])
+      expect(g[k], k).toBeDefined();
+    expect(g.claudeAuth.translation.en).toContain("No sign in");
+  });
+
   it("no token secret or prefix is shown on the page", () => {
     for (const node of Object.values(guideDict.content) as Tr[])
       for (const s of Object.values(node.translation)) expect(s).not.toMatch(/lk_/);

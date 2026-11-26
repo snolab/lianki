@@ -79,6 +79,15 @@ common problems, and other tools.
   the buttons as the token page shows them. The other apps' menu names stay in
   English in quotes, with a note and the date they were checked
   (`AI_APPS_CHECKED_ON`, `lib/ai-apps-guide.ts`).
+- "Who can use it" gives each app's limits only as its maker's help page states
+  them (links in `AI_APPS`, checked 2026-11-27): ChatGPT, Business/Enterprise/Edu
+  on the web, Pro read-only, no geo limit, work accounts added by owners/admins
+  ("Plugins" → "+" → "Add custom MCP server", older "Workspace settings" → "Apps"
+  → "Create"); Claude, every plan, Free one connector, the
+  "Customize" → "Connectors" path, and "No sign in" as the Authentication choice
+  while `mcp.oauth` is off; Gemini, 18+, US, personal account, History on. It also
+  says the app reaches Lianki only in a typed chat and never wakes itself, and that
+  the help pages don't cover voice modes.
 - Text steps only. The drafts' screenshots and videos came from the owner's
   account; they are not published.
 - It uses the `/mcp/<token>` address with "No authentication", which works for
