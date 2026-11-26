@@ -128,3 +128,29 @@ describe("the frame's language and capability", () => {
     expect(t.fr!.message).not.toBe(t.zh!.message);
   });
 });
+
+describe("the frame shell is see-through", () => {
+  test("the iframe's color-scheme matches the lianki.com page inside, so no opaque canvas is painted", async () => {
+    const { Window } = await import("happy-dom");
+    const { frameShell } = await import("../src/partner-frame");
+    const win = new Window({ url: "https://example.org/" });
+    const shell = frameShell({
+      doc: win.document as never,
+      win: win as never,
+      origin: "https://lianki.com",
+      label: "example.org/",
+      ticket: async () => null,
+      gripLabel: "Li",
+      fixedSize: { w: "420px", h: "560px" },
+      capMs: 10,
+    });
+    try {
+      expect(shell.iframe.style.getPropertyValue("color-scheme")).toBe("light dark");
+      expect(shell.iframe.style.getPropertyValue("background")).toContain("transparent");
+      expect(shell.iframe.style.getPropertyValue("width")).toBe("420px");
+    } finally {
+      shell.destroy();
+      await win.happyDOM.abort();
+    }
+  });
+});
