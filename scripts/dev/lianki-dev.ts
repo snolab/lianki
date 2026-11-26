@@ -33,7 +33,13 @@ import {
   parseArgs,
   progressArgv,
 } from "./lianki-dev-cli";
-import { PROGRESS_USAGE, formatStats, parseProgressArgs, settleDoneKind } from "./progress-args";
+import {
+  PROGRESS_USAGE,
+  findAutoEta,
+  formatStats,
+  parseProgressArgs,
+  settleDoneKind,
+} from "./progress-args";
 import { postProgress, prMerged, progressToken } from "./progress-client";
 import { laneToken } from "./lane-listen-lib";
 import { askAnswer, askNode, askQuestions, nodeNote } from "./ask-node";
@@ -239,7 +245,22 @@ async function noteOn(
 }
 
 async function progress(g: Global, rest: string[], repo: string | undefined): Promise<number> {
-  const cmd = parseProgressArgs(progressArgv(rest, g));
+  let argv = progressArgv(rest, g);
+  // --eta auto[:<kind>]: the estimate skill's P5-P95 (scripts/dev/estimate.ts).
+  if (findAutoEta(argv)) {
+    const { resolveAutoEta } = await import("./estimate");
+    const r = await resolveAutoEta(
+      argv,
+      (flag) =>
+        progressToken(flag, repo) ??
+        apiTokenEnv() ??
+        (g.lane ? laneToken(g.lane).token : undefined),
+    );
+    if (r instanceof Error) fail(EXIT.usage, `progress: ${r.message}\n${PROGRESS_USAGE}`);
+    if (r.note) console.error(`progress: ${r.note}`);
+    argv = r.argv;
+  }
+  const cmd = parseProgressArgs(argv);
   if (cmd instanceof Error) fail(EXIT.usage, `progress: ${cmd.message}\n${PROGRESS_USAGE}`);
   if (cmd.cmd === "report" && cmd.warning) console.error(`progress: warning: ${cmd.warning}`);
   // A progress token first; else the lane's API token (LIANKI_TOKEN, or its

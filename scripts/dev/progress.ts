@@ -32,7 +32,6 @@ import {
   formatHistory,
   formatStats,
   parseProgressArgs,
-  replaceAutoEta,
   settleDoneKind,
 } from "./progress-args";
 import { type ProgressDone, type ProgressHistory, progressStats } from "../../lib/progress";
@@ -49,32 +48,15 @@ if (args.includes("--help") || args.includes("-h")) {
 }
 // --eta auto[:<kind>]: the estimate skill gives the P5-P95 (and logs it, keyed
 // by the node, so `estimate.ts sync` closes it when the node goes done).
-const auto = findAutoEta(args);
-if (auto) {
-  const probe = parseProgressArgs(replaceAutoEta(args, auto, "1m"));
-  if (probe instanceof Error || probe.cmd !== "report") {
-    console.error(
-      `progress: ${probe instanceof Error ? probe.message : "--eta auto is for reports"}\n${PROGRESS_USAGE}`,
-    );
+if (findAutoEta(args)) {
+  const { resolveAutoEta } = await import("./estimate");
+  const r = await resolveAutoEta(args);
+  if (r instanceof Error) {
+    console.error(`progress: ${r.message}\n${PROGRESS_USAGE}`);
     process.exit(2);
   }
-  const { runEstimate } = await import("./estimate");
-  const { etaRange, formatDuration } = await import("../../lib/estimate");
-  const e = await runEstimate({
-    task: probe.report.task,
-    node: probe.report.id,
-    lane: probe.report.assignee.name,
-    ...(auto.kind ? { kind: auto.kind } : {}),
-    ...(probe.token ? { token: probe.token } : {}),
-  });
-  if (e instanceof Error) {
-    console.error(`progress: --eta auto: ${e.message}`);
-    process.exit(2);
-  }
-  console.error(
-    `progress: --eta auto → ${etaRange(e)} (estimate ${e.id}: ${e.kind}, P50 ${formatDuration(e.p50)}, ${e.n} similar)`,
-  );
-  args = replaceAutoEta(args, auto, etaRange(e));
+  if (r.note) console.error(`progress: ${r.note}`);
+  args = r.argv;
 }
 const cmd = parseProgressArgs(args);
 if (cmd instanceof Error) {

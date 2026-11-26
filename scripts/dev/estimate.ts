@@ -39,6 +39,7 @@ import {
 import { parseEta } from "../../lib/progress";
 import { BASE } from "./eval-socket";
 import { postProgress, progressToken } from "./progress-client";
+import { findAutoEta, parseProgressArgs, replaceAutoEta } from "./progress-args";
 
 export const ESTIMATE_USAGE = `usage:
   bun scripts/dev/estimate.ts "<task>" [--kind <${ESTIMATE_KINDS.join("|")}>] [--tags a,b]
@@ -153,6 +154,36 @@ export async function runEstimate(o: RunEstimate): Promise<(Estimate & { id: str
       },
     ]);
   return { ...e, id };
+}
+
+/**
+ * A progress report's argv with `--eta auto[:<kind>]` swapped for the
+ * estimator's P5-P95 (logged against the node, so `sync` closes it). Shared by
+ * progress.ts and `lianki-dev progress`. Unchanged when the --eta is not auto;
+ * an Error for a bad report or kind. `note` is the line to print on stderr.
+ */
+export async function resolveAutoEta(
+  argv: string[],
+  token?: (flag?: string) => string | undefined,
+): Promise<{ argv: string[]; note?: string } | Error> {
+  const auto = findAutoEta(argv);
+  if (!auto) return { argv };
+  const probe = parseProgressArgs(replaceAutoEta(argv, auto, "1m"));
+  if (probe instanceof Error) return probe;
+  if (probe.cmd !== "report") return new Error("--eta auto is for reports");
+  const t = token ? token(probe.token) : probe.token;
+  const e = await runEstimate({
+    task: probe.report.task,
+    node: probe.report.id,
+    lane: probe.report.assignee.name,
+    ...(auto.kind ? { kind: auto.kind } : {}),
+    ...(t ? { token: t } : {}),
+  });
+  if (e instanceof Error) return new Error(`--eta auto: ${e.message}`);
+  return {
+    argv: replaceAutoEta(argv, auto, etaRange(e)),
+    note: `--eta auto → ${etaRange(e)} (estimate ${e.id}: ${e.kind}, P50 ${formatDuration(e.p50)}, ${e.n} similar)`,
+  };
 }
 
 export function formatEstimate(e: Estimate & { id: string }): string {
