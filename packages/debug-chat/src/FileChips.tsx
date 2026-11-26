@@ -38,7 +38,7 @@ export function PendingChips({ t, pending }: { t: ChatStrings; pending: PendingF
     >
       {list.map((f) => {
         const note =
-          f.state === "failed" ? t.attachFailed : f.state === "too-big" ? t.attachTooBig : "";
+          f.state === "failed" ? (f.note ?? t.attachFailed) : f.state === "too-big" ? t.attachTooBig : "";
         const pct = f.size ? Math.min(100, Math.round((f.sent / f.size) * 100)) : 0;
         return (
           <div
@@ -95,7 +95,7 @@ export function PendingFilesRow({ t, list, onRemove }: {
   return (
     <div data-testid="debug-chat-files" className="pointer-events-auto flex min-w-0 max-w-full flex-nowrap gap-1 overflow-x-auto pb-0.5">
       {list.map((f) => {
-        const note = f.state === "failed" ? t.attachFailed : f.state === "too-big" ? t.attachTooBig : "";
+        const note = f.state === "failed" ? (f.note ?? t.attachFailed) : f.state === "too-big" ? t.attachTooBig : "";
         const pct = f.size ? Math.min(100, Math.round(f.sent / f.size * 100)) : 0;
         return (
           <div key={f.key} data-testid="debug-chat-file" data-state={f.state}

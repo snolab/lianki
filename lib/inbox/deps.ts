@@ -5,7 +5,7 @@ import { createAccountUploadLimiter } from "./rate";
 type QuotaKey =
   | "inbox.maxFileBytes"
   | "inbox.maxDayBytes"
-  | "inbox.maxStoredBytes"
+  | "files.quotaBytes"
   | "inbox.uploadsPerMinute";
 /** Server adapters supplied by the route; no global auth or DB in the rules. */
 export function createInboxDeps(source: {
@@ -25,7 +25,7 @@ export function createInboxDeps(source: {
       const [maxFileBytes, maxDayBytes, maxStoredBytes, uploadsPerMinute] = await Promise.all([
         source.value("inbox.maxFileBytes"),
         source.value("inbox.maxDayBytes"),
-        source.value("inbox.maxStoredBytes"),
+        source.value("files.quotaBytes"),
         source.value("inbox.uploadsPerMinute"),
       ]);
       return { maxFileBytes, maxDayBytes, maxStoredBytes, uploadsPerMinute };

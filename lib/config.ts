@@ -2059,14 +2059,16 @@ export const CONFIG = {
     audience: "server",
     description: "每个账号滚动24小时上传的安全字节上限。",
   }),
-  "inbox.maxStoredBytes": int({
-    default: 2 * 1024 ** 3,
+  // inbox.maxStoredBytes (2 GB safety cap) was removed 2026-11-26: files.quotaBytes replaces it.
+  "files.quotaBytes": int({
+    default: 5 * 1024 ** 3,
     min: 1024 * 1024,
-    max: 100 * 1024 ** 3,
+    max: 1024 ** 4,
     unit: "bytes",
-    group: "inbox",
+    group: "files",
     audience: "server",
-    description: "每个账号存储文件的安全总字节上限（所有文件来源共享）。",
+    description:
+      "每个账号的文件空间（/my/files）：所有来源一起算，聊天里发的图片、导入、自我介绍、书都占这一份。默认 5 GB。",
   }),
   "inbox.uploadsPerMinute": int({
     default: 30,

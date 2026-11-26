@@ -53,7 +53,7 @@ export default async function DevUsersPage() {
       <UsersTable
         rows={rows}
         now={now.getTime()}
-        inboxCap={await cfg("inbox.maxStoredBytes")}
+        inboxCap={await cfg("files.quotaBytes")}
         filesComplete={read.complete}
         pending={pending}
       />

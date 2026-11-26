@@ -8,16 +8,17 @@ import { CONFIG } from "@/lib/config";
  *
  * Cost (owner, 2026-11-04 17:45 JST, tap: "按用量扣莲（上传和存储）"): users
  * bear the real R2 cost of what they upload and store, charged by usage
- * through lib/inbox/charge.ts. There is no product quota; `maxStoredBytes`
- * is only a safety cap.
+ * through lib/inbox/charge.ts. `maxStoredBytes` is each account's file
+ * space (owner, 2026-11-26: 5 GB for every user), config `files.quotaBytes`:
+ * chat images, imports and every other source share it (/my/files).
  */
 export const INBOX = {
   /** Largest single file, in bytes (20 MB: a phone photo or a short clip; not a long video). */
   maxFileBytes: CONFIG["inbox.maxFileBytes"].default,
   /** Most bytes one user uploads in any rolling 24 hours, all files together (200 MB). */
   maxDayBytes: CONFIG["inbox.maxDayBytes"].default,
-  /** Safety cap: most bytes one user keeps stored at once (2 GB). Not a plan limit. */
-  maxStoredBytes: CONFIG["inbox.maxStoredBytes"].default,
+  /** Each account's file space: most bytes it keeps stored at once, all sources (5 GB). */
+  maxStoredBytes: CONFIG["files.quotaBytes"].default,
   /** Most uploads per minute (per Worker isolate), whatever their size. */
   uploadsPerMinute: CONFIG["inbox.uploadsPerMinute"].default,
   /** How long an agent's download ticket (`eval.ts inbox get`) stays good; single use. */

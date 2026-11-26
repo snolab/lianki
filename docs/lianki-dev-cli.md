@@ -139,6 +139,7 @@ lianki chat ask --q "Ship it?" --opt Yes --opt No --recommend 1 --wait   # print
 lianki chat read --limit 20 --json
 lianki chat listen --json                      # one JSON line an event
 lianki chat avatar me.svg                      # its own picture (plain SVG ≤ 4 KB; --clear removes it)
+lianki chat attachment get <id> --out /tmp/li  # an image posted in its thread (attachments[].id; chat:read)
 lianki-dev say "…" / ask … / listen            # the same path while LIANKI_TOKEN is set
 ```
 

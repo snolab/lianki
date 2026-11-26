@@ -2,7 +2,15 @@
 // Lianki, the browser login against a real loopback listener, the token file,
 // the JSON envelope and exit codes, and that no command ever prints the token.
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, mkdirSync } from "fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  mkdirSync,
+} from "fs";
 import { request } from "http";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -1117,4 +1125,117 @@ test("publish scope refusals carry only a public approval link", async () => {
       expect(result.err).not.toContain(TOKEN);
     }
   }
+});
+
+describe("chat attachment get", () => {
+  const ID = "0123456789abcdef0123";
+  const TICKET = "ab".repeat(32);
+  test("asks for a ticket, downloads with it in a header, saves under the file's own name, never prints it", async () => {
+    const h = harness({
+      env,
+      server: {
+        "POST /api/version/chat": (c) =>
+          c.body.op === "attachment" && c.body.id === ID
+            ? json({
+                ok: true,
+                item: { id: ID, name: "../photo.png", type: "image/png", size: 3 },
+                ticket: TICKET,
+                exp: 1,
+                path: `/api/my/inbox/${ID}`,
+                header: "x-inbox-ticket",
+              })
+            : json({ ok: false, error: "no such attachment in this chat" }, 404),
+        [`GET /api/my/inbox/${ID}`]: () => new Response(new Uint8Array([1, 2, 3])),
+      },
+    });
+    const sentHeaders: Record<string, string>[] = [];
+    const inner = h.deps.fetch;
+    h.deps.fetch = async (u: URL, init: any = {}) => {
+      if (String(u).includes("/api/my/inbox/")) sentHeaders.push(init.headers ?? {});
+      return inner(u, init);
+    };
+    const written: { file: string; bytes: Uint8Array }[] = [];
+    (h.deps as any).writeFile = async (file: string, bytes: Uint8Array) =>
+      void written.push({ file, bytes });
+    const r = await h.run("chat", "attachment", "get", ID, "--out", "/tmp/li", "--json");
+    expect(r.code).toBe(0);
+    expect(sentHeaders).toEqual([{ "x-inbox-ticket": TICKET }]);
+    // No folders from the server's name: "../photo.png" stays inside --out.
+    expect(written).toEqual([
+      { file: `/tmp/li/${ID}-_photo.png`, bytes: new Uint8Array([1, 2, 3]) },
+    ]);
+    expect(envelope(r.out).data).toMatchObject({ id: ID, type: "image/png", size: 3 });
+    expect(r.out + r.err).not.toContain(TICKET);
+  });
+
+  /** A server whose file is called `name` (the sender's choice) and holds 7, 8, 9. */
+  const named = (name: string) =>
+    harness({
+      env,
+      server: {
+        "POST /api/version/chat": () =>
+          json({
+            ok: true,
+            item: { id: ID, name, type: "image/png", size: 3 },
+            ticket: TICKET,
+            exp: 1,
+            path: `/api/my/inbox/${ID}`,
+            header: "x-inbox-ticket",
+          }),
+        [`GET /api/my/inbox/${ID}`]: () => new Response(new Uint8Array([7, 8, 9])),
+      },
+    });
+
+  test("without a writer of its own it saves to disk, making --out", async () => {
+    const out = join(tmp(), "new", "dir");
+    expect((await named("photo.png").run("chat", "attachment", "get", ID, "--out", out)).code).toBe(
+      0,
+    );
+    expect([...readFileSync(join(out, `${ID}-photo.png`))]).toEqual([7, 8, 9]);
+  });
+
+  test("a sender's name never overwrites a file: an existing same-name file keeps its bytes", async () => {
+    const out = tmp();
+    // The plain name (package.json in the cwd) is untouched: the download is id-prefixed.
+    writeFileSync(join(out, "package.json"), "SENTINEL");
+    expect(
+      (await named("package.json").run("chat", "attachment", "get", ID, "--out", out)).code,
+    ).toBe(0);
+    expect(readFileSync(join(out, "package.json"), "utf8")).toBe("SENTINEL");
+    expect([...readFileSync(join(out, `${ID}-package.json`))]).toEqual([7, 8, 9]);
+    // Even the prefixed name is never clobbered: a second download fails and keeps the file.
+    writeFileSync(join(out, `${ID}-package.json`), "SENTINEL2");
+    const again = await named("package.json").run("chat", "attachment", "get", ID, "--out", out);
+    expect(again.code).not.toBe(0);
+    expect(again.err).toContain("already exists");
+    expect(readFileSync(join(out, `${ID}-package.json`), "utf8")).toBe("SENTINEL2");
+  });
+
+  test("nothing is written outside --out, whatever the name", async () => {
+    const root = tmp();
+    const out = join(root, "out");
+    mkdirSync(out);
+    for (const name of ["../../evil.sh", "..", "/etc/passwd", "a\\..\\..\\b", ".env"]) {
+      const r = await named(name).run("chat", "attachment", "get", ID, "--out", out);
+      expect(r.code).toBe(0);
+      const saved = readdirSync(out);
+      expect(saved).toHaveLength(1);
+      expect(saved[0].startsWith(`${ID}-`)).toBe(true);
+      expect(readdirSync(root)).toEqual(["out"]);
+      rmSync(join(out, saved[0]));
+    }
+  });
+
+  test("a bad id never reaches the server; a refusal is an error", async () => {
+    const h = harness({
+      env,
+      server: {
+        "POST /api/version/chat": () =>
+          json({ ok: false, error: "no such attachment in this chat" }, 404),
+      },
+    });
+    expect((await h.run("chat", "attachment", "get", "../x")).code).not.toBe(0);
+    expect(h.calls).toHaveLength(0);
+    expect((await h.run("chat", "attachment", "get", ID)).code).not.toBe(0);
+  });
 });

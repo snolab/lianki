@@ -22,6 +22,7 @@ import {
   listItems,
   settleTo,
   spendTicket,
+  THREAD_TICKET,
   uploadedSince,
   usageOf,
 } from "./store";
@@ -64,9 +65,15 @@ async function account(d: InboxDeps) {
   return w?.id ? w : null;
 }
 
-/** Over the safety cap on what one user keeps stored (INBOX.maxStoredBytes)? Applies to everyone. */
+/**
+ * Over the account's file space (config files.quotaBytes, 5 GB by default)?
+ * Every source counts together, so chat images and /my/files share it.
+ */
 export const overCap = (stored: number, adding: number, max = INBOX.maxStoredBytes) =>
   stored + adding > max;
+
+/** The 413 for a full file space: what is used and the limit, for the friendly message. */
+const storageFull = (used: number, max: number) => json({ error: "storage-cap", used, max }, 413);
 
 /**
  * The storage cost accrued since the last settlement (bytes stored × time),
@@ -167,7 +174,7 @@ export async function storeUpload(
   if (day + len > limits.maxDayBytes)
     return json({ error: "day-cap", max: limits.maxDayBytes }, 413);
   if (overCap(usage.bytesStored, len, limits.maxStoredBytes))
-    return json({ error: "storage-cap", max: limits.maxStoredBytes }, 413);
+    return storageFull(usage.bytesStored, limits.maxStoredBytes);
   let name = "file";
   try {
     name = cleanFileName(decodeURIComponent(req.headers.get("x-file-name") ?? ""));
@@ -216,7 +223,7 @@ export async function storeUpload(
       await d.bucket().delete(key);
       const usage = await usageOf(db, who.id);
       return overCap(usage.bytesStored, len, limits.maxStoredBytes)
-        ? json({ error: "storage-cap", max: limits.maxStoredBytes }, 413)
+        ? storageFull(usage.bytesStored, limits.maxStoredBytes)
         : json({ error: "day-cap", max: limits.maxDayBytes }, 413);
     }
   } catch {
@@ -301,14 +308,19 @@ export async function download(req: Request, id: string, d: InboxDeps): Promise<
   const who = await account(d);
   const ticket = req.headers.get(TICKET_HEADER);
   const mine = !!who && who.id === it.ownerId;
-  // Tickets remain restricted to the dev accounts the agent can read.
+  // Two kinds of ticket. An approved agent's (lib/inbox/agent.ts) stays restricted
+  // to the dev accounts it can read. A chat token's (lib/inbox/thread-ticket.ts,
+  // scope "thread") was minted for a file on a line of the token's own thread,
+  // owned by that thread's account.
+  const at = (d.now ?? Date.now)();
   if (
     !mine &&
     !(
       ticket &&
       it.source === "chat" &&
-      (await holderIds(db, "dev")).includes(it.ownerId) &&
-      (await spendTicket(db, id, ticket, (d.now ?? Date.now)()))
+      ((await spendTicket(db, id, ticket, at, THREAD_TICKET)) ||
+        ((await holderIds(db, "dev")).includes(it.ownerId) &&
+          (await spendTicket(db, id, ticket, at))))
     )
   )
     return notFound();

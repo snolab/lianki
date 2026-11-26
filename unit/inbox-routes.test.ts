@@ -26,7 +26,7 @@ const fixture = () => {
   const values = {
     "inbox.maxFileBytes": 1024,
     "inbox.maxDayBytes": 4096,
-    "inbox.maxStoredBytes": 8192,
+    "files.quotaBytes": 8192,
     "inbox.uploadsPerMinute": 3,
   };
   const deps = createInboxDeps({

@@ -2472,12 +2472,25 @@ closes the old inbox and ignores late callbacks. No other `/api/dev` gate change
 The old `/api/dev/inbox/**` URLs are exact thin forwards, preserving existing
 widgets and the agent's single-use ticket downloads.
 
+**Every user's lines carry their files** (owner, 2026-11-26). The page sends
+`attachments` for every signed-in account. On a non-owner thread the hub keeps
+a ref only after the main Worker (`DebugSessions.threadFiles`,
+`lib/inbox/thread-files.ts`) confirms the id is that thread's account's own
+stored file, with name, type and size from the row; another account's id, an
+unknown one or no answer is dropped (the line still goes). A lane token
+(`chat:read`, never eval) can read a file on a line of its own thread with
+`lianki chat attachment get <id>`: the hub checks the id is on a line of the
+token's thread, the main Worker (`DebugSessions.threadTicket`,
+`lib/inbox/thread-ticket.ts`) checks the file is that thread's account's and
+mints a single-use 60 s ticket (scope `thread`, hashed apart from an agent's).
+No listing of a user's other files.
+
 | route                       | what                                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `POST /api/my/inbox`        | raw body, `x-file-name` (URI-encoded), `content-length` required; streamed to R2 (hashed on the way) |
 | `GET /api/my/inbox`         | his files and usage (settles accrued storage cost)                                                   |
 | `PATCH /api/my/inbox`       | `{ids, line}`: the chat line they were sent with                                                     |
-| `GET /api/my/inbox/<id>`    | the file: his session, or an agent's ticket in `x-inbox-ticket`                                      |
+| `GET /api/my/inbox/<id>`    | the file: his session, or an agent's or a chat token's ticket in `x-inbox-ticket`                    |
 | `DELETE /api/my/inbox/<id>` | his own session only; the object and the row go                                                      |
 
 - **Keys**: `inbox/<user id>/<yyyy>/<mm>/<id>` (`lib/inbox/keys.ts`); the name
@@ -2492,9 +2505,11 @@ widgets and the agent's single-use ticket downloads.
   No public URL: his session, or a single-use 60 s ticket.
 - **Caps** — live `cfg()` keys in `lib/config.ts`: `inbox.maxFileBytes`
   (public, also `publicCfg()` in the picker), `inbox.maxDayBytes`,
-  `inbox.maxStoredBytes`, `inbox.uploadsPerMinute`. Defaults: 20 MB per file,
-  200 MB per rolling 24 h per account, 2 GB stored per account (a safety cap,
-  not a plan limit), 30 uploads/min per account per isolate. Accounts do not
+  `files.quotaBytes`, `inbox.uploadsPerMinute`. Defaults: 20 MB per file,
+  200 MB per rolling 24 h per account, 5 GB stored per account (the account's
+  file space at /my/files, every source together; owner 2026-11-26), 30
+  uploads/min per account per isolate. Over the space, an upload answers 413
+  `storage-cap` with `used` and `max`, and the chat says both. Accounts do not
   spend each other's rate window. D1 checks stored/day caps atomically with
   the item/usage write, so concurrent uploads cannot bypass either cap.
   `0077_inbox_upload_log.sql` keeps only id/account/size/time: deleting a file

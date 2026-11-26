@@ -258,26 +258,44 @@ const hex = (b: ArrayBuffer) =>
 export const sha256Hex = async (s: string) =>
   hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
 
-/** A single-use download ticket for one file; only its hash is stored. */
-export async function mintTicket(db: InboxDb, id: string, now: number, ttlMs: number) {
+/** A chat token's ticket (lib/inbox/thread-ticket.ts): kept apart from an agent's by its hash. */
+export const THREAD_TICKET = "thread";
+/** What is hashed: the ticket alone (an agent's), or `<scope>:<ticket>`. */
+const ticketHash = (ticket: string, scope?: string) =>
+  sha256Hex(scope ? `${scope}:${ticket}` : ticket);
+
+/** A single-use download ticket for one file; only its hash is stored (a newer one replaces it). */
+export async function mintTicket(
+  db: InboxDb,
+  id: string,
+  now: number,
+  ttlMs: number,
+  scope?: string,
+) {
   const raw = new Uint8Array(32);
   crypto.getRandomValues(raw);
   const ticket = hex(raw.buffer);
   const r = await db
     .prepare("UPDATE inbox_item SET ticket_hash = ?, ticket_exp = ? WHERE id = ? RETURNING id")
-    .bind(await sha256Hex(ticket), now + ttlMs, id)
+    .bind(await ticketHash(ticket, scope), now + ttlMs, id)
     .first<{ id: string }>();
   return r ? { ticket, exp: now + ttlMs } : null;
 }
 
-/** Spend a ticket: true once, for its own file, before it expires. */
-export async function spendTicket(db: InboxDb, id: string, ticket: string, now: number) {
+/** Spend a ticket: true once, for its own file and scope, before it expires. */
+export async function spendTicket(
+  db: InboxDb,
+  id: string,
+  ticket: string,
+  now: number,
+  scope?: string,
+) {
   if (!/^[0-9a-f]{64}$/.test(ticket)) return false;
   const r = await db
     .prepare(
       "UPDATE inbox_item SET ticket_hash = NULL, ticket_exp = NULL WHERE id = ? AND ticket_hash = ? AND ticket_exp > ? RETURNING id",
     )
-    .bind(id, await sha256Hex(ticket), now)
+    .bind(id, await ticketHash(ticket, scope), now)
     .first<{ id: string }>();
   return !!r;
 }
