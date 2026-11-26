@@ -19,6 +19,7 @@ import { type Blocker, blockerText, cspBlocker } from "./guard";
 import { createShadowHost } from "./isolation";
 import { type PartnerClient, type PartnerDeps, createPartnerClient, pageLabel } from "./partner-client";
 import { type PortableCall, type PortableClient, createPortableClient } from "./portable-client";
+import { publishGeometry } from "./portable-geometry";
 
 export type MountOptions = {
   doc: Document;
@@ -272,11 +273,14 @@ export function mountPortable(o: PortableMountOptions): {
   // The main site's floating DebugChat itself: drag anywhere, bottom-right by default.
   root.render(<Portable client={client} o={o} portal={shadow.container} />);
   const untag = tagToggles(shadow.root, o.strings.collapse ?? o.strings.name);
+  const win = o.doc.defaultView ?? window;
+  const unpublish = publishGeometry(shadow.root, o.doc, win);
   return {
     portable: client,
     root: shadow.root,
     destroy() {
       untag();
+      unpublish();
       client.stop();
       root.unmount();
       shadow.destroy();

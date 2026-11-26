@@ -14,7 +14,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.57
+// @version     2.24.58
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -4912,27 +4912,27 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
     var process = { env: { NODE_ENV: "production" } };
     var module = { exports: {} },
       exports = module.exports;
-    var tZ = Object.create;
+    var rZ = Object.create;
     var {
-        getPrototypeOf: nZ,
+        getPrototypeOf: oZ,
         defineProperty: Td,
         getOwnPropertyNames: FL,
-        getOwnPropertyDescriptor: rZ,
+        getOwnPropertyDescriptor: iZ,
       } = Object,
       Vk = Object.prototype.hasOwnProperty;
     function BL(e) {
       return this[e];
     }
-    var oZ,
-      iZ,
+    var aZ,
+      sZ,
       ee = (e, t, n) => {
         var r = e != null && typeof e === "object";
         if (r) {
-          var o = t ? (oZ ??= new WeakMap()) : (iZ ??= new WeakMap()),
+          var o = t ? (aZ ??= new WeakMap()) : (sZ ??= new WeakMap()),
             i = o.get(e);
           if (i) return i;
         }
-        n = e != null ? tZ(nZ(e)) : {};
+        n = e != null ? rZ(oZ(e)) : {};
         let a =
           t || !e || !e.__esModule || !Vk.call(e, "default")
             ? Td(n, "default", { value: e, enumerable: true })
@@ -4944,7 +4944,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         if (r) o.set(e, a);
         return a;
       },
-      aZ = (e) => {
+      lZ = (e) => {
         var t = (UL ??= new WeakMap()).get(e),
           n;
         if (t) return t;
@@ -4954,35 +4954,35 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         ) {
           for (var r of FL(e))
             if (!Vk.call(t, r))
-              Td(t, r, { get: BL.bind(e, r), enumerable: !(n = rZ(e, r)) || n.enumerable });
+              Td(t, r, { get: BL.bind(e, r), enumerable: !(n = iZ(e, r)) || n.enumerable });
         }
         return (UL.set(e, t), t);
       },
       UL,
       Ko = (e, t) => () => (t || e((t = { exports: {} }).exports, t), t.exports);
-    var sZ = (e) => e;
-    function lZ(e, t) {
-      this[e] = sZ.bind(null, t);
+    var cZ = (e) => e;
+    function uZ(e, t) {
+      this[e] = cZ.bind(null, t);
     }
-    var cZ = (e, t) => {
+    var dZ = (e, t) => {
       for (var n in t)
-        Td(e, n, { get: t[n], enumerable: true, configurable: true, set: lZ.bind(t, n) });
+        Td(e, n, { get: t[n], enumerable: true, configurable: true, set: uZ.bind(t, n) });
     };
     var QL = Ko(function (Be) {
       var Wk = Symbol.for("react.transitional.element"),
-        uZ = Symbol.for("react.portal"),
-        dZ = Symbol.for("react.fragment"),
-        pZ = Symbol.for("react.strict_mode"),
-        fZ = Symbol.for("react.profiler"),
-        mZ = Symbol.for("react.consumer"),
-        gZ = Symbol.for("react.context"),
-        hZ = Symbol.for("react.forward_ref"),
-        bZ = Symbol.for("react.suspense"),
-        yZ = Symbol.for("react.memo"),
+        pZ = Symbol.for("react.portal"),
+        fZ = Symbol.for("react.fragment"),
+        mZ = Symbol.for("react.strict_mode"),
+        gZ = Symbol.for("react.profiler"),
+        hZ = Symbol.for("react.consumer"),
+        bZ = Symbol.for("react.context"),
+        yZ = Symbol.for("react.forward_ref"),
+        vZ = Symbol.for("react.suspense"),
+        kZ = Symbol.for("react.memo"),
         KL = Symbol.for("react.lazy"),
-        vZ = Symbol.for("react.activity"),
+        xZ = Symbol.for("react.activity"),
         VL = Symbol.iterator;
-      function kZ(e) {
+      function wZ(e) {
         if (e === null || typeof e !== "object") return null;
         return ((e = (VL && e[VL]) || e["@@iterator"]), typeof e === "function" ? e : null);
       }
@@ -5027,13 +5027,13 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         var r = n.ref;
         return { $$typeof: Wk, type: e, key: t, ref: r !== undefined ? r : null, props: n };
       }
-      function xZ(e, t) {
+      function SZ(e, t) {
         return Zk(e.type, t, e.props);
       }
       function qk(e) {
         return typeof e === "object" && e !== null && e.$$typeof === Wk;
       }
-      function wZ(e) {
+      function TZ(e) {
         var t = { "=": "=0", ":": "=2" };
         return (
           "$" +
@@ -5045,10 +5045,10 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
       var GL = /\/+/g;
       function jk(e, t) {
         return typeof e === "object" && e !== null && e.key != null
-          ? wZ("" + e.key)
+          ? TZ("" + e.key)
           : t.toString(36);
       }
-      function SZ(e) {
+      function AZ(e) {
         switch (e.status) {
           case "fulfilled":
             return e.value;
@@ -5092,7 +5092,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
             case "object":
               switch (e.$$typeof) {
                 case Wk:
-                case uZ:
+                case pZ:
                   a = true;
                   break;
                 case KL:
@@ -5111,7 +5111,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
                 }))
               : o != null &&
                 (qk(o) &&
-                  (o = xZ(
+                  (o = SZ(
                     o,
                     n +
                       (o.key == null || (e && e.key === o.key)
@@ -5127,11 +5127,11 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         if (jL(e))
           for (var l = 0; l < e.length; l++)
             ((r = e[l]), (i = s + jk(r, l)), (a += mc(r, t, n, i, o)));
-        else if (((l = kZ(e)), typeof l === "function"))
+        else if (((l = wZ(e)), typeof l === "function"))
           for (e = l.call(e), l = 0; !(r = e.next()).done; )
             ((r = r.value), (i = s + jk(r, l++)), (a += mc(r, t, n, i, o)));
         else if (i === "object") {
-          if (typeof e.then === "function") return mc(SZ(e), t, n, r, o);
+          if (typeof e.then === "function") return mc(AZ(e), t, n, r, o);
           throw (
             (t = String(e)),
             Error(
@@ -5156,7 +5156,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
           r
         );
       }
-      function TZ(e) {
+      function EZ(e) {
         if (e._status === -1) {
           var t = e._result;
           ((t = t()),
@@ -5194,7 +5194,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
                 }
                 console.error(e);
               },
-        AZ = {
+        _Z = {
           map: Eg,
           forEach: function (e, t, n) {
             Eg(
@@ -5227,14 +5227,14 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
             return e;
           },
         };
-      Be.Activity = vZ;
-      Be.Children = AZ;
+      Be.Activity = xZ;
+      Be.Children = _Z;
       Be.Component = gc;
-      Be.Fragment = dZ;
-      Be.Profiler = fZ;
+      Be.Fragment = fZ;
+      Be.Profiler = gZ;
       Be.PureComponent = Kk;
-      Be.StrictMode = pZ;
-      Be.Suspense = bZ;
+      Be.StrictMode = mZ;
+      Be.Suspense = vZ;
       Be.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE = Mt;
       Be.__COMPILER_RUNTIME = {
         __proto__: null,
@@ -5274,7 +5274,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
       Be.createContext = function (e) {
         return (
           (e = {
-            $$typeof: gZ,
+            $$typeof: bZ,
             _currentValue: e,
             _currentValue2: e,
             _threadCount: 0,
@@ -5282,7 +5282,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
             Consumer: null,
           }),
           (e.Provider = e),
-          (e.Consumer = { $$typeof: mZ, _context: e }),
+          (e.Consumer = { $$typeof: hZ, _context: e }),
           e
         );
       };
@@ -5307,14 +5307,14 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         return { current: null };
       };
       Be.forwardRef = function (e) {
-        return { $$typeof: hZ, render: e };
+        return { $$typeof: yZ, render: e };
       };
       Be.isValidElement = qk;
       Be.lazy = function (e) {
-        return { $$typeof: KL, _payload: { _status: -1, _result: e }, _init: TZ };
+        return { $$typeof: KL, _payload: { _status: -1, _result: e }, _init: EZ };
       };
       Be.memo = function (e, t) {
-        return { $$typeof: yZ, type: e, compare: t === undefined ? null : t };
+        return { $$typeof: kZ, type: e, compare: t === undefined ? null : t };
       };
       Be.startTransition = function (e) {
         var t = Mt.T,
@@ -5391,7 +5391,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
       };
       Be.version = "19.2.4";
     });
-    var We = Ko(function (kfe, eC) {
+    var We = Ko(function (wfe, eC) {
       eC.exports = QL();
     });
     var sC = Ko(function (Pt) {
@@ -5450,7 +5450,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         ex,
         Ai = [],
         Pa = [],
-        EZ = 1,
+        MZ = 1,
         Wr = null,
         Fn = 3,
         tx = false,
@@ -5632,7 +5632,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         return (
           (o = n + o),
           (e = {
-            id: EZ++,
+            id: MZ++,
             callback: t,
             priorityLevel: e,
             startTime: n,
@@ -5663,11 +5663,11 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         };
       };
     });
-    var cC = Ko(function (wfe, lC) {
+    var cC = Ko(function (Tfe, lC) {
       lC.exports = sC();
     });
     var dC = Ko(function (Wn) {
-      var _Z = We();
+      var RZ = We();
       function uC(e) {
         var t = "https://react.dev/errors/" + e;
         if (1 < arguments.length) {
@@ -5701,18 +5701,18 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
           p: 0,
           findDOMNode: null,
         },
-        MZ = Symbol.for("react.portal");
-      function RZ(e, t, n) {
+        LZ = Symbol.for("react.portal");
+      function CZ(e, t, n) {
         var r = 3 < arguments.length && arguments[3] !== undefined ? arguments[3] : null;
         return {
-          $$typeof: MZ,
+          $$typeof: LZ,
           key: r == null ? null : "" + r,
           children: e,
           containerInfo: t,
           implementation: n,
         };
       }
-      var Md = _Z.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var Md = RZ.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       function Ng(e, t) {
         if (e === "font") return "";
         if (typeof t === "string") return t === "use-credentials" ? t : "";
@@ -5721,7 +5721,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
       Wn.createPortal = function (e, t) {
         var n = 2 < arguments.length && arguments[2] !== undefined ? arguments[2] : null;
         if (!t || (t.nodeType !== 1 && t.nodeType !== 9 && t.nodeType !== 11)) throw Error(uC(299));
-        return RZ(e, t, null, n);
+        return CZ(e, t, null, n);
       };
       Wn.flushSync = function (e) {
         var t = Md.T,
@@ -5824,7 +5824,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
       };
       Wn.version = "19.2.4";
     });
-    var Rd = Ko(function (Tfe, fC) {
+    var Rd = Ko(function (Efe, fC) {
       function pC() {
         if (
           typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ > "u" ||
@@ -5842,7 +5842,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
     var SP = Ko(function (eb) {
       var mn = cC(),
         zN = We(),
-        LZ = Rd();
+        NZ = Rd();
       function ne(e) {
         var t = "https://react.dev/errors/" + e;
         if (1 < arguments.length) {
@@ -5891,7 +5891,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
       function mC(e) {
         if (yp(e) !== e) throw Error(ne(188));
       }
-      function CZ(e) {
+      function OZ(e) {
         var t = e.alternate;
         if (!t) {
           if (((t = yp(e)), t === null)) throw Error(ne(188));
@@ -5959,7 +5959,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         return null;
       }
       var Ct = Object.assign,
-        NZ = Symbol.for("react.element"),
+        PZ = Symbol.for("react.element"),
         Og = Symbol.for("react.transitional.element"),
         Id = Symbol.for("react.portal"),
         Sc = Symbol.for("react.fragment"),
@@ -5973,17 +5973,17 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         Iw = Symbol.for("react.memo"),
         Ia = Symbol.for("react.lazy"),
         Fx = Symbol.for("react.activity"),
-        OZ = Symbol.for("react.memo_cache_sentinel"),
+        DZ = Symbol.for("react.memo_cache_sentinel"),
         gC = Symbol.iterator;
       function Ld(e) {
         if (e === null || typeof e !== "object") return null;
         return ((e = (gC && e[gC]) || e["@@iterator"]), typeof e === "function" ? e : null);
       }
-      var PZ = Symbol.for("react.client.reference");
+      var IZ = Symbol.for("react.client.reference");
       function Bx(e) {
         if (e == null) return null;
         if (typeof e === "function")
-          return e.$$typeof === PZ ? null : e.displayName || e.name || null;
+          return e.$$typeof === IZ ? null : e.displayName || e.name || null;
         if (typeof e === "string") return e;
         switch (e) {
           case Sc:
@@ -6028,7 +6028,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
       }
       var zd = Array.isArray,
         $e = zN.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
-        ct = LZ.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+        ct = NZ.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
         tl = { pending: false, data: null, method: null, action: null },
         Vx = [],
         Tc = -1;
@@ -6198,7 +6198,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         }
         return (n = e ? e.displayName || e.name : "") ? qs(n) : "";
       }
-      function DZ(e, t) {
+      function zZ(e, t) {
         switch (e.tag) {
           case 26:
           case 27:
@@ -6227,7 +6227,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         try {
           var t = "",
             n = null;
-          do ((t += DZ(e, n)), (n = e), (e = e.return));
+          do ((t += zZ(e, n)), (n = e), (e = e.return));
           while (e);
           return t;
         } catch (r) {
@@ -6245,30 +6245,30 @@ Error generating stack: ` +
         {
           unstable_scheduleCallback: zw,
           unstable_cancelCallback: cx,
-          unstable_shouldYield: IZ,
-          unstable_requestPaint: zZ,
+          unstable_shouldYield: $Z,
+          unstable_requestPaint: HZ,
           unstable_now: Sr,
-          unstable_getCurrentPriorityLevel: $Z,
+          unstable_getCurrentPriorityLevel: UZ,
           unstable_ImmediatePriority: jN,
           unstable_UserBlockingPriority: GN,
           unstable_NormalPriority: ph,
-          unstable_LowPriority: HZ,
+          unstable_LowPriority: FZ,
           unstable_IdlePriority: WN,
-          log: UZ,
-          unstable_setDisableYieldValue: FZ,
+          log: BZ,
+          unstable_setDisableYieldValue: VZ,
         } = mn,
         vp = null,
         Tr = null;
       function Ba(e) {
-        if ((typeof UZ === "function" && FZ(e), Tr && typeof Tr.setStrictMode === "function"))
+        if ((typeof BZ === "function" && VZ(e), Tr && typeof Tr.setStrictMode === "function"))
           try {
             Tr.setStrictMode(vp, e);
           } catch (t) {}
       }
-      var Ar = Math.clz32 ? Math.clz32 : jZ,
-        { log: BZ, LN2: VZ } = Math;
-      function jZ(e) {
-        return ((e >>>= 0), e === 0 ? 32 : (31 - ((BZ(e) / VZ) | 0)) | 0);
+      var Ar = Math.clz32 ? Math.clz32 : WZ,
+        { log: jZ, LN2: GZ } = Math;
+      function WZ(e) {
+        return ((e >>>= 0), e === 0 ? 32 : (31 - ((jZ(e) / GZ) | 0)) | 0);
       }
       var Pg = 256,
         Dg = 262144,
@@ -6361,7 +6361,7 @@ Error generating stack: ` +
       function kp(e, t) {
         return (e.pendingLanes & ~(e.suspendedLanes & ~e.pingedLanes) & t) === 0;
       }
-      function GZ(e, t) {
+      function KZ(e, t) {
         switch (e) {
           case 1:
           case 2:
@@ -6414,7 +6414,7 @@ Error generating stack: ` +
         ((e.pendingLanes |= t),
           t !== 268435456 && ((e.suspendedLanes = 0), (e.pingedLanes = 0), (e.warmLanes = 0)));
       }
-      function WZ(e, t, n, r, o, i) {
+      function YZ(e, t, n, r, o, i) {
         var a = e.pendingLanes;
         ((e.pendingLanes = n),
           (e.suspendedLanes = 0),
@@ -6518,12 +6518,12 @@ Error generating stack: ` +
         sr = "__reactProps$" + as,
         Qc = "__reactContainer$" + as,
         Wx = "__reactEvents$" + as,
-        KZ = "__reactListeners$" + as,
-        YZ = "__reactHandles$" + as,
+        ZZ = "__reactListeners$" + as,
+        qZ = "__reactHandles$" + as,
         vC = "__reactResources$" + as,
         wp = "__reactMarker$" + as;
       function Uw(e) {
-        (delete e[Rn], delete e[sr], delete e[Wx], delete e[KZ], delete e[YZ]);
+        (delete e[Rn], delete e[sr], delete e[Wx], delete e[ZZ], delete e[qZ]);
       }
       function Ac(e) {
         var t = e[Rn];
@@ -6570,19 +6570,19 @@ Error generating stack: ` +
         QN[e] = t;
         for (e = 0; e < t.length; e++) JN.add(t[e]);
       }
-      var ZZ = RegExp(
+      var XZ = RegExp(
           "^[:A-Z_a-z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u02FF\\u0370-\\u037D\\u037F-\\u1FFF\\u200C-\\u200D\\u2070-\\u218F\\u2C00-\\u2FEF\\u3001-\\uD7FF\\uF900-\\uFDCF\\uFDF0-\\uFFFD][:A-Z_a-z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u02FF\\u0370-\\u037D\\u037F-\\u1FFF\\u200C-\\u200D\\u2070-\\u218F\\u2C00-\\u2FEF\\u3001-\\uD7FF\\uF900-\\uFDCF\\uFDF0-\\uFFFD\\-.0-9\\u00B7\\u0300-\\u036F\\u203F-\\u2040]*$",
         ),
         kC = {},
         xC = {};
-      function qZ(e) {
+      function JZ(e) {
         if (Gx.call(xC, e)) return true;
         if (Gx.call(kC, e)) return false;
-        if (ZZ.test(e)) return (xC[e] = true);
+        if (XZ.test(e)) return (xC[e] = true);
         return ((kC[e] = true), false);
       }
       function Kg(e, t, n) {
-        if (qZ(t))
+        if (JZ(t))
           if (n === null) e.removeAttribute(t);
           else {
             switch (typeof n) {
@@ -6649,7 +6649,7 @@ Error generating stack: ` +
           (e = e.nodeName) && e.toLowerCase() === "input" && (t === "checkbox" || t === "radio")
         );
       }
-      function XZ(e, t, n) {
+      function QZ(e, t, n) {
         var r = Object.getOwnPropertyDescriptor(e.constructor.prototype, t);
         if (
           !e.hasOwnProperty(t) &&
@@ -6686,7 +6686,7 @@ Error generating stack: ` +
       function Kx(e) {
         if (!e._valueTracker) {
           var t = eO(e) ? "checked" : "value";
-          e._valueTracker = XZ(e, t, "" + e[t]);
+          e._valueTracker = QZ(e, t, "" + e[t]);
         }
       }
       function tO(e) {
@@ -6710,9 +6710,9 @@ Error generating stack: ` +
           return e.body;
         }
       }
-      var JZ = /[\n"\\]/g;
+      var e7 = /[\n"\\]/g;
       function Xr(e) {
-        return e.replace(JZ, function (t) {
+        return e.replace(e7, function (t) {
           return "\\" + t.charCodeAt(0).toString(16) + " ";
         });
       }
@@ -6828,7 +6828,7 @@ Error generating stack: ` +
         }
         e.textContent = t;
       }
-      var QZ = new Set(
+      var t7 = new Set(
         "animationIterationCount aspectRatio borderImageOutset borderImageSlice borderImageWidth boxFlex boxFlexGroup boxOrdinalGroup columnCount columns flex flexGrow flexPositive flexShrink flexNegative flexOrder gridArea gridRow gridRowEnd gridRowSpan gridRowStart gridColumn gridColumnEnd gridColumnSpan gridColumnStart fontWeight lineClamp lineHeight opacity order orphans scale tabSize widows zIndex zoom fillOpacity floodOpacity stopOpacity strokeDasharray strokeDashoffset strokeMiterlimit strokeOpacity strokeWidth MozAnimationIterationCount MozBoxFlex MozBoxFlexGroup MozLineClamp msAnimationIterationCount msFlex msZoom msFlexGrow msFlexNegative msFlexOrder msFlexPositive msFlexShrink msGridColumn msGridColumnSpan msGridRow msGridRowSpan WebkitAnimationIterationCount WebkitBoxFlex WebKitBoxFlexGroup WebkitBoxOrdinalGroup WebkitColumnCount WebkitColumns WebkitFlex WebkitFlexGrow WebkitFlexPositive WebkitFlexShrink WebkitLineClamp".split(
           " ",
         ),
@@ -6843,7 +6843,7 @@ Error generating stack: ` +
               : (e[t] = "")
           : r
             ? e.setProperty(t, n)
-            : typeof n !== "number" || n === 0 || QZ.has(t)
+            : typeof n !== "number" || n === 0 || t7.has(t)
               ? t === "float"
                 ? (e.cssFloat = n)
                 : (e[t] = ("" + n).trim())
@@ -6879,7 +6879,7 @@ Error generating stack: ` +
             return true;
         }
       }
-      var e7 = new Map([
+      var n7 = new Map([
           ["acceptCharset", "accept-charset"],
           ["htmlFor", "for"],
           ["httpEquiv", "http-equiv"],
@@ -6959,10 +6959,10 @@ Error generating stack: ` +
           ["xmlnsXlink", "xmlns:xlink"],
           ["xHeight", "x-height"],
         ]),
-        t7 =
+        r7 =
           /^[\u0000-\u001F ]*j[\r\n\t]*a[\r\n\t]*v[\r\n\t]*a[\r\n\t]*s[\r\n\t]*c[\r\n\t]*r[\r\n\t]*i[\r\n\t]*p[\r\n\t]*t[\r\n\t]*:/i;
       function Yg(e) {
-        return t7.test("" + e)
+        return r7.test("" + e)
           ? "javascript:throw new Error('React has blocked a javascript: URL as a security precaution.')"
           : e;
       }
@@ -7177,7 +7177,7 @@ Error generating stack: ` +
         },
         Hh = lr(pl),
         Sp = Ct({}, pl, { view: 0, detail: 0 }),
-        n7 = lr(Sp),
+        o7 = lr(Sp),
         px,
         fx,
         Cd,
@@ -7218,21 +7218,21 @@ Error generating stack: ` +
           },
         }),
         AC = lr(Uh),
-        r7 = Ct({}, Uh, { dataTransfer: 0 }),
-        o7 = lr(r7),
-        i7 = Ct({}, Sp, { relatedTarget: 0 }),
-        mx = lr(i7),
-        a7 = Ct({}, pl, { animationName: 0, elapsedTime: 0, pseudoElement: 0 }),
-        s7 = lr(a7),
-        l7 = Ct({}, pl, {
+        i7 = Ct({}, Uh, { dataTransfer: 0 }),
+        a7 = lr(i7),
+        s7 = Ct({}, Sp, { relatedTarget: 0 }),
+        mx = lr(s7),
+        l7 = Ct({}, pl, { animationName: 0, elapsedTime: 0, pseudoElement: 0 }),
+        c7 = lr(l7),
+        u7 = Ct({}, pl, {
           clipboardData: function (e) {
             return "clipboardData" in e ? e.clipboardData : window.clipboardData;
           },
         }),
-        c7 = lr(l7),
-        u7 = Ct({}, pl, { data: 0 }),
-        EC = lr(u7),
-        d7 = {
+        d7 = lr(u7),
+        p7 = Ct({}, pl, { data: 0 }),
+        EC = lr(p7),
+        f7 = {
           Esc: "Escape",
           Spacebar: " ",
           Left: "ArrowLeft",
@@ -7246,7 +7246,7 @@ Error generating stack: ` +
           Scroll: "ScrollLock",
           MozPrintableKey: "Unidentified",
         },
-        p7 = {
+        m7 = {
           8: "Backspace",
           9: "Tab",
           12: "Clear",
@@ -7284,24 +7284,24 @@ Error generating stack: ` +
           145: "ScrollLock",
           224: "Meta",
         },
-        f7 = { Alt: "altKey", Control: "ctrlKey", Meta: "metaKey", Shift: "shiftKey" };
-      function m7(e) {
+        g7 = { Alt: "altKey", Control: "ctrlKey", Meta: "metaKey", Shift: "shiftKey" };
+      function h7(e) {
         var t = this.nativeEvent;
-        return t.getModifierState ? t.getModifierState(e) : (e = f7[e]) ? !!t[e] : false;
+        return t.getModifierState ? t.getModifierState(e) : (e = g7[e]) ? !!t[e] : false;
       }
       function jw() {
-        return m7;
+        return h7;
       }
-      var g7 = Ct({}, Sp, {
+      var b7 = Ct({}, Sp, {
           key: function (e) {
             if (e.key) {
-              var t = d7[e.key] || e.key;
+              var t = f7[e.key] || e.key;
               if (t !== "Unidentified") return t;
             }
             return e.type === "keypress"
               ? ((e = qg(e)), e === 13 ? "Enter" : String.fromCharCode(e))
               : e.type === "keydown" || e.type === "keyup"
-                ? p7[e.keyCode] || "Unidentified"
+                ? m7[e.keyCode] || "Unidentified"
                 : "";
           },
           code: 0,
@@ -7327,8 +7327,8 @@ Error generating stack: ` +
                 : 0;
           },
         }),
-        h7 = lr(g7),
-        b7 = Ct({}, Uh, {
+        y7 = lr(b7),
+        v7 = Ct({}, Uh, {
           pointerId: 0,
           width: 0,
           height: 0,
@@ -7340,8 +7340,8 @@ Error generating stack: ` +
           pointerType: 0,
           isPrimary: 0,
         }),
-        _C = lr(b7),
-        y7 = Ct({}, Sp, {
+        _C = lr(v7),
+        k7 = Ct({}, Sp, {
           touches: 0,
           targetTouches: 0,
           changedTouches: 0,
@@ -7351,10 +7351,10 @@ Error generating stack: ` +
           shiftKey: 0,
           getModifierState: jw,
         }),
-        v7 = lr(y7),
-        k7 = Ct({}, pl, { propertyName: 0, elapsedTime: 0, pseudoElement: 0 }),
         x7 = lr(k7),
-        w7 = Ct({}, Uh, {
+        w7 = Ct({}, pl, { propertyName: 0, elapsedTime: 0, pseudoElement: 0 }),
+        S7 = lr(w7),
+        T7 = Ct({}, Uh, {
           deltaX: function (e) {
             return "deltaX" in e ? e.deltaX : "wheelDeltaX" in e ? -e.wheelDeltaX : 0;
           },
@@ -7370,21 +7370,21 @@ Error generating stack: ` +
           deltaZ: 0,
           deltaMode: 0,
         }),
-        S7 = lr(w7),
-        T7 = Ct({}, pl, { newState: 0, oldState: 0 }),
         A7 = lr(T7),
-        E7 = [9, 13, 27, 32],
+        E7 = Ct({}, pl, { newState: 0, oldState: 0 }),
+        _7 = lr(E7),
+        M7 = [9, 13, 27, 32],
         Gw = Hi && "CompositionEvent" in window,
         Gd = null;
       Hi && "documentMode" in document && (Gd = document.documentMode);
-      var _7 = Hi && "TextEvent" in window && !Gd,
+      var R7 = Hi && "TextEvent" in window && !Gd,
         lO = Hi && (!Gw || (Gd && 8 < Gd && 11 >= Gd)),
         MC = String.fromCharCode(32),
         RC = false;
       function cO(e, t) {
         switch (e) {
           case "keyup":
-            return E7.indexOf(t.keyCode) !== -1;
+            return M7.indexOf(t.keyCode) !== -1;
           case "keydown":
             return t.keyCode !== 229;
           case "keypress":
@@ -7399,7 +7399,7 @@ Error generating stack: ` +
         return ((e = e.detail), typeof e === "object" && "data" in e ? e.data : null);
       }
       var _c = false;
-      function M7(e, t) {
+      function L7(e, t) {
         switch (e) {
           case "compositionend":
             return uO(t);
@@ -7412,7 +7412,7 @@ Error generating stack: ` +
             return null;
         }
       }
-      function R7(e, t) {
+      function C7(e, t) {
         if (_c)
           return e === "compositionend" || (!Gw && cO(e, t))
             ? ((e = sO()), (Zg = Vw = Va = null), (_c = false), e)
@@ -7432,7 +7432,7 @@ Error generating stack: ` +
             return null;
         }
       }
-      var L7 = {
+      var N7 = {
         color: true,
         date: true,
         datetime: true,
@@ -7451,7 +7451,7 @@ Error generating stack: ` +
       };
       function LC(e) {
         var t = e && e.nodeName && e.nodeName.toLowerCase();
-        return t === "input" ? !!L7[e.type] : t === "textarea" ? true : false;
+        return t === "input" ? !!N7[e.type] : t === "textarea" ? true : false;
       }
       function dO(e, t, n, r) {
         (Ec ? (zc ? zc.push(r) : (zc = [r])) : (Ec = r),
@@ -7461,7 +7461,7 @@ Error generating stack: ` +
       }
       var Wd = null,
         ap = null;
-      function C7(e) {
+      function O7(e) {
         aP(e, 0);
       }
       function Fh(e) {
@@ -7489,27 +7489,27 @@ Error generating stack: ` +
       function fO(e) {
         if (e.propertyName === "value" && Fh(ap)) {
           var t = [];
-          (dO(t, ap, e, Bw(e)), aO(C7, t));
+          (dO(t, ap, e, Bw(e)), aO(O7, t));
         }
       }
-      function N7(e, t, n) {
+      function P7(e, t, n) {
         e === "focusin"
           ? (NC(), (Wd = t), (ap = n), Wd.attachEvent("onpropertychange", fO))
           : e === "focusout" && NC();
       }
-      function O7(e) {
+      function D7(e) {
         if (e === "selectionchange" || e === "keyup" || e === "keydown") return Fh(ap);
       }
-      function P7(e, t) {
+      function I7(e, t) {
         if (e === "click") return Fh(t);
       }
-      function D7(e, t) {
+      function z7(e, t) {
         if (e === "input" || e === "change") return Fh(t);
       }
-      function I7(e, t) {
+      function $7(e, t) {
         return (e === t && (e !== 0 || 1 / e === 1 / t)) || (e !== e && t !== t);
       }
-      var _r = typeof Object.is === "function" ? Object.is : I7;
+      var _r = typeof Object.is === "function" ? Object.is : $7;
       function sp(e, t) {
         if (_r(e, t)) return true;
         if (typeof e !== "object" || e === null || typeof t !== "object" || t === null)
@@ -7595,7 +7595,7 @@ Error generating stack: ` +
             e.contentEditable === "true")
         );
       }
-      var z7 = Hi && "documentMode" in document && 11 >= document.documentMode,
+      var H7 = Hi && "documentMode" in document && 11 >= document.documentMode,
         Mc = null,
         Jx = null,
         Kd = null,
@@ -7661,9 +7661,9 @@ Error generating stack: ` +
       var bO = fl("animationend"),
         yO = fl("animationiteration"),
         vO = fl("animationstart"),
-        $7 = fl("transitionrun"),
-        H7 = fl("transitionstart"),
-        U7 = fl("transitioncancel"),
+        U7 = fl("transitionrun"),
+        F7 = fl("transitionstart"),
+        B7 = fl("transitioncancel"),
         kO = fl("transitionend"),
         xO = new Map(),
         ew =
@@ -7759,7 +7759,7 @@ Error generating stack: ` +
         return e.tag === 3 ? e.stateNode : null;
       }
       var Cc = {};
-      function F7(e, t, n, r) {
+      function V7(e, t, n, r) {
         ((this.tag = e),
           (this.key = n),
           (this.sibling =
@@ -7780,7 +7780,7 @@ Error generating stack: ` +
           (this.alternate = null));
       }
       function xr(e, t, n, r) {
-        return new F7(e, t, n, r);
+        return new V7(e, t, n, r);
       }
       function Zw(e) {
         return ((e = e.prototype), !(!e || !e.isReactComponent));
@@ -7849,7 +7849,7 @@ Error generating stack: ` +
         var a = 0;
         if (((r = e), typeof e === "function")) Zw(e) && (a = 1);
         else if (typeof e === "string")
-          a = jq(e, n, Jo.current) ? 26 : e === "html" || e === "head" || e === "body" ? 27 : 5;
+          a = Wq(e, n, Jo.current) ? 26 : e === "html" || e === "head" || e === "body" ? 27 : 5;
         else
           e: switch (e) {
             case Fx:
@@ -8198,7 +8198,7 @@ Error generating stack: ` +
         } else Di = Di.next = t;
         return n;
       }
-      var B7 =
+      var j7 =
           typeof AbortController < "u"
             ? AbortController
             : function () {
@@ -8216,7 +8216,7 @@ Error generating stack: ` +
                     }));
                 };
               },
-        { unstable_scheduleCallback: V7, unstable_NormalPriority: j7 } = mn,
+        { unstable_scheduleCallback: G7, unstable_NormalPriority: W7 } = mn,
         an = {
           $$typeof: Oi,
           Consumer: null,
@@ -8226,12 +8226,12 @@ Error generating stack: ` +
           _threadCount: 0,
         };
       function Jw() {
-        return { controller: new B7(), data: new Map(), refCount: 0 };
+        return { controller: new j7(), data: new Map(), refCount: 0 };
       }
       function Tp(e) {
         (e.refCount--,
           e.refCount === 0 &&
-            V7(j7, function () {
+            G7(W7, function () {
               e.controller.abort();
             }));
       }
@@ -8239,7 +8239,7 @@ Error generating stack: ` +
         iw = 0,
         Gc = 0,
         $c = null;
-      function G7(e, t) {
+      function K7(e, t) {
         if (Yd === null) {
           var n = (Yd = []);
           ((iw = 0),
@@ -8262,7 +8262,7 @@ Error generating stack: ` +
           for (var t = 0; t < e.length; t++) (0, e[t])();
         }
       }
-      function W7(e, t) {
+      function Y7(e, t) {
         var n = [],
           r = {
             status: "pending",
@@ -8289,7 +8289,7 @@ Error generating stack: ` +
       var UC = $e.S;
       $e.S = function (e, t) {
         ((F2 = Sr()),
-          typeof t === "object" && t !== null && typeof t.then === "function" && G7(e, t),
+          typeof t === "object" && t !== null && typeof t.then === "function" && K7(e, t),
           UC !== null && UC(e, t));
       };
       var rl = Qo(null);
@@ -8378,7 +8378,7 @@ Error generating stack: ` +
         ((t = t.props.ref), (e.ref = t !== undefined ? t : null));
       }
       function Fg(e, t) {
-        if (t.$$typeof === NZ) throw Error(ne(525));
+        if (t.$$typeof === PZ) throw Error(ne(525));
         throw (
           (e = Object.prototype.toString.call(t)),
           Error(
@@ -8932,7 +8932,7 @@ Error generating stack: ` +
         wh = 0,
         dp = 0,
         Fc = null,
-        K7 = 0;
+        Z7 = 0;
       function jt() {
         throw Error(ne(321));
       }
@@ -8980,7 +8980,7 @@ Error generating stack: ` +
         } while (Uc);
         return i;
       }
-      function Y7() {
+      function q7() {
         var e = $e.H,
           t = e.useState()[0];
         return (
@@ -9081,7 +9081,7 @@ Error generating stack: ` +
           (n = t.data[t.index]),
           n === undefined)
         )
-          for (n = t.data[t.index] = Array(e), r = 0; r < e; r++) n[r] = OZ;
+          for (n = t.data[t.index] = Array(e), r = 0; r < e; r++) n[r] = DZ;
         return (t.index++, n);
       }
       function Fi(e, t) {
@@ -9271,7 +9271,7 @@ Error generating stack: ` +
       function VO(e, t, n, r) {
         return ((e.baseState = n), cS(e, bt, typeof r === "function" ? r : Fi));
       }
-      function Z7(e, t, n, r, o) {
+      function X7(e, t, n, r, o) {
         if (Yh(e)) throw Error(ne(485));
         if (((e = t.action), e !== null)) {
           var i = {
@@ -9407,7 +9407,7 @@ Error generating stack: ` +
           (r = Kn()),
           (o = { state: t, dispatch: null, action: e, pending: null }),
           (r.queue = o),
-          (n = Z7.bind(null, je, o, i, n)),
+          (n = X7.bind(null, je, o, i, n)),
           (o.dispatch = n),
           (r.memoizedState = e),
           [t, n, false]
@@ -9435,11 +9435,11 @@ Error generating stack: ` +
           i = o.dispatch;
         return (
           n !== t.memoizedState &&
-            ((je.flags |= 2048), Kc(9, { destroy: undefined }, q7.bind(null, o, n), null)),
+            ((je.flags |= 2048), Kc(9, { destroy: undefined }, J7.bind(null, o, n), null)),
           [r, i, e]
         );
       }
-      function q7(e, t) {
+      function J7(e, t) {
         e.action = t;
       }
       function ZC(e) {
@@ -9484,7 +9484,7 @@ Error generating stack: ` +
       function uS(e, t) {
         Kh(2048, 8, e, t);
       }
-      function X7(e) {
+      function Q7(e) {
         je.flags |= 4;
         var t = je.updateQueue;
         if (t === null) ((t = Gh()), (je.updateQueue = t), (t.events = [e]));
@@ -9496,7 +9496,7 @@ Error generating stack: ` +
       function ZO(e) {
         var t = qt().memoizedState;
         return (
-          X7({ ref: t, nextImpl: e }),
+          Q7({ ref: t, nextImpl: e }),
           function () {
             if ((lt & 2) !== 0) throw Error(ne(440));
             return t.impl.apply(undefined, arguments);
@@ -9578,7 +9578,7 @@ Error generating stack: ` +
             (c !== null && c(s, l),
             l !== null && typeof l === "object" && typeof l.then === "function")
           ) {
-            var u = W7(l, r);
+            var u = Y7(l, r);
             Jd(e, t, u, Er(e));
           } else Jd(e, t, r, Er(e));
         } catch (f) {
@@ -9587,7 +9587,7 @@ Error generating stack: ` +
           ((ct.p = i), a !== null && s.types !== null && (a.types = s.types), ($e.T = a));
         }
       }
-      function J7() {}
+      function eq() {}
       function pw(e, t, n, r) {
         if (e.tag !== 5) throw Error(ne(476));
         var o = o2(e).queue;
@@ -9597,7 +9597,7 @@ Error generating stack: ` +
           t,
           tl,
           n === null
-            ? J7
+            ? eq
             : function () {
                 return (i2(e), n(r));
               },
@@ -9653,7 +9653,7 @@ Error generating stack: ` +
       function s2() {
         return qt().memoizedState;
       }
-      function Q7(e) {
+      function tq(e) {
         for (var t = e.return; t !== null; ) {
           switch (t.tag) {
             case 24:
@@ -9667,7 +9667,7 @@ Error generating stack: ` +
           t = t.return;
         }
       }
-      function eq(e, t, n) {
+      function nq(e, t, n) {
         var r = Er();
         ((n = {
           lane: r,
@@ -9826,7 +9826,7 @@ Error generating stack: ` +
                 lastRenderedState: o,
               }),
               (r.queue = e),
-              (e = e.dispatch = eq.bind(null, je, e)),
+              (e = e.dispatch = nq.bind(null, je, e)),
               [r.memoizedState, e]
             );
           },
@@ -9882,7 +9882,7 @@ Error generating stack: ` +
                 (n = wh++),
                 0 < n && (t += "H" + n.toString(32)),
                 (t += "_"));
-            } else ((n = K7++), (t = "_" + t + "r_" + n.toString(32) + "_"));
+            } else ((n = Z7++), (t = "_" + t + "r_" + n.toString(32) + "_"));
             return (e.memoizedState = t);
           },
           useHostTransitionStatus: fS,
@@ -9902,7 +9902,7 @@ Error generating stack: ` +
           },
           useMemoCache: lS,
           useCacheRefresh: function () {
-            return (Kn().memoizedState = Q7.bind(null, je));
+            return (Kn().memoizedState = tq.bind(null, je));
           },
           useEffectEvent: function (e) {
             var t = Kn(),
@@ -10123,7 +10123,7 @@ Error generating stack: ` +
             this.componentDidCatch(r.value, { componentStack: s !== null ? s : "" });
           });
       }
-      function tq(e, t, n, r, o) {
+      function rq(e, t, n, r, o) {
         if (
           ((n.flags |= 32768), r !== null && typeof r === "object" && typeof r.then === "function")
         ) {
@@ -10352,7 +10352,7 @@ Error generating stack: ` +
           e
         );
       }
-      function nq(e, t, n) {
+      function oq(e, t, n) {
         var r = t.pendingProps,
           o = (t.flags & 128) !== 0;
         if (((t.flags &= -129), e === null)) {
@@ -10862,7 +10862,7 @@ Error generating stack: ` +
         if ((e.lanes & t) !== 0) return true;
         return ((e = e.dependencies), e !== null && bh(e) ? true : false);
       }
-      function rq(e, t, n) {
+      function iq(e, t, n) {
         switch (t.tag) {
           case 3:
             (uh(t, t.stateNode.containerInfo), $a(t, an, e.memoizedState.cache), al());
@@ -10918,7 +10918,7 @@ Error generating stack: ` +
         if (e !== null)
           if (e.memoizedProps !== t.pendingProps) sn = true;
           else {
-            if (!bS(e, n) && (t.flags & 128) === 0) return ((sn = false), rq(e, t, n));
+            if (!bS(e, n) && (t.flags & 128) === 0) return ((sn = false), iq(e, t, n));
             sn = (e.flags & 131072) !== 0 ? true : false;
           }
         else ((sn = false), et && (t.flags & 1048576) !== 0 && AO(t, lp, t.index));
@@ -11037,7 +11037,7 @@ Error generating stack: ` +
           case 5:
             if (e === null && et) {
               if ((o = r = Lt))
-                ((r = Cq(r, t.type, t.pendingProps, Qr)),
+                ((r = Oq(r, t.type, t.pendingProps, Qr)),
                   r !== null
                     ? ((t.stateNode = r),
                       (Ln = t),
@@ -11055,7 +11055,7 @@ Error generating stack: ` +
               (r = i.children),
               Mw(o, i) ? (r = null) : a !== null && Mw(o, a) && (t.flags |= 32),
               t.memoizedState !== null &&
-                ((o = oS(e, t, Y7, null, null, n)), (gp._currentValue = o)),
+                ((o = oS(e, t, q7, null, null, n)), (gp._currentValue = o)),
               rh(e, t),
               Mn(e, t, r, n),
               t.child
@@ -11063,7 +11063,7 @@ Error generating stack: ` +
           case 6:
             if (e === null && et) {
               if ((e = n = Lt))
-                ((n = Nq(n, t.pendingProps, Qr)),
+                ((n = Pq(n, t.pendingProps, Qr)),
                   n !== null
                     ? ((t.stateNode = n), (Ln = t), (Lt = null), (e = true))
                     : (e = false));
@@ -11107,7 +11107,7 @@ Error generating stack: ` +
           case 19:
             return x2(e, t, n);
           case 31:
-            return nq(e, t, n);
+            return oq(e, t, n);
           case 22:
             return v2(e, t, n, t.pendingProps);
           case 24:
@@ -11203,7 +11203,7 @@ Error generating stack: ` +
               (o = o.sibling));
         return ((e.subtreeFlags |= r), (e.childLanes = n), t);
       }
-      function oq(e, t, n) {
+      function aq(e, t, n) {
         var r = t.pendingProps;
         switch ((Xw(t), t.tag)) {
           case 16:
@@ -11530,7 +11530,7 @@ Error generating stack: ` +
         }
         throw Error(ne(156, t.tag));
       }
-      function iq(e, t) {
+      function sq(e, t) {
         switch ((Xw(t), t.tag)) {
           case 1:
             return ((e = t.flags), e & 65536 ? ((t.flags = (e & -65537) | 128), t) : null);
@@ -11744,7 +11744,7 @@ Error generating stack: ` +
       function Mx(e, t, n) {
         try {
           var r = e.stateNode;
-          (Aq(r, e.type, n, t), (r[sr] = t));
+          (_q(r, e.type, n, t), (r[sr] = t));
         } catch (o) {
           mt(e, e.return, o);
         }
@@ -11814,7 +11814,7 @@ Error generating stack: ` +
         Lx = false,
         cN = typeof WeakSet === "function" ? WeakSet : Set,
         bn = null;
-      function aq(e, t) {
+      function lq(e, t) {
         if (((e = e.containerInfo), (Ew = Ih), (e = gO(e)), Ww(e))) {
           if ("selectionStart" in e) var n = { start: e.selectionStart, end: e.selectionEnd };
           else
@@ -11995,7 +11995,7 @@ Error generating stack: ` +
               r & 64 &&
                 ((e = n.memoizedState),
                 e !== null &&
-                  ((e = e.dehydrated), e !== null && ((n = gq.bind(null, n)), Oq(e, n)))));
+                  ((e = e.dehydrated), e !== null && ((n = bq.bind(null, n)), Dq(e, n)))));
             break;
           case 22:
             if (((r = n.memoizedState !== null || Ni), !r)) {
@@ -12147,7 +12147,7 @@ Error generating stack: ` +
             mt(t, t.return, n);
           }
       }
-      function sq(e) {
+      function cq(e) {
         switch (e.tag) {
           case 31:
           case 13:
@@ -12166,11 +12166,11 @@ Error generating stack: ` +
         }
       }
       function Vg(e, t) {
-        var n = sq(e);
+        var n = cq(e);
         t.forEach(function (r) {
           if (!n.has(r)) {
             n.add(r);
-            var o = hq.bind(null, e, r);
+            var o = yq.bind(null, e, r);
             r.then(o, o);
           }
         });
@@ -12758,7 +12758,7 @@ Error generating stack: ` +
             (vc(e, t, n),
               e.flags & Bd &&
                 e.memoizedState !== null &&
-                Gq(n, ho, e.memoizedState, e.memoizedProps));
+                Kq(n, ho, e.memoizedState, e.memoizedProps));
             break;
           case 5:
             vc(e, t, n);
@@ -12887,7 +12887,7 @@ Error generating stack: ` +
             }
         }
       }
-      var lq = {
+      var uq = {
           getCacheForType: function (e) {
             var t = Cn(an),
               n = t.data.get(e);
@@ -12897,7 +12897,7 @@ Error generating stack: ` +
             return Cn(an).controller.signal;
           },
         },
-        cq = typeof WeakMap === "function" ? WeakMap : Map,
+        dq = typeof WeakMap === "function" ? WeakMap : Map,
         lt = 0,
         wt = null,
         Xe = null,
@@ -12951,14 +12951,14 @@ Error generating stack: ` +
       function j2(e, t, n) {
         if ((lt & 6) !== 0) throw Error(ne(327));
         var r = (!n && (t & 127) === 0 && (t & e.expiredLanes) === 0) || kp(e, t),
-          o = r ? pq(e, t) : Cx(e, t, true),
+          o = r ? mq(e, t) : Cx(e, t, true),
           i = r;
         do {
           if (o === 0) {
             ru && !r && Ga(e, t, 0, false);
             break;
           } else {
-            if (((n = e.current.alternate), i && !uq(n))) {
+            if (((n = e.current.alternate), i && !pq(n))) {
               ((o = Cx(e, t, false)), (i = false));
               continue;
             }
@@ -13042,7 +13042,7 @@ Error generating stack: ` +
           }),
             z2(t, i, f));
           var g = (i & 62914560) === i ? Zh - Sr() : (i & 4194048) === i ? F2 - Sr() : 0;
-          if (((g = Wq(f, g)), g !== null)) {
+          if (((g = Yq(f, g)), g !== null)) {
             (($i = i),
               (e.cancelPendingCommit = g(
                 pN.bind(null, e, t, i, n, r, o, a, s, l, u, f, null, p, m),
@@ -13053,7 +13053,7 @@ Error generating stack: ` +
         }
         pN(e, t, i, n, r, o, a, s, l);
       }
-      function uq(e) {
+      function pq(e) {
         for (var t = e; ; ) {
           var n = t.tag;
           if (
@@ -13110,7 +13110,7 @@ Error generating stack: ` +
       }
       function qc(e, t) {
         var n = e.timeoutHandle;
-        (n !== -1 && ((e.timeoutHandle = -1), Mq(n)),
+        (n !== -1 && ((e.timeoutHandle = -1), Lq(n)),
           (n = e.cancelPendingCommit),
           n !== null && ((e.cancelPendingCommit = null), n()),
           ($i = 0),
@@ -13170,7 +13170,7 @@ Error generating stack: ` +
       }
       function Y2() {
         var e = $e.A;
-        return (($e.A = lq), e);
+        return (($e.A = uq), e);
       }
       function Mh() {
         ((Gt = 4),
@@ -13211,7 +13211,7 @@ Error generating stack: ` +
                   ((c = ft), (ft = 0), (vr = null), Pc(e, s, l, c));
               }
             }
-            (dq(), (a = Gt));
+            (fq(), (a = Gt));
             break;
           } catch (u) {
             G2(e, u);
@@ -13227,10 +13227,10 @@ Error generating stack: ` +
           a
         );
       }
-      function dq() {
+      function fq() {
         for (; Xe !== null; ) Z2(Xe);
       }
-      function pq(e, t) {
+      function mq(e, t) {
         var n = lt;
         lt |= 2;
         var r = K2(),
@@ -13296,7 +13296,7 @@ Error generating stack: ` +
                   throw Error(ne(462));
               }
             }
-            fq();
+            gq();
             break;
           } catch (u) {
             G2(e, u);
@@ -13305,8 +13305,8 @@ Error generating stack: ` +
         if (((Di = gl = null), ($e.H = r), ($e.A = o), (lt = n), Xe !== null)) return 0;
         return ((wt = null), (Qe = 0), Bh(), Gt);
       }
-      function fq() {
-        for (; Xe !== null && !IZ(); ) Z2(Xe);
+      function gq() {
+        for (; Xe !== null && !$Z(); ) Z2(Xe);
       }
       function Z2(e) {
         var t = w2(e.alternate, e, Vi);
@@ -13334,7 +13334,7 @@ Error generating stack: ` +
         ((Di = gl = null), sS(t), (Hc = null), (up = 0));
         var o = t.return;
         try {
-          if (tq(e, o, t, n, Qe)) {
+          if (rq(e, o, t, n, Qe)) {
             ((Gt = 1), Sh(e, Jr(n, e.current)), (Xe = null));
             return;
           }
@@ -13359,7 +13359,7 @@ Error generating stack: ` +
             return;
           }
           e = t.return;
-          var n = oq(t.alternate, t, Vi);
+          var n = aq(t.alternate, t, Vi);
           if (n !== null) {
             Xe = n;
             return;
@@ -13374,7 +13374,7 @@ Error generating stack: ` +
       }
       function q2(e, t) {
         do {
-          var n = iq(e.alternate, e);
+          var n = sq(e.alternate, e);
           if (n !== null) {
             ((n.flags &= 32767), (Xe = n));
             return;
@@ -13401,7 +13401,7 @@ Error generating stack: ` +
           if (
             ((i = t.lanes | t.childLanes),
             (i |= Kw),
-            WZ(e, n, i, a, s, l),
+            YZ(e, n, i, a, s, l),
             e === wt && ((Xe = wt = null), (Qe = 0)),
             (Zc = t),
             (Ja = e),
@@ -13412,7 +13412,7 @@ Error generating stack: ` +
             (t.subtreeFlags & 10256) !== 0 || (t.flags & 10256) !== 0
               ? ((e.callbackNode = null),
                 (e.callbackPriority = 0),
-                bq(ph, function () {
+                vq(ph, function () {
                   return (tP(), null);
                 }))
               : ((e.callbackNode = null), (e.callbackPriority = 0)),
@@ -13421,7 +13421,7 @@ Error generating stack: ` +
           ) {
             ((r = $e.T), ($e.T = null), (o = ct.p), (ct.p = 2), (a = lt), (lt |= 4));
             try {
-              aq(e, t, n);
+              lq(e, t, n);
             } finally {
               ((lt = a), (ct.p = o), ($e.T = r));
             }
@@ -13521,7 +13521,7 @@ Error generating stack: ` +
       }
       function Q2() {
         if (fn === 4 || fn === 3) {
-          ((fn = 0), zZ());
+          ((fn = 0), HZ());
           var e = Ja,
             t = Zc,
             n = $i,
@@ -13630,13 +13630,13 @@ Error generating stack: ` +
       function Nx(e, t, n) {
         var r = e.pingCache;
         if (r === null) {
-          r = e.pingCache = new cq();
+          r = e.pingCache = new dq();
           var o = new Set();
           r.set(t, o);
         } else ((o = r.get(t)), o === undefined && ((o = new Set()), r.set(t, o)));
-        o.has(n) || ((kS = true), o.add(n), (e = mq.bind(null, e, t, n)), t.then(e, e));
+        o.has(n) || ((kS = true), o.add(n), (e = hq.bind(null, e, t, n)), t.then(e, e));
       }
-      function mq(e, t, n) {
+      function hq(e, t, n) {
         var r = e.pingCache;
         (r !== null && r.delete(t),
           (e.pingedLanes |= e.suspendedLanes & n),
@@ -13652,12 +13652,12 @@ Error generating stack: ` +
       function nP(e, t) {
         (t === 0 && (t = KN()), (e = ml(e, t)), e !== null && (xp(e, t), ei(e)));
       }
-      function gq(e) {
+      function bq(e) {
         var t = e.memoizedState,
           n = 0;
         (t !== null && (n = t.retryLane), nP(e, n));
       }
-      function hq(e, t) {
+      function yq(e, t) {
         var n = 0;
         switch (e.tag) {
           case 31:
@@ -13676,7 +13676,7 @@ Error generating stack: ` +
         }
         (r !== null && r.delete(t), nP(e, n));
       }
-      function bq(e, t) {
+      function vq(e, t) {
         return zw(e, t);
       }
       var Rh = null,
@@ -13688,7 +13688,7 @@ Error generating stack: ` +
       function ei(e) {
         (e !== xc && e.next === null && (xc === null ? (Rh = xc = e) : (xc = xc.next = e)),
           (Lh = true),
-          ww || ((ww = true), vq()));
+          ww || ((ww = true), xq()));
       }
       function _p(e, t) {
         if (!Ox && Lh) {
@@ -13722,13 +13722,13 @@ Error generating stack: ` +
           Ox = false;
         }
       }
-      function yq() {
+      function kq() {
         rP();
       }
       function rP() {
         Lh = ww = false;
         var e = 0;
-        Wa !== 0 && _q() && (e = Wa);
+        Wa !== 0 && Rq() && (e = Wa);
         for (var t = Sr(), n = null, r = Rh; r !== null; ) {
           var o = r.next,
             i = oP(r, t);
@@ -13749,7 +13749,7 @@ Error generating stack: ` +
             s = 1 << a,
             l = o[a];
           if (l === -1) {
-            if ((s & n) === 0 || (s & r) !== 0) o[a] = GZ(s, t);
+            if ((s & n) === 0 || (s & r) !== 0) o[a] = KZ(s, t);
           } else l <= t && (e.expiredLanes |= s);
           i &= ~s;
         }
@@ -13811,9 +13811,9 @@ Error generating stack: ` +
         if (Jh()) return null;
         j2(e, t, true);
       }
-      function vq() {
-        Rq(function () {
-          (lt & 6) !== 0 ? zw(jN, yq) : rP();
+      function xq() {
+        Cq(function () {
+          (lt & 6) !== 0 ? zw(jN, kq) : rP();
         });
       }
       function SS() {
@@ -13842,7 +13842,7 @@ Error generating stack: ` +
           e
         );
       }
-      function kq(e, t, n, r, o) {
+      function wq(e, t, n, r, o) {
         if (t === "submit" && n && n.stateNode === o) {
           var i = gN((o[sr] || null).action),
             a = r.submitter;
@@ -13885,9 +13885,9 @@ Error generating stack: ` +
       bo("dblclick", "onDoubleClick");
       bo("focusin", "onFocus");
       bo("focusout", "onBlur");
-      bo($7, "onTransitionRun");
-      bo(H7, "onTransitionStart");
-      bo(U7, "onTransitionCancel");
+      bo(U7, "onTransitionRun");
+      bo(F7, "onTransitionStart");
+      bo(B7, "onTransitionCancel");
       bo(kO, "onTransitionEnd");
       Vc("onMouseEnter", ["mouseout", "mouseover"]);
       Vc("onMouseLeave", ["mouseout", "mouseover"]);
@@ -13917,7 +13917,7 @@ Error generating stack: ` +
           "abort canplay canplaythrough durationchange emptied encrypted ended error loadeddata loadedmetadata loadstart pause play playing progress ratechange resize seeked seeking stalled suspend timeupdate volumechange waiting".split(
             " ",
           ),
-        xq = new Set(
+        Sq = new Set(
           "beforetoggle cancel close invalid load scroll scrollend toggle".split(" ").concat(fp),
         );
       function aP(e, t) {
@@ -13978,7 +13978,7 @@ Error generating stack: ` +
         if (!e[jg]) {
           ((e[jg] = true),
             JN.forEach(function (n) {
-              n !== "selectionchange" && (xq.has(n) || Px(n, false, e), Px(n, true, e));
+              n !== "selectionchange" && (Sq.has(n) || Px(n, false, e), Px(n, true, e));
             }));
           var t = e.nodeType === 9 ? e : e.ownerDocument;
           t === null || t[jg] || ((t[jg] = true), Px("selectionchange", false, t));
@@ -13987,10 +13987,10 @@ Error generating stack: ` +
       function sP(e, t, n, r) {
         switch (kP(t)) {
           case 2:
-            var o = Zq;
+            var o = Xq;
             break;
           case 8:
-            o = qq;
+            o = Jq;
             break;
           default:
             o = MS;
@@ -14046,7 +14046,7 @@ Error generating stack: ` +
                   if (qg(n) === 0) break e;
                 case "keydown":
                 case "keyup":
-                  m = h7;
+                  m = y7;
                   break;
                 case "focusin":
                   ((g = "focus"), (m = mx));
@@ -14078,33 +14078,33 @@ Error generating stack: ` +
                 case "dragover":
                 case "dragstart":
                 case "drop":
-                  m = o7;
+                  m = a7;
                   break;
                 case "touchcancel":
                 case "touchend":
                 case "touchmove":
                 case "touchstart":
-                  m = v7;
+                  m = x7;
                   break;
                 case bO:
                 case yO:
                 case vO:
-                  m = s7;
+                  m = c7;
                   break;
                 case kO:
-                  m = x7;
+                  m = S7;
                   break;
                 case "scroll":
                 case "scrollend":
-                  m = n7;
+                  m = o7;
                   break;
                 case "wheel":
-                  m = S7;
+                  m = A7;
                   break;
                 case "copy":
                 case "cut":
                 case "paste":
-                  m = c7;
+                  m = d7;
                   break;
                 case "gotpointercapture":
                 case "lostpointercapture":
@@ -14118,7 +14118,7 @@ Error generating stack: ` +
                   break;
                 case "toggle":
                 case "beforetoggle":
-                  m = A7;
+                  m = _7;
               }
               var h = (t & 4) !== 0,
                 y = !h && (e === "scroll" || e === "scrollend"),
@@ -14193,7 +14193,7 @@ Error generating stack: ` +
                     m && g)
                   )
                     t: {
-                      ((h = wq), (b = m), (v = g), (x = 0));
+                      ((h = Tq), (b = m), (v = g), (x = 0));
                       for (w = b; w; w = h(w)) x++;
                       w = 0;
                       for (var T = v; T; T = h(T)) w++;
@@ -14222,16 +14222,16 @@ Error generating stack: ` +
               )
                 var A = CC;
               else if (LC(p))
-                if (pO) A = D7;
+                if (pO) A = z7;
                 else {
-                  A = O7;
-                  var C = N7;
+                  A = D7;
+                  var C = P7;
                 }
               else
                 ((m = p.nodeName),
                   !m || m.toLowerCase() !== "input" || (p.type !== "checkbox" && p.type !== "radio")
                     ? c && Fw(c.elementType) && (A = CC)
-                    : (A = P7));
+                    : (A = I7));
               if (A && (A = A(e, c))) {
                 dO(f, A, n, u);
                 break e;
@@ -14259,7 +14259,7 @@ Error generating stack: ` +
                 ((Qx = false), DC(f, n, u));
                 break;
               case "selectionchange":
-                if (z7) break;
+                if (H7) break;
               case "keydown":
               case "keyup":
                 DC(f, n, u);
@@ -14296,14 +14296,14 @@ Error generating stack: ` +
                   ((R = new EC(R, e, null, n, u)),
                   f.push({ event: R, listeners: C }),
                   S ? (R.data = S) : ((S = uO(n)), S !== null && (R.data = S)))),
-              (S = _7 ? M7(e, n) : R7(e, n)))
+              (S = R7 ? L7(e, n) : C7(e, n)))
             )
               ((R = Ch(c, "onBeforeInput")),
                 0 < R.length &&
                   ((C = new EC("onBeforeInput", "beforeinput", null, n, u)),
                   f.push({ event: C, listeners: R }),
                   (C.data = S)));
-            kq(f, e, c, n, u);
+            wq(f, e, c, n, u);
           }
           aP(f, t);
         });
@@ -14330,7 +14330,7 @@ Error generating stack: ` +
         }
         return [];
       }
-      function wq(e) {
+      function Tq(e) {
         if (e === null) return null;
         do e = e.return;
         while (e && e.tag !== 5 && e.tag !== 27);
@@ -14352,16 +14352,16 @@ Error generating stack: ` +
         }
         a.length !== 0 && e.push({ event: t, listeners: a });
       }
-      var Sq = /\r\n?/g,
-        Tq = /\u0000|\uFFFD/g;
+      var Aq = /\r\n?/g,
+        Eq = /\u0000|\uFFFD/g;
       function yN(e) {
         return (typeof e === "string" ? e : "" + e)
           .replace(
-            Sq,
+            Aq,
             `
 `,
           )
-          .replace(Tq, "");
+          .replace(Eq, "");
       }
       function lP(e, t) {
         return ((t = yN(t)), yN(e) === t ? true : false);
@@ -14579,7 +14579,7 @@ Error generating stack: ` +
             break;
           default:
             if (!(2 < n.length) || (n[0] !== "o" && n[0] !== "O") || (n[1] !== "n" && n[1] !== "N"))
-              ((n = e7.get(n) || n), Kg(e, n, r));
+              ((n = n7.get(n) || n), Kg(e, n, r));
         }
       }
       function Aw(e, t, n, r, o, i) {
@@ -14821,7 +14821,7 @@ Error generating stack: ` +
         }
         for (s in n) n.hasOwnProperty(s) && ((r = n[s]), r != null && ht(e, t, s, r, n, null));
       }
-      function Aq(e, t, n, r) {
+      function _q(e, t, n, r) {
         switch (t) {
           case "div":
           case "span":
@@ -15047,7 +15047,7 @@ Error generating stack: ` +
             return false;
         }
       }
-      function Eq() {
+      function Mq() {
         if (typeof performance.getEntriesByType === "function") {
           for (
             var e = 0, t = 0, n = performance.getEntriesByType("resource"), r = 0;
@@ -15116,7 +15116,7 @@ Error generating stack: ` +
         );
       }
       var Ix = null;
-      function _q() {
+      function Rq() {
         var e = window.event;
         if (e && e.type === "popstate") {
           if (e === Ix) return false;
@@ -15125,17 +15125,17 @@ Error generating stack: ` +
         return ((Ix = null), false);
       }
       var uP = typeof setTimeout === "function" ? setTimeout : undefined,
-        Mq = typeof clearTimeout === "function" ? clearTimeout : undefined,
+        Lq = typeof clearTimeout === "function" ? clearTimeout : undefined,
         xN = typeof Promise === "function" ? Promise : undefined,
-        Rq =
+        Cq =
           typeof queueMicrotask === "function"
             ? queueMicrotask
             : typeof xN < "u"
               ? function (e) {
-                  return xN.resolve(null).then(e).catch(Lq);
+                  return xN.resolve(null).then(e).catch(Nq);
                 }
               : uP;
-      function Lq(e) {
+      function Nq(e) {
         setTimeout(function () {
           throw e;
         });
@@ -15218,7 +15218,7 @@ Error generating stack: ` +
           e.removeChild(n);
         }
       }
-      function Cq(e, t, n, r) {
+      function Oq(e, t, n, r) {
         for (; e.nodeType === 1; ) {
           var o = n;
           if (e.nodeName.toLowerCase() !== t.toLowerCase()) {
@@ -15271,7 +15271,7 @@ Error generating stack: ` +
         }
         return null;
       }
-      function Nq(e, t, n) {
+      function Pq(e, t, n) {
         if (t === "") return null;
         for (; e.nodeType !== 3; ) {
           if ((e.nodeType !== 1 || e.nodeName !== "INPUT" || e.type !== "hidden") && !n)
@@ -15294,7 +15294,7 @@ Error generating stack: ` +
       function Cw(e) {
         return e.data === "$!" || (e.data === "$?" && e.ownerDocument.readyState !== "loading");
       }
-      function Oq(e, t) {
+      function Dq(e, t) {
         var n = e.ownerDocument;
         if (e.data === "$~") e._reactRetry = t;
         else if (e.data !== "$?" || n.readyState !== "loading") t();
@@ -15384,13 +15384,13 @@ Error generating stack: ` +
             : e.ownerDocument;
       }
       var ji = ct.d;
-      ct.d = { f: Pq, r: Dq, D: Iq, C: zq, L: $q, m: Hq, X: Fq, S: Uq, M: Bq };
-      function Pq() {
+      ct.d = { f: Iq, r: zq, D: $q, C: Hq, L: Uq, m: Fq, X: Vq, S: Bq, M: jq };
+      function Iq() {
         var e = ji.f(),
           t = qh();
         return e || t;
       }
-      function Dq(e) {
+      function zq(e) {
         var t = eu(e);
         t !== null && t.tag === 5 && t.type === "form" ? i2(t) : ji.r(e);
       }
@@ -15408,13 +15408,13 @@ Error generating stack: ` +
                 ((t = r.createElement("link")), Nn(t, "link", e), yn(t), r.head.appendChild(t))));
         }
       }
-      function Iq(e) {
+      function $q(e) {
         (ji.D(e), fP("dns-prefetch", e, null));
       }
-      function zq(e, t) {
+      function Hq(e, t) {
         (ji.C(e, t), fP("preconnect", e, t));
       }
-      function $q(e, t, n) {
+      function Uq(e, t, n) {
         ji.L(e, t, n);
         var r = ou;
         if (r && e && t) {
@@ -15446,7 +15446,7 @@ Error generating stack: ` +
               ((t = r.createElement("link")), Nn(t, "link", e), yn(t), r.head.appendChild(t)));
         }
       }
-      function Hq(e, t) {
+      function Fq(e, t) {
         ji.m(e, t);
         var n = ou;
         if (n && e) {
@@ -15481,7 +15481,7 @@ Error generating stack: ` +
           }
         }
       }
-      function Uq(e, t, n) {
+      function Bq(e, t, n) {
         ji.S(e, t, n);
         var r = ou;
         if (r && e) {
@@ -15514,7 +15514,7 @@ Error generating stack: ` +
           }
         }
       }
-      function Fq(e, t) {
+      function Vq(e, t) {
         ji.X(e, t);
         var n = ou;
         if (n && e) {
@@ -15534,7 +15534,7 @@ Error generating stack: ` +
             r.set(o, i));
         }
       }
-      function Bq(e, t) {
+      function jq(e, t) {
         ji.M(e, t);
         var n = ou;
         if (n && e) {
@@ -15603,7 +15603,7 @@ Error generating stack: ` +
                       referrerPolicy: n.referrerPolicy,
                     }),
                     no.set(e, n),
-                    i || Vq(o, e, n, a.state))),
+                    i || Gq(o, e, n, a.state))),
                 t && r === null)
               )
                 throw Error(ne(528, ""));
@@ -15637,7 +15637,7 @@ Error generating stack: ` +
       function mP(e) {
         return Ct({}, e, { "data-precedence": e.precedence, precedence: null });
       }
-      function Vq(e, t, n, r) {
+      function Gq(e, t, n, r) {
         e.querySelector('link[rel="preload"][as="style"][' + t + "]")
           ? (r.loading = 1)
           : ((t = e.createElement("link")),
@@ -15774,7 +15774,7 @@ Error generating stack: ` +
         ((e = e.ownerDocument || e),
           e.head.insertBefore(n, t === "title" ? e.querySelector("head > title") : null));
       }
-      function jq(e, t, n) {
+      function Wq(e, t, n) {
         if (n === 1 || t.itemProp != null) return false;
         switch (e) {
           case "meta":
@@ -15816,7 +15816,7 @@ Error generating stack: ` +
       function gP(e) {
         return e.type === "stylesheet" && (e.state.loading & 3) === 0 ? false : true;
       }
-      function Gq(e, t, n, r) {
+      function Kq(e, t, n, r) {
         if (
           n.type === "stylesheet" &&
           (typeof r.media !== "string" || matchMedia(r.media).matches !== false) &&
@@ -15859,7 +15859,7 @@ Error generating stack: ` +
         }
       }
       var zx = 0;
-      function Wq(e, t) {
+      function Yq(e, t) {
         return (
           e.stylesheets && e.count === 0 && sh(e, e.stylesheets),
           0 < e.count || 0 < e.imgCount
@@ -15870,7 +15870,7 @@ Error generating stack: ` +
                     ((e.unsuspend = null), i());
                   }
                 }, 60000 + t);
-                0 < e.imgBytes && zx === 0 && (zx = 62500 * Eq());
+                0 < e.imgBytes && zx === 0 && (zx = 62500 * Mq());
                 var o = setTimeout(
                   function () {
                     if (
@@ -15906,9 +15906,9 @@ Error generating stack: ` +
       function sh(e, t) {
         ((e.stylesheets = null),
           e.unsuspend !== null &&
-            (e.count++, (Dh = new Map()), t.forEach(Kq, e), (Dh = null), Ph.call(e)));
+            (e.count++, (Dh = new Map()), t.forEach(Zq, e), (Dh = null), Ph.call(e)));
       }
-      function Kq(e, t) {
+      function Zq(e, t) {
         if (!(t.state.loading & 4)) {
           var n = Dh.get(e);
           if (n) var r = n.get(null);
@@ -15948,7 +15948,7 @@ Error generating stack: ` +
         _currentValue2: tl,
         _threadCount: 0,
       };
-      function Yq(e, t, n, r, o, i, a, s, l) {
+      function qq(e, t, n, r, o, i, a, s, l) {
         ((this.tag = 1),
           (this.containerInfo = e),
           (this.pingCache = this.current = this.pendingChildren = null),
@@ -15983,7 +15983,7 @@ Error generating stack: ` +
       }
       function hP(e, t, n, r, o, i, a, s, l, c, u, f) {
         return (
-          (e = new Yq(e, t, n, a, l, c, u, f, s)),
+          (e = new qq(e, t, n, a, l, c, u, f, s)),
           (t = 1),
           i === true && (t |= 24),
           (i = xr(3, null, null, t)),
@@ -16036,7 +16036,7 @@ Error generating stack: ` +
         }
       }
       var Ih = true;
-      function Zq(e, t, n, r) {
+      function Xq(e, t, n, r) {
         var o = $e.T;
         $e.T = null;
         var i = ct.p;
@@ -16046,7 +16046,7 @@ Error generating stack: ` +
           ((ct.p = i), ($e.T = o));
         }
       }
-      function qq(e, t, n, r) {
+      function Jq(e, t, n, r) {
         var o = $e.T;
         $e.T = null;
         var i = ct.p;
@@ -16060,8 +16060,8 @@ Error generating stack: ` +
         if (Ih) {
           var o = Ow(r);
           if (o === null) (Dx(e, t, r, zh, n), ON(e, r));
-          else if (Jq(o, e, t, n, r)) r.stopPropagation();
-          else if ((ON(e, r), t & 4 && -1 < Xq.indexOf(e))) {
+          else if (eX(o, e, t, n, r)) r.stopPropagation();
+          else if ((ON(e, r), t & 4 && -1 < Qq.indexOf(e))) {
             for (; o !== null; ) {
               var i = eu(o);
               if (i !== null)
@@ -16192,13 +16192,13 @@ Error generating stack: ` +
           case "pointerleave":
             return 8;
           case "message":
-            switch ($Z()) {
+            switch (UZ()) {
               case jN:
                 return 2;
               case GN:
                 return 8;
               case ph:
-              case HZ:
+              case FZ:
                 return 32;
               case WN:
                 return 268435456;
@@ -16216,7 +16216,7 @@ Error generating stack: ` +
         hp = new Map(),
         bp = new Map(),
         Fa = [],
-        Xq =
+        Qq =
           "mousedown mouseup touchcancel touchend touchstart auxclick dblclick pointercancel pointerdown pointerup dragend dragstart drop compositionend compositionstart keydown keypress keyup input textInput copy cut paste click change contextmenu reset".split(
             " ",
           );
@@ -16263,7 +16263,7 @@ Error generating stack: ` +
           e
         );
       }
-      function Jq(e, t, n, r, o) {
+      function eX(e, t, n, r, o) {
         switch (t) {
           case "focusin":
             return ((Qa = Dd(Qa, e, t, n, r, o)), true);
@@ -16324,7 +16324,7 @@ Error generating stack: ` +
       function PN(e, t, n) {
         lh(e) && n.delete(t);
       }
-      function Qq() {
+      function tX() {
         ((Pw = false),
           Qa !== null && lh(Qa) && (Qa = null),
           es !== null && lh(es) && (es = null),
@@ -16335,7 +16335,7 @@ Error generating stack: ` +
       function Gg(e, t) {
         e.blockedOn === t &&
           ((e.blockedOn = null),
-          Pw || ((Pw = true), mn.unstable_scheduleCallback(mn.unstable_NormalPriority, Qq)));
+          Pw || ((Pw = true), mn.unstable_scheduleCallback(mn.unstable_NormalPriority, tX)));
       }
       var Wg = null;
       function DN(e) {
@@ -16474,10 +16474,10 @@ Error generating stack: ` +
           throw ((e = Object.keys(e).join(",")), Error(ne(268, e)));
         }
         return (
-          (e = CZ(t)), (e = e !== null ? FN(e) : null), (e = e === null ? null : e.stateNode), e
+          (e = OZ(t)), (e = e !== null ? FN(e) : null), (e = e === null ? null : e.stateNode), e
         );
       };
-      var eX = {
+      var nX = {
         bundleType: 0,
         version: "19.2.4",
         rendererPackageName: "react-dom",
@@ -16487,7 +16487,7 @@ Error generating stack: ` +
       if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ < "u") {
         if (((wc = __REACT_DEVTOOLS_GLOBAL_HOOK__), !wc.isDisabled && wc.supportsFiber))
           try {
-            ((vp = wc.inject(eX)), (Tr = wc));
+            ((vp = wc.inject(nX)), (Tr = wc));
           } catch (e) {}
       }
       var wc;
@@ -16548,7 +16548,7 @@ Error generating stack: ` +
       };
       eb.version = "19.2.4";
     });
-    var EP = Ko(function (Efe, AP) {
+    var EP = Ko(function (Mfe, AP) {
       function TP() {
         if (
           typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ > "u" ||
@@ -16564,8 +16564,8 @@ Error generating stack: ` +
       (TP(), (AP.exports = SP()));
     });
     var DP = Ko(function (nb) {
-      var oX = Symbol.for("react.transitional.element"),
-        iX = Symbol.for("react.fragment");
+      var aX = Symbol.for("react.transitional.element"),
+        sX = Symbol.for("react.fragment");
       function PP(e, t, n) {
         var r = null;
         if (
@@ -16575,30 +16575,30 @@ Error generating stack: ` +
           for (var o in t) o !== "key" && (n[o] = t[o]);
         } else n = t;
         return (
-          (t = n.ref), { $$typeof: oX, type: e, key: r, ref: t !== undefined ? t : null, props: n }
+          (t = n.ref), { $$typeof: aX, type: e, key: r, ref: t !== undefined ? t : null, props: n }
         );
       }
-      nb.Fragment = iX;
+      nb.Fragment = sX;
       nb.jsx = PP;
       nb.jsxs = PP;
     });
-    var we = Ko(function (Lfe, IP) {
+    var we = Ko(function (Nfe, IP) {
       IP.exports = DP();
     });
-    var gfe = {};
-    cZ(gfe, { mountPartner: () => mfe, mountPortable: () => ffe });
-    module.exports = aZ(gfe);
+    var bfe = {};
+    dZ(bfe, { mountPartner: () => hfe, mountPortable: () => gfe });
+    module.exports = lZ(bfe);
     var OM = ee(We(), 1),
       PM = ee(EP(), 1);
     var au = ee(We(), 1),
       $P = ee(Rd(), 1);
-    var tX = new Set(["sdk", "sdk-js", "presets", "new", "api", "edit", "settings"]),
+    var rX = new Set(["sdk", "sdk-js", "presets", "new", "api", "edit", "settings"]),
       _P = (e) =>
         typeof e === "string" &&
         e.length <= 40 &&
         /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(e) &&
-        !tX.has(e);
-    function nX(e) {
+        !rX.has(e);
+    function oX(e) {
       if (!Array.isArray(e)) return;
       let t = new Map();
       for (let n of e)
@@ -16630,7 +16630,7 @@ Error generating stack: ` +
     function LP(e) {
       return e && (MP.has(e) || RP(e)) ? e : "https://lianki.com";
     }
-    function rX(e, t) {
+    function iX(e, t) {
       if (
         /[\\\s]/.test(e) ||
         e.startsWith("//") ||
@@ -16651,10 +16651,10 @@ Error generating stack: ` +
       let r = [...(t ?? [])],
         o = e.matchAll(/https?:\/\/[^\s<>"']+|(?<![\w/:])\/m\/[^\s<>"']+/g);
       for (let i of o) {
-        let a = rX(i[0].replace(/[)\],.!?;:]+$/, ""), n);
+        let a = iX(i[0].replace(/[)\],.!?;:]+$/, ""), n);
         if (a) r.push({ type: "app", slug: a });
       }
-      return nX(r) ?? [];
+      return oX(r) ?? [];
     }
     function tb(e, t, n) {
       let r = Number.isFinite(t) ? Math.max(0, t) : 0,
@@ -16824,11 +16824,11 @@ Error generating stack: ` +
     function HP(e) {
       return cr.jsx(cr.Fragment, {
         children: CP(e.text, e.apps, e.origin).map((t) =>
-          cr.jsx(aX, { ...e, slug: t.slug }, `${e.scope ?? ""}:${t.slug}`),
+          cr.jsx(lX, { ...e, slug: t.slug }, `${e.scope ?? ""}:${t.slug}`),
         ),
       });
     }
-    function aX({ slug: e, origin: t, labels: n, sizing: r, renderHost: o, portalRoot: i }) {
+    function lX({ slug: e, origin: t, labels: n, sizing: r, renderHost: o, portalRoot: i }) {
       let [a, s] = au.useState(null),
         [l, c] = au.useState(true),
         [u, f] = au.useState(false);
@@ -16999,7 +16999,7 @@ Error generating stack: ` +
       return CS.includes(t) ? t : "en";
     }
     var le = "the Learning Partner chat (Li), a small chat panel on every Lianki page",
-      Hfe = {
+      Ffe = {
         polished: `In ${le}: the small mark on a voice message the partner tidied up (punctuation, misheard words); tooltip and label. One word, a past participle.`,
         summary: `In ${le}: the visible tag on a line that sums up a run of the user's spoken lines that were background talk. One word (a noun).`,
         summaryTip: `In ${le}: the tooltip of that 'Summary' tag: it is a summary of what was heard, and a tap shows the lines as heard.`,
@@ -17026,7 +17026,7 @@ Error generating stack: ` +
         restoreChat: `In ${le}: tooltip and label of the Li mark on the minimized pill, and the menu row that replaces 'Minimize': opens the full chat again. An imperative phrase.`,
         untuckChat: `In ${le}: tooltip and label of the handle left on the screen edge: brings the small chat pill back. An imperative phrase.`,
       },
-      Ufe = {
+      Bfe = {
         linkMenuTitle: `In ${le}: Heading and accessible name of the action menu opened by tapping a URL in a chat message. This menu is only for chat links, not links elsewhere on the page.`,
         linkOpen: `In ${le}: Action in that menu: follow the selected URL, using the existing external-site confirmation when needed. On the production site or for an external URL. Short imperative.`,
         linkOpenHere: `In ${le}: Action for a Lianki URL while the chat is on preview.lianki.com: open the same path/query/hash on the CURRENT preview site rather than lianki.com. Parenthetical this site clarifies the destination.`,
@@ -17536,7 +17536,7 @@ Error generating stack: ` +
           untuckChat: "채팅 다시 꺼내기",
         },
       },
-      sX = {
+      cX = {
         en: {
           modelDownloadConfirm:
             "Download about {mb} MB for wake words? This connection may use mobile or metered data, or its type is unknown. Data charges may apply. Cancel to keep regular speech recognition without downloading.",
@@ -19423,8 +19423,8 @@ Error generating stack: ` +
           playNoStream: "이 브라우저는 이 스트림을 재생할 수 없어요",
         },
       };
-    var kn = (e) => sX[ro(e)];
-    var lX = {
+    var kn = (e) => cX[ro(e)];
+    var uX = {
         en: {
           temporary: "This approval only",
           remember: "Remember until revoked",
@@ -19522,19 +19522,19 @@ Error generating stack: ` +
             "이 기기의 이 계정에 속한 모든 페이지입니다. 로그아웃하면 접근이 중지되고 여기서 다시 로그인하면 재개됩니다. 종료하면 저장된 신뢰가 삭제됩니다.",
         },
       },
-      VP = () => lX[ro()];
+      VP = () => uX[ro()];
     function jP(e) {
       let t = e.split(/[?#]/)[0].split("/").filter(Boolean)[0];
       return t ? `/${t}` : "/";
     }
     var Yn = "/",
-      cX = /^[A-Za-z0-9._~-]+$/;
+      dX = /^[A-Za-z0-9._~-]+$/;
     function rb(e) {
       if (typeof e !== "string") return;
       let t = e.trim();
       if (!t || t.length > 160) return;
       let n = t.split(/\s*[/›]\s*/).filter(Boolean);
-      if (n.some((o) => !cX.test(o) || o === "." || o === "..")) return;
+      if (n.some((o) => !dX.test(o) || o === "." || o === "..")) return;
       let r = `/${n.join("/")}`;
       return r.length <= 80 ? r : undefined;
     }
@@ -19542,10 +19542,10 @@ Error generating stack: ` +
       let t = e.split("/").filter(Boolean);
       return t.length ? `/${t.join(" › ")}` : "/";
     }
-    var uX = /^@(\/?(?:[A-Za-z0-9._~-]+(?:(?:\/|\s*›\s*)[A-Za-z0-9._~-]+)*)?\/?)(?:\s+([\s\S]*))?$/;
+    var pX = /^@(\/?(?:[A-Za-z0-9._~-]+(?:(?:\/|\s*›\s*)[A-Za-z0-9._~-]+)*)?\/?)(?:\s+([\s\S]*))?$/;
     function Lp(e) {
       if (!e.startsWith("@/")) return null;
-      let t = uX.exec(e);
+      let t = pX.exec(e);
       if (!t) return null;
       let n = rb(t[1] || "/");
       if (!n) return null;
@@ -19563,7 +19563,7 @@ Error generating stack: ` +
         .sort((r, o) => r.length - o.length || r.localeCompare(o))
         .slice(0, 8);
     }
-    function dX(e) {
+    function fX(e) {
       let t = 2166136261,
         n = `node:${e}`;
       for (let r = 0; r < n.length; r++) ((t ^= n.charCodeAt(r)), (t = Math.imul(t, 16777619)));
@@ -19575,7 +19575,7 @@ Error generating stack: ` +
       if (!t && !n) return null;
       let r = t ? (n ? `${cs(t)} → ${cs(n)}` : cs(t)) : `→ ${cs(n)}`,
         o = t || n;
-      return { node: o, subtitle: r, border: `oklch(0.7 0.09 ${dX(o)})` };
+      return { node: o, subtitle: r, border: `oklch(0.7 0.09 ${fX(o)})` };
     }
     var Gi = 4000;
     function XP(e, t) {
@@ -19593,7 +19593,7 @@ Error generating stack: ` +
         ...(t.passage ? { passage: t.passage } : {}),
       };
     }
-    function pX(e) {
+    function mX(e) {
       let t = 2166136261;
       for (let n = 0; n < e.length; n++) ((t ^= e.charCodeAt(n)), (t = Math.imul(t, 16777619)));
       return (t >>> 0).toString(36);
@@ -19625,23 +19625,23 @@ Error generating stack: ` +
     var WP = (e, t) => (Math.max(e, t) + 0.05) / (Math.min(e, t) + 0.05),
       KP = 0.7,
       YP = 0.12,
-      fX = [
+      gX = [
         { css: "oklch(0.2 0 0)", y: QP(0.2, 0, 0) },
         { css: "oklch(1 0 0)", y: 1 },
       ];
     function eD(e) {
-      let t = parseInt(pX(`avatar:${e}`), 36) % 360,
+      let t = parseInt(mX(`avatar:${e}`), 36) % 360,
         n = QP(KP, YP, t),
-        r = fX.reduce((o, i) => (WP(i.y, n) > WP(o.y, n) ? i : o));
+        r = gX.reduce((o, i) => (WP(i.y, n) > WP(o.y, n) ? i : o));
       return { bg: `oklch(${KP} ${YP} ${t})`, fg: r.css, hue: t };
     }
-    var mX = 0.25;
+    var hX = 0.25;
     function NS(e) {
       let t = (e.match(/\p{Script=Hiragana}/gu) ?? []).length,
         n = (e.match(/\p{Script=Katakana}/gu) ?? []).length,
         r = (e.match(/\p{Script=Han}/gu) ?? []).length;
       if ((t || n) && r === 0) return "ja-JP";
-      if (t && t / (t + n + r) >= mX) return "ja-JP";
+      if (t && t / (t + n + r) >= hX) return "ja-JP";
       if (/\p{Script=Hangul}/u.test(e)) return "ko-KR";
       if (r) return "zh-CN";
       return "en-US";
@@ -19967,16 +19967,16 @@ Error generating stack: ` +
       return Object.keys(a).length ? a : undefined;
     }
     var zS = 10,
-      gX = 200,
-      hX = /[\u0000-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+      bX = 200,
+      yX = /[\u0000-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
     function $S(e) {
       return (
         (typeof e === "string" ? e : "")
-          .replace(hX, "")
+          .replace(yX, "")
           .split(/[\\/]/)
           .at(-1)
           .trim()
-          .slice(0, gX) || "file"
+          .slice(0, bX) || "file"
       );
     }
     function oD(e) {
@@ -20031,16 +20031,16 @@ Error generating stack: ` +
     function sb(e, t) {
       return t !== null && e === t && !!e.trim() ? "stt" : undefined;
     }
-    var bX = ["me", "other", "unknown", "self"],
-      yX = /^[a-z0-9][a-z0-9-]{0,47}$/,
-      vX = /^[a-z0-9][a-z0-9-]{0,31}$/,
+    var vX = ["me", "other", "unknown", "self"],
+      kX = /^[a-z0-9][a-z0-9-]{0,47}$/,
+      xX = /^[a-z0-9][a-z0-9-]{0,31}$/,
       lb = /^([A-Z]{1,3}|household:[a-z0-9]{1,16})$/,
       aD = /^(me|s[1-9]\d{0,2})$/;
     function HS(e) {
       if (!e || typeof e !== "object" || Array.isArray(e)) return;
       let t = e,
         n = t.decision;
-      if (typeof n !== "string" || !bX.includes(n)) return;
+      if (typeof n !== "string" || !vX.includes(n)) return;
       let r = { decision: n },
         o = (c, u, f) =>
           typeof c === "number" && Number.isFinite(c) && c >= u && c <= f ? c : undefined,
@@ -20052,7 +20052,7 @@ Error generating stack: ` +
       if (s !== undefined) r.snrDb = Math.round(s * 10) / 10;
       for (let c of ["model", "device", "reason"]) {
         let u = t[c];
-        if (typeof u === "string" && vX.test(u)) r[c] = u;
+        if (typeof u === "string" && xX.test(u)) r[c] = u;
       }
       if (typeof t.voice === "string" && aD.test(t.voice)) r.voice = t.voice;
       if (typeof t.cluster === "string" && lb.test(t.cluster)) {
@@ -20062,7 +20062,7 @@ Error generating stack: ` +
       }
       let l = o(t.selfScore, -1, 1);
       if (l !== undefined) r.selfScore = Math.round(l * 1000) / 1000;
-      if (n === "self" && typeof t.selfVoice === "string" && yX.test(t.selfVoice))
+      if (n === "self" && typeof t.selfVoice === "string" && kX.test(t.selfVoice))
         r.selfVoice = t.selfVoice;
       return r;
     }
@@ -20108,22 +20108,22 @@ Error generating stack: ` +
         s = [...new Set(e.flatMap((l) => (l.kid ? l.kid.split("+") : [])))].sort();
       return { ...o, ...(a ? { trust: a } : {}), ...(s.length ? { kid: s.join("+") } : {}) };
     }
-    var kX = /^[@A-Za-z0-9][A-Za-z0-9@._/+:-]{0,79}$/;
-    function xX(e) {
+    var wX = /^[@A-Za-z0-9][A-Za-z0-9@._/+:-]{0,79}$/;
+    function SX(e) {
       if (!e || typeof e !== "object" || Array.isArray(e)) return;
       let t = e;
       if (t.route !== "local" && t.route !== "cloud") return;
       let n = { route: t.route };
-      if (typeof t.engine === "string" && kX.test(t.engine)) n.engine = t.engine;
+      if (typeof t.engine === "string" && wX.test(t.engine)) n.engine = t.engine;
       if (t.fallback === true && t.route === "cloud") n.fallback = true;
       if (t.repeat === "trimmed") n.repeat = "trimmed";
       return n;
     }
     function sD(e, t, n = false) {
       let r = t?.replace(/^local:/, "");
-      return xX({ route: e, engine: r === "?" ? undefined : r, fallback: n }) ?? { route: e };
+      return SX({ route: e, engine: r === "?" ? undefined : r, fallback: n }) ?? { route: e };
     }
-    function wX(e) {
+    function TX(e) {
       return e
         .replace(/[\\`*_[\]<>!|~]/g, (t) => `\\${t}`)
         .replace(/^(\s*)([#+=-])/, "$1\\$2")
@@ -20131,7 +20131,7 @@ Error generating stack: ` +
     }
     function lD(e, t, n = 1 / 0) {
       let r = t.title
-          ? `${wX(t.title)}
+          ? `${TX(t.title)}
 ${t.url}`
           : t.url,
         o = e.replace(/\s+$/, "");
@@ -20148,11 +20148,11 @@ ${t.url}`
       return Lr({
         selection: e.selection.slice(0, Math.max(1, Math.min(t, ti))),
         title: e.title,
-        path: SX(n.pathname),
+        path: AX(n.pathname),
         host: n.host,
       });
     }
-    function SX(e) {
+    function AX(e) {
       try {
         return decodeURI(e);
       } catch {
@@ -20181,8 +20181,8 @@ ${t.url}`
       },
       Wi = 0.05,
       Ki = 0.95;
-    var TX = su;
-    function AX(e, t = TX, n = globalThis.__lkVoiceAdapt) {
+    var EX = su;
+    function _X(e, t = EX, n = globalThis.__lkVoiceAdapt) {
       let r = e ? FS : US,
         o = e ? t.whisper : t.normal,
         i = (s) => {
@@ -20196,7 +20196,7 @@ ${t.url}`
         negativeSpeechThreshold: i(`${a}_NEGATIVE`) ?? o.negative,
       };
     }
-    var EX = {
+    var MX = {
         ENTER_LEVEL: -34,
         EXIT_LEVEL: -30,
         QUIET_FLOOR: -50,
@@ -20212,11 +20212,11 @@ ${t.url}`
         TARGET: -20,
         MAX_GAIN: 30,
       },
-      _X = -60,
-      MX = -20,
+      RX = -60,
+      LX = -20,
       BS = 0.9;
-    function RX(e = globalThis.__lkVoiceAdapt) {
-      let t = { ...EX };
+    function CX(e = globalThis.__lkVoiceAdapt) {
+      let t = { ...MX };
       if (e && typeof e === "object")
         for (let n of Object.keys(t)) {
           let r = e[n];
@@ -20224,34 +20224,34 @@ ${t.url}`
         }
       return t;
     }
-    function LX(e) {
+    function NX(e) {
       let t = 0;
       for (let n = 0; n < e.length; n++) t += e[n] * e[n];
       return 10 * Math.log10((e.length ? t / e.length : 0) + 0.000000000001);
     }
-    var CX = "lk:voice-whisper";
-    function NX() {
+    var OX = "lk:voice-whisper";
+    function PX() {
       try {
-        let e = localStorage2?.getItem(CX);
+        let e = localStorage2?.getItem(OX);
         return e === "force" || e === "off" ? e : "auto";
       } catch {
         return "auto";
       }
     }
-    function OX(e = {}) {
-      let t = e.mode ?? NX,
+    function DX(e = {}) {
+      let t = e.mode ?? PX,
         n = "auto",
         r = false,
-        o = e.policy ?? (() => RX()),
+        o = e.policy ?? (() => CX()),
         i = new Set(),
-        a = _X,
-        s = MX,
+        a = RX,
+        s = LX,
         l = false,
         c = 0,
         u = 0,
         f = false,
         p = 0,
-        m = e.params ?? ((y) => AX(y)),
+        m = e.params ?? ((y) => _X(y)),
         g = () => ({
           ...m(l),
           mode: n,
@@ -20280,7 +20280,7 @@ ${t.url}`
         frame(y, b, v) {
           let x = o(),
             w = e.speaking?.() ?? false,
-            T = LX(y) - c,
+            T = NX(y) - c,
             A = false;
           if (!w) {
             if (u < x.FLOOR_P) a += (T - a) * x.FLOOR_ALPHA;
@@ -20313,7 +20313,7 @@ ${t.url}`
       let t = globalThis,
         n = t[uD];
       if (n?.v === dD) return n;
-      let r = Object.assign(OX({ speaking: () => e?.() ?? false }), { v: dD });
+      let r = Object.assign(DX({ speaking: () => e?.() ?? false }), { v: dD });
       return ((t[uD] = r), r);
     }
     var E = ee(We(), 1),
@@ -20347,7 +20347,7 @@ ${t.url}`
         .join(" · ");
     }
     var xn = ee(we(), 1),
-      PX = {
+      IX = {
         play: {
           regular:
             "M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z",
@@ -20444,7 +20444,7 @@ ${t.url}`
         },
       };
     function wn({ name: e, weight: t = "regular", slash: n = false }) {
-      let r = PX[e],
+      let r = IX[e],
         o = t === "fill" && r.fill;
       return xn.jsxs("svg", {
         "data-icon": e,
@@ -20535,7 +20535,7 @@ ${t.url}`
       });
     }
     var Bn = ee(we(), 1);
-    function DX(e, t = globalThis.document ?? null) {
+    function zX(e, t = globalThis.document ?? null) {
       if (!t) return false;
       let n;
       try {
@@ -20547,7 +20547,7 @@ ${t.url}`
       if (!n) return false;
       return (n.scrollIntoView?.({ block: "center", behavior: "smooth" }), true);
     }
-    function VS({ lines: e, t, dev: n = false, onMine: r, onJump: o = (i) => void DX(i) }) {
+    function VS({ lines: e, t, dev: n = false, onMine: r, onJump: o = (i) => void zX(i) }) {
       let [i, a] = yD.useState(false);
       if (!e.length) return null;
       let s = e.length > 1 ? t.echoMany.replace("{n}", String(e.length)) : t.echoHeard;
@@ -20678,7 +20678,7 @@ ${t.url}`
           };
         }
       },
-      IX = (e, t) => (n, r, o) => {
+      $X = (e, t) => (n, r, o) => {
         let i = {
             storage: GS(() => localStorage2),
             partialize: (y) => y,
@@ -20783,7 +20783,7 @@ ${t.url}`
           h();
         return g || m;
       },
-      vD = IX;
+      vD = $X;
     var kD = (e) => {
         let t,
           n = new Set(),
@@ -20813,13 +20813,13 @@ ${t.url}`
         globalThis.dispatchEvent?.(new Event("lk:pref-write"));
       } catch {}
     }
-    var zX = (e, t) => `lk:${t === "session" ? "ui" : "pref"}:${e}`,
-      $X = "__lkUiStores";
+    var HX = (e, t) => `lk:${t === "session" ? "ui" : "pref"}:${e}`,
+      UX = "__lkUiStores";
     function wD() {
       let e = globalThis;
-      return (e[$X] ??= new Map());
+      return (e[UX] ??= new Map());
     }
-    function HX(e, t = new Map()) {
+    function FX(e, t = new Map()) {
       let n = () => {
         try {
           if (typeof window > "u") return null;
@@ -20852,7 +20852,7 @@ ${t.url}`
       };
     }
     var SD = (e) => !!e && typeof e === "object" && !Array.isArray(e);
-    function UX(e, t) {
+    function BX(e, t) {
       if (!SD(t)) return {};
       let n = {};
       for (let [r, o] of Object.entries(e)) {
@@ -20872,7 +20872,7 @@ ${t.url}`
       return n;
     }
     function ni(e, t, n, r) {
-      let o = zX(e, r.storage),
+      let o = HX(e, r.storage),
         i = typeof window < "u";
       if (i) {
         let c = wD().get(o);
@@ -20882,12 +20882,12 @@ ${t.url}`
           return c;
         }
       }
-      let a = (c) => (r.clean ? r.clean(c) : UX(n, c)),
+      let a = (c) => (r.clean ? r.clean(c) : BX(n, c)),
         s = xD()(
           vD(() => n, {
             name: o,
             version: t,
-            storage: GS(() => HX(r.storage)),
+            storage: GS(() => FX(r.storage)),
             partialize: (c) => (r.keys ? Object.fromEntries(r.keys.map((u) => [u, c[u]])) : c),
             migrate: (c, u) => (r.migrate ? r.migrate(c, u) : {}),
             merge: (c, u) => ({ ...u, ...a(c) }),
@@ -20912,7 +20912,7 @@ ${t.url}`
     }
     var AD = "chat",
       ED = 1,
-      FX = {
+      VX = {
         draft: "",
         legacyOwnerMigrated: false,
         caret: null,
@@ -20980,7 +20980,7 @@ ${t.url}`
         pureDictation: i,
         interim: s,
         panel: l,
-        tree: BX(n.tree),
+        tree: jX(n.tree),
         spoken: c,
         reading: u,
         attached: f,
@@ -20994,7 +20994,7 @@ ${t.url}`
       e.every((t) => typeof t === "string" && t.length <= 500)
         ? e
         : null;
-    function BX(e) {
+    function jX(e) {
       if (!e || typeof e !== "object") return null;
       let t = e,
         n = [];
@@ -21012,11 +21012,11 @@ ${t.url}`
           : 0;
       return { focus: RD(t.focus), expanded: n, scroll: r };
     }
-    var VX = { compact: false, full: false, etaFolded: false },
-      bl = () => ni("chat-view", 1, VX, { storage: "local" }),
-      jX = { tucked: false, edge: "right" },
+    var GX = { compact: false, full: false, etaFolded: false },
+      bl = () => ni("chat-view", 1, GX, { storage: "local" }),
+      WX = { tucked: false, edge: "right" },
       ub = () =>
-        ni("chat-fold", 1, jX, {
+        ni("chat-fold", 1, WX, {
           storage: "local",
           clean: (e) => {
             let t = e && typeof e === "object" ? e : {};
@@ -21026,10 +21026,10 @@ ${t.url}`
             };
           },
         }),
-      GX = { scale: "log" },
+      KX = { scale: "log" },
       LD = (e) => (typeof e === "number" && e > 0 && e <= 1 ? e : undefined),
       Op = () =>
-        ni("gantt", 1, GX, {
+        ni("gantt", 1, KX, {
           storage: "local",
           clean: (e) => {
             let t = e && typeof e === "object" ? e : {},
@@ -21042,16 +21042,16 @@ ${t.url}`
             return n;
           },
         }),
-      WX = { open: [] };
-    function KX(e) {
+      YX = { open: [] };
+    function ZX(e) {
       let t = e && typeof e === "object" ? e : {};
       if (!Array.isArray(t.open)) return {};
       let n = t.open.filter((r) => typeof r === "string" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(r));
       return { open: [...new Set(n)].slice(0, 50) };
     }
-    var ri = () => ni("gantt-groups", 1, WX, { storage: "session", clean: KX }),
+    var ri = () => ni("gantt-groups", 1, YX, { storage: "session", clean: ZX }),
       CD = (e) =>
-        ni(e ? `${AD}:${encodeURIComponent(e)}` : AD, ED, FX, {
+        ni(e ? `${AD}:${encodeURIComponent(e)}` : AD, ED, VX, {
           storage: "session",
           clean: (t) => MD(t, ED),
           migrate: (t, n) => MD(t, n),
@@ -21104,7 +21104,7 @@ ${t.url}`
         };
       return r;
     }
-    var YX = (() => {
+    var qX = (() => {
         try {
           return !!new RegExp("(?<=1)(?<!1)");
         } catch {
@@ -21175,12 +21175,12 @@ ${t.url}`
         htmlBeginRegex: (e) => new RegExp(`^ {0,${Math.min(3, e - 1)}}<(?:[a-z].*>|!--)`, "i"),
         blockquoteBeginRegex: (e) => new RegExp(`^ {0,${Math.min(3, e - 1)}}>`),
       },
-      ZX = /^(?:[ \t]*(?:\n|$))+/,
-      qX = /^((?: {4}| {0,3}\t)[^\n]+(?:\n(?:[ \t]*(?:\n|$))*)?)+/,
-      XX =
+      XX = /^(?:[ \t]*(?:\n|$))+/,
+      JX = /^((?: {4}| {0,3}\t)[^\n]+(?:\n(?:[ \t]*(?:\n|$))*)?)+/,
+      QX =
         /^ {0,3}(`{3,}(?=[^`\n]*(?:\n|$))|~{3,})([^\n]*)(?:\n|$)(?:|([\s\S]*?)(?:\n|$))(?: {0,3}\1[~`]* *(?=\n|$)|$)/,
       zp = /^ {0,3}((?:-[\t ]*){3,}|(?:_[ \t]*){3,}|(?:\*[ \t]*){3,})(?:\n+|$)/,
-      JX = /^ {0,3}(#{1,6})(?=\s|$)(.*)(?:\n+|$)/,
+      eJ = /^ {0,3}(#{1,6})(?=\s|$)(.*)(?:\n+|$)/,
       ZS = / {0,3}(?:[*+-]|\d{1,9}[.)])/,
       HD =
         /^(?!bull |blockCode|fences|blockquote|heading|html|table)((?:.|\n(?!\s*?\n|bull |blockCode|fences|blockquote|heading|html|table))+?)\n {0,3}(=+|-+) *(?:\n+|$)/,
@@ -21193,7 +21193,7 @@ ${t.url}`
         .replace(/html/g, / {0,3}<[^\n>]+>\n/)
         .replace(/\|table/g, "")
         .getRegex(),
-      QX = nt(HD)
+      tJ = nt(HD)
         .replace(/bull/g, ZS)
         .replace(/blockCode/g, /(?: {4}| {0,3}\t)/)
         .replace(/fences/g, / {0,3}(?:`{3,}|~{3,})/)
@@ -21203,21 +21203,21 @@ ${t.url}`
         .replace(/table/g, / {0,3}\|?(?:[:\- ]*\|)+[\:\- ]*\n/)
         .getRegex(),
       qS = /^([^\n]+(?:\n(?!hr|heading|lheading|blockquote|fences|list|html|table| +\n)[^\n]+)*)/,
-      eJ = /^[^\n]+/,
+      nJ = /^[^\n]+/,
       XS = /(?!\s*\])(?:\\[\s\S]|[^\[\]\\])+/,
-      tJ = nt(
+      rJ = nt(
         /^ {0,3}\[(label)\]: *(?:\n[ \t]*)?([^<\s][^\s]*|<.*?>)(?:(?: +(?:\n[ \t]*)?| *\n[ \t]*)(title))? *(?:\n+|$)/,
       )
         .replace("label", XS)
         .replace("title", /(?:"(?:\\"?|[^"\\])*"|'[^'\n]*(?:\n[^'\n]+)*\n?'|\([^()]*\))/)
         .getRegex(),
-      nJ = nt(/^(bull)([ \t][^\n]+?)?(?:\n|$)/)
+      oJ = nt(/^(bull)([ \t][^\n]+?)?(?:\n|$)/)
         .replace(/bull/g, ZS)
         .getRegex(),
       gb =
         "address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul",
       JS = /<!--(?:-?>|[\s\S]*?(?:-->|$))/,
-      rJ = nt(
+      iJ = nt(
         "^ {0,3}(?:<(script|pre|style|textarea)[\\s>][\\s\\S]*?(?:</\\1>[^\\n]*\\n+|$)|comment[^\\n]*(\\n+|$)|<\\?[\\s\\S]*?(?:\\?>\\n*|$)|<![A-Z][\\s\\S]*?(?:>\\n*|$)|<!\\[CDATA\\[[\\s\\S]*?(?:\\]\\]>\\n*|$)|</?(tag)(?: +|\\n|/?>)[\\s\\S]*?(?:(?:\\n[ \t]*)+\\n|$)|<(?!script|pre|style|textarea)([a-z][\\w-]*)(?:attribute)*? */?>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n[ \t]*)+\\n|$)|</(?!script|pre|style|textarea)[a-z][\\w-]*\\s*>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n[ \t]*)+\\n|$))",
         "i",
       )
@@ -21239,23 +21239,23 @@ ${t.url}`
         .replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)")
         .replace("tag", gb)
         .getRegex(),
-      oJ = nt(/^( {0,3}> ?(paragraph|[^\n]*)(?:\n|$))+/)
+      aJ = nt(/^( {0,3}> ?(paragraph|[^\n]*)(?:\n|$))+/)
         .replace("paragraph", FD)
         .getRegex(),
       QS = {
-        blockquote: oJ,
-        code: qX,
-        def: tJ,
-        fences: XX,
-        heading: JX,
+        blockquote: aJ,
+        code: JX,
+        def: rJ,
+        fences: QX,
+        heading: eJ,
         hr: zp,
-        html: rJ,
+        html: iJ,
         lheading: UD,
-        list: nJ,
-        newline: ZX,
+        list: oJ,
+        newline: XX,
         paragraph: FD,
         table: yl,
-        text: eJ,
+        text: nJ,
       },
       ND = nt(
         "^ *([^\\n ].*)\\n {0,3}((?:\\| *)?:?-+:? *(?:\\| *:?-+:? *)*(?:\\| *)?)(?:\\n((?:(?! *\\n|hr|heading|blockquote|code|fences|list|html).*(?:\\n|$))*)\\n*|$)",
@@ -21269,9 +21269,9 @@ ${t.url}`
         .replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)")
         .replace("tag", gb)
         .getRegex(),
-      iJ = {
+      sJ = {
         ...QS,
-        lheading: QX,
+        lheading: tJ,
         table: ND,
         paragraph: nt(qS)
           .replace("hr", zp)
@@ -21285,7 +21285,7 @@ ${t.url}`
           .replace("tag", gb)
           .getRegex(),
       },
-      aJ = {
+      lJ = {
         ...QS,
         html: nt(
           `^ *(?:comment *(?:\\n|\\s*$)|<(tag)[\\s\\S]+?</\\1> *(?:\\n{2,}|\\s*$)|<tag(?:"[^"]*"|'[^']*'|\\s[^'"/>\\s]*)*?/?> *(?:\\n{2,}|\\s*$))`,
@@ -21316,47 +21316,47 @@ ${t.url}`
           .replace("|tag", "")
           .getRegex(),
       },
-      sJ = /^\\([!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~])/,
-      lJ = /^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/,
+      cJ = /^\\([!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~])/,
+      uJ = /^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/,
       BD = /^( {2,}|\\)\n(?!\s*$)/,
-      cJ = /^(`+|[^`])(?:(?= {2,}\n)|[\s\S]*?(?:(?=[\\<!\[`*_]|\b_|$)|[^ ](?= {2,}\n)))/,
+      dJ = /^(`+|[^`])(?:(?= {2,}\n)|[\s\S]*?(?:(?=[\\<!\[`*_]|\b_|$)|[^ ](?= {2,}\n)))/,
       hb = /[\p{P}\p{S}]/u,
       eT = /[\s\p{P}\p{S}]/u,
       VD = /[^\s\p{P}\p{S}]/u,
-      uJ = nt(/^((?![*_])punctSpace)/, "u")
+      pJ = nt(/^((?![*_])punctSpace)/, "u")
         .replace(/punctSpace/g, eT)
         .getRegex(),
       jD = /(?!~)[\p{P}\p{S}]/u,
-      dJ = /(?!~)[\s\p{P}\p{S}]/u,
-      pJ = /(?:[^\s\p{P}\p{S}]|~)/u,
+      fJ = /(?!~)[\s\p{P}\p{S}]/u,
+      mJ = /(?:[^\s\p{P}\p{S}]|~)/u,
       GD = /(?![*_])[\p{P}\p{S}]/u,
-      fJ = /(?![*_])[\s\p{P}\p{S}]/u,
-      mJ = /(?:[^\s\p{P}\p{S}]|[*_])/u,
-      gJ = nt(/link|precode-code|html/, "g")
+      gJ = /(?![*_])[\s\p{P}\p{S}]/u,
+      hJ = /(?:[^\s\p{P}\p{S}]|[*_])/u,
+      bJ = nt(/link|precode-code|html/, "g")
         .replace(
           "link",
           /\[(?:[^\[\]`]|(?<a>`+)[^`]+\k<a>(?!`))*?\]\((?:\\[\s\S]|[^\\\(\)]|\((?:\\[\s\S]|[^\\\(\)])*\))*\)/,
         )
-        .replace("precode-", YX ? "(?<!`)()" : "(^^|[^`])")
+        .replace("precode-", qX ? "(?<!`)()" : "(^^|[^`])")
         .replace("code", /(?<b>`+)[^`]+\k<b>(?!`)/)
         .replace("html", /<(?! )[^<>]*?>/)
         .getRegex(),
       WD = /^(?:\*+(?:((?!\*)punct)|[^\s*]))|^_+(?:((?!_)punct)|([^\s_]))/,
-      hJ = nt(WD, "u").replace(/punct/g, hb).getRegex(),
-      bJ = nt(WD, "u").replace(/punct/g, jD).getRegex(),
+      yJ = nt(WD, "u").replace(/punct/g, hb).getRegex(),
+      vJ = nt(WD, "u").replace(/punct/g, jD).getRegex(),
       KD =
         "^[^_*]*?__[^_*]*?\\*[^_*]*?(?=__)|[^*]+(?=[^*])|(?!\\*)punct(\\*+)(?=[\\s]|$)|notPunctSpace(\\*+)(?!\\*)(?=punctSpace|$)|(?!\\*)punctSpace(\\*+)(?=notPunctSpace)|[\\s](\\*+)(?!\\*)(?=punct)|(?!\\*)punct(\\*+)(?!\\*)(?=punct)|notPunctSpace(\\*+)(?=notPunctSpace)",
-      yJ = nt(KD, "gu")
+      kJ = nt(KD, "gu")
         .replace(/notPunctSpace/g, VD)
         .replace(/punctSpace/g, eT)
         .replace(/punct/g, hb)
         .getRegex(),
-      vJ = nt(KD, "gu")
-        .replace(/notPunctSpace/g, pJ)
-        .replace(/punctSpace/g, dJ)
+      xJ = nt(KD, "gu")
+        .replace(/notPunctSpace/g, mJ)
+        .replace(/punctSpace/g, fJ)
         .replace(/punct/g, jD)
         .getRegex(),
-      kJ = nt(
+      wJ = nt(
         "^[^_*]*?\\*\\*[^_*]*?_[^_*]*?(?=\\*\\*)|[^_]+(?=[^_])|(?!_)punct(_+)(?=[\\s]|$)|notPunctSpace(_+)(?!_)(?=punctSpace|$)|(?!_)punctSpace(_+)(?=notPunctSpace)|[\\s](_+)(?!_)(?=punct)|(?!_)punct(_+)(?!_)(?=punct)",
         "gu",
       )
@@ -21364,38 +21364,38 @@ ${t.url}`
         .replace(/punctSpace/g, eT)
         .replace(/punct/g, hb)
         .getRegex(),
-      xJ = nt(/^~~?(?:((?!~)punct)|[^\s~])/, "u")
+      SJ = nt(/^~~?(?:((?!~)punct)|[^\s~])/, "u")
         .replace(/punct/g, GD)
         .getRegex(),
-      wJ =
+      TJ =
         "^[^~]+(?=[^~])|(?!~)punct(~~?)(?=[\\s]|$)|notPunctSpace(~~?)(?!~)(?=punctSpace|$)|(?!~)punctSpace(~~?)(?=notPunctSpace)|[\\s](~~?)(?!~)(?=punct)|(?!~)punct(~~?)(?!~)(?=punct)|notPunctSpace(~~?)(?=notPunctSpace)",
-      SJ = nt(wJ, "gu")
-        .replace(/notPunctSpace/g, mJ)
-        .replace(/punctSpace/g, fJ)
+      AJ = nt(TJ, "gu")
+        .replace(/notPunctSpace/g, hJ)
+        .replace(/punctSpace/g, gJ)
         .replace(/punct/g, GD)
         .getRegex(),
-      TJ = nt(/\\(punct)/, "gu")
+      EJ = nt(/\\(punct)/, "gu")
         .replace(/punct/g, hb)
         .getRegex(),
-      AJ = nt(/^<(scheme:[^\s\x00-\x1f<>]*|email)>/)
+      _J = nt(/^<(scheme:[^\s\x00-\x1f<>]*|email)>/)
         .replace("scheme", /[a-zA-Z][a-zA-Z0-9+.-]{1,31}/)
         .replace(
           "email",
           /[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+(@)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![-_])/,
         )
         .getRegex(),
-      EJ = nt(JS).replace("(?:-->|$)", "-->").getRegex(),
-      _J = nt(
+      MJ = nt(JS).replace("(?:-->|$)", "-->").getRegex(),
+      RJ = nt(
         "^comment|^</[a-zA-Z][\\w:-]*\\s*>|^<[a-zA-Z][\\w-]*(?:attribute)*?\\s*/?>|^<\\?[\\s\\S]*?\\?>|^<![a-zA-Z]+\\s[\\s\\S]*?>|^<!\\[CDATA\\[[\\s\\S]*?\\]\\]>",
       )
-        .replace("comment", EJ)
+        .replace("comment", MJ)
         .replace(
           "attribute",
           /\s+[a-zA-Z:_][\w.:-]*(?:\s*=\s*"[^"]*"|\s*=\s*'[^']*'|\s*=\s*[^\s"'=<>`]+)?/,
         )
         .getRegex(),
       pb = /(?:\[(?:\\[\s\S]|[^\[\]\\])*\]|\\[\s\S]|`+[^`]*?`+(?!`)|[^\[\]\\`])*?/,
-      MJ = nt(/^!?\[(label)\]\(\s*(href)(?:(?:[ \t]+(?:\n[ \t]*)?|\n[ \t]*)(title))?\s*\)/)
+      LJ = nt(/^!?\[(label)\]\(\s*(href)(?:(?:[ \t]+(?:\n[ \t]*)?|\n[ \t]*)(title))?\s*\)/)
         .replace("label", pb)
         .replace("href", /<(?:\\.|[^\n<>\\])+>|[^ \t\n\x00-\x1f]*/)
         .replace("title", /"(?:\\"?|[^"\\])*"|'(?:\\'?|[^'\\])*'|\((?:\\\)?|[^)\\])*\)/)
@@ -21407,32 +21407,32 @@ ${t.url}`
       ZD = nt(/^!?\[(ref)\](?:\[\])?/)
         .replace("ref", XS)
         .getRegex(),
-      RJ = nt("reflink|nolink(?!\\()", "g").replace("reflink", YD).replace("nolink", ZD).getRegex(),
+      CJ = nt("reflink|nolink(?!\\()", "g").replace("reflink", YD).replace("nolink", ZD).getRegex(),
       OD = /[hH][tT][tT][pP][sS]?|[fF][tT][pP]/,
       tT = {
         _backpedal: yl,
-        anyPunctuation: TJ,
-        autolink: AJ,
-        blockSkip: gJ,
+        anyPunctuation: EJ,
+        autolink: _J,
+        blockSkip: bJ,
         br: BD,
-        code: lJ,
+        code: uJ,
         del: yl,
         delLDelim: yl,
         delRDelim: yl,
-        emStrongLDelim: hJ,
-        emStrongRDelimAst: yJ,
-        emStrongRDelimUnd: kJ,
-        escape: sJ,
-        link: MJ,
+        emStrongLDelim: yJ,
+        emStrongRDelimAst: kJ,
+        emStrongRDelimUnd: wJ,
+        escape: cJ,
+        link: LJ,
         nolink: ZD,
-        punctuation: uJ,
+        punctuation: pJ,
         reflink: YD,
-        reflinkSearch: RJ,
-        tag: _J,
-        text: cJ,
+        reflinkSearch: CJ,
+        tag: RJ,
+        text: dJ,
         url: yl,
       },
-      LJ = {
+      NJ = {
         ...tT,
         link: nt(/^!?\[(label)\]\((.*?)\)/)
           .replace("label", pb)
@@ -21443,10 +21443,10 @@ ${t.url}`
       },
       KS = {
         ...tT,
-        emStrongRDelimAst: vJ,
-        emStrongLDelim: bJ,
-        delLDelim: xJ,
-        delRDelim: SJ,
+        emStrongRDelimAst: xJ,
+        emStrongLDelim: vJ,
+        delLDelim: SJ,
+        delRDelim: AJ,
         url: nt(/^((?:protocol):\/\/|www\.)(?:[a-zA-Z0-9\-]+\.?)+[^\s<]*|^email/)
           .replace("protocol", OD)
           .replace(
@@ -21462,7 +21462,7 @@ ${t.url}`
           .replace("protocol", OD)
           .getRegex(),
       },
-      CJ = {
+      OJ = {
         ...KS,
         br: nt(BD).replace("{2,}", "*").getRegex(),
         text: nt(KS.text)
@@ -21470,10 +21470,10 @@ ${t.url}`
           .replace(/\{2,\}/g, "*")
           .getRegex(),
       },
-      db = { normal: QS, gfm: iJ, pedantic: aJ },
-      Pp = { normal: tT, gfm: KS, breaks: CJ, pedantic: LJ },
-      NJ = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" },
-      PD = (e) => NJ[e];
+      db = { normal: QS, gfm: sJ, pedantic: lJ },
+      Pp = { normal: tT, gfm: KS, breaks: OJ, pedantic: NJ },
+      PJ = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" },
+      PD = (e) => PJ[e];
     function oi(e, t) {
       if (t) {
         if (Zn.escapeTest.test(e)) return e.replace(Zn.escapeReplace, PD);
@@ -21515,7 +21515,7 @@ ${t.url}`
       }
       return e.slice(0, r - o);
     }
-    function OJ(e, t) {
+    function DJ(e, t) {
       if (e.indexOf(t[1]) === -1) return -1;
       let n = 0;
       for (let r = 0; r < e.length; r++)
@@ -21524,7 +21524,7 @@ ${t.url}`
         else if (e[r] === t[1] && (n--, n < 0)) return r;
       return n > 0 ? -2 : -1;
     }
-    function PJ(e, t = 0) {
+    function IJ(e, t = 0) {
       let n = t,
         r = "";
       for (let o of e)
@@ -21549,7 +21549,7 @@ ${t.url}`
       };
       return ((r.state.inLink = false), l);
     }
-    function DJ(e, t, n) {
+    function zJ(e, t, n) {
       let r = e.match(n.other.indentCodeCompensation);
       if (r === null) return t;
       let o = r[1];
@@ -21597,7 +21597,7 @@ ${t.url}`
           let t = this.rules.block.fences.exec(e);
           if (t) {
             let n = t[0],
-              r = DJ(n, t[3] || "", this.rules);
+              r = zJ(n, t[3] || "", this.rules);
             return {
               type: "code",
               raw: n,
@@ -21740,7 +21740,7 @@ ${u}`
                 u = "";
               if (!(t = i.exec(e)) || this.rules.block.hr.test(e)) break;
               ((c = t[0]), (e = e.substring(c.length)));
-              let f = PJ(
+              let f = IJ(
                   t[2].split(
                     `
 `,
@@ -22029,7 +22029,7 @@ ${u}`
               let i = Dp(n.slice(0, -1), "\\");
               if ((n.length - i.length) % 2 === 0) return;
             } else {
-              let i = OJ(t[2], "()");
+              let i = DJ(t[2], "()");
               if (i === -2) return;
               if (i > -1) {
                 let a = (t[0].indexOf("!") === 0 ? 5 : 4) + t[1].length + i;
@@ -23171,22 +23171,22 @@ Please report this to https://github.com/markedjs/marked.`),
     yt.Tokenizer = fb;
     yt.Hooks = Ip;
     yt.parse = yt;
-    var { options: hme, setOptions: bme, use: yme, walkTokens: vme, parseInline: kme } = yt;
-    var xme = vo.parse,
-      wme = yo.lex;
+    var { options: yme, setOptions: vme, use: kme, walkTokens: xme, parseInline: wme } = yt;
+    var Sme = vo.parse,
+      Tme = yo.lex;
     var XD = new Set(["lianki.com", "www.lianki.com"]);
-    var IJ = /[A-Za-z0-9+.-]/,
-      zJ = /[A-Za-z0-9@._/:-]/,
-      $J = new Set([..."., ;:!?'*_~(["]),
-      HJ = { ")": "(", "]": "[" },
+    var $J = /[A-Za-z0-9+.-]/,
+      HJ = /[A-Za-z0-9@._/:-]/,
+      UJ = new Set([..."., ;:!?'*_~(["]),
+      FJ = { ")": "(", "]": "[" },
       qD = (e, t) => e.split(t).length - 1;
-    function UJ(e) {
+    function BJ(e) {
       let t = e;
       for (;;) {
         let n = t.at(-1);
         if (n === undefined) return t;
-        let r = HJ[n];
-        if (r ? qD(t, n) > qD(t, r) : $J.has(n)) t = t.slice(0, -1);
+        let r = FJ[n];
+        if (r ? qD(t, n) > qD(t, r) : UJ.has(n)) t = t.slice(0, -1);
         else return t;
       }
     }
@@ -23199,7 +23199,7 @@ Please report this to https://github.com/markedjs/marked.`),
       }
     }
     function QD(e) {
-      let t = UJ(e),
+      let t = BJ(e),
         n = /^https?:\/\//i.test(t),
         r = JD(n ? t : `https://${t}`);
       if (!r) return null;
@@ -23216,7 +23216,7 @@ Please report this to https://github.com/markedjs/marked.`),
         r = 0;
       for (let o = n.exec(e); o; o = n.exec(e)) {
         let i = e[o.index - 1] ?? "",
-          s = (/^h/i.test(o[0]) ? IJ : zJ).test(i) ? null : QD(o[0]);
+          s = (/^h/i.test(o[0]) ? $J : HJ).test(i) ? null : QD(o[0]);
         if (!s) {
           n.lastIndex = o.index + 1;
           continue;
@@ -23244,15 +23244,15 @@ Please report this to https://github.com/markedjs/marked.`),
         return null;
       }
     }
-    var FJ = ["https://lianki.com"];
-    function tI(e, t = FJ) {
+    var VJ = ["https://lianki.com"];
+    function tI(e, t = VJ) {
       let n = Hp(e);
       if (!n) return null;
       let r = new URL(n);
       return r.protocol === "https:" && t.includes(r.origin) ? n : null;
     }
-    var BJ = (e) => XD.has(new URL(e).hostname),
-      oT = (e, t) => !!t && XD.has(t) && BJ(e);
+    var jJ = (e) => XD.has(new URL(e).hostname),
+      oT = (e, t) => !!t && XD.has(t) && jJ(e);
     function nI(e) {
       if (e.movedPx > 10) return { to: "drag" };
       if (e.modified || !e.hasRouter || !oT(e.href, e.hereHost)) return { to: "native" };
@@ -23391,7 +23391,7 @@ Please report this to https://github.com/markedjs/marked.`),
       sI = (e, t) => `${e.label}: ${t}${e.unit ? ` ${e.unit}` : ""}`;
     var lI = "lianki-html",
       cI = 50000;
-    var Cme = [
+    var Ome = [
       "default-src 'none'",
       "script-src 'unsafe-inline'",
       "style-src 'unsafe-inline'",
@@ -23428,7 +23428,7 @@ Please report this to https://github.com/markedjs/marked.`),
       if (!Object.keys(n).length) return null;
       return { line: t.line, fields: n };
     }
-    function VJ() {
+    function GJ() {
       let e = new Map(),
         t = new Set(),
         n = new Map();
@@ -23453,7 +23453,7 @@ Please report this to https://github.com/markedjs/marked.`),
         },
       };
     }
-    var xb = VJ();
+    var xb = GJ();
     function dI(e, t) {
       let n = [];
       for (let [r, o] of Object.entries(t)) {
@@ -23461,23 +23461,23 @@ Please report this to https://github.com/markedjs/marked.`),
         for (let a of i) {
           let s = a.tagName.toLowerCase(),
             l = a;
-          if (jJ(a) || l.readOnly) continue;
+          if (WJ(a) || l.readOnly) continue;
           if (s === "input") {
             let c = (l.type || "text").toLowerCase();
             if (c === "hidden" || c === "file" || c === "submit" || c === "button" || c === "reset")
               continue;
             if (c === "checkbox" || c === "radio") {
               let u = c === "radio" ? l.value === o : o !== "" && o !== "false" && o !== "0";
-              if (l.checked !== u) (WJ(l, u), n.push(l));
+              if (l.checked !== u) (YJ(l, u), n.push(l));
               continue;
             }
           } else if (s !== "textarea" && s !== "select") continue;
-          (GJ(a, o), n.push(a));
+          (KJ(a, o), n.push(a));
         }
       }
       return n;
     }
-    function jJ(e) {
+    function WJ(e) {
       if (e.disabled) return true;
       if (e.closest("fieldset[disabled]")) return true;
       try {
@@ -23486,7 +23486,7 @@ Please report this to https://github.com/markedjs/marked.`),
         return false;
       }
     }
-    function GJ(e, t) {
+    function KJ(e, t) {
       let n = Object.getPrototypeOf(e),
         r = Object.getOwnPropertyDescriptor(n, "value")?.set;
       if (r) r.call(e, t);
@@ -23494,7 +23494,7 @@ Please report this to https://github.com/markedjs/marked.`),
       (e.dispatchEvent(new Event("input", { bubbles: true })),
         e.dispatchEvent(new Event("change", { bubbles: true })));
     }
-    function WJ(e, t) {
+    function YJ(e, t) {
       let n = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e), "checked")?.set;
       if (n) n.call(e, t);
       else e.checked = t;
@@ -23509,27 +23509,27 @@ Please report this to https://github.com/markedjs/marked.`),
       let n = (e.thread ?? Sb) === Sb;
       return e.from === "agent" && e.ownerGrant === true && n && !t.embedded ? "html" : "markdown";
     }
-    var KJ = 20000,
-      YJ = 24,
+    var ZJ = 20000,
+      qJ = 24,
       pI = 20,
       hI = new Set(
         "p br strong em del code pre ul ol li blockquote hr a table thead tbody tr th td".split(
           " ",
         ),
       ),
-      ZJ = new Set([
+      XJ = new Set([
         ...hI,
         ..."b i u s sub sup small mark kbd span div tfoot caption img".split(" "),
       ]),
-      qJ =
+      JJ =
         /^(script|style|iframe|frame|frameset|object|embed|applet|form|input|button|textarea|select|option|svg|math|template|noscript|noembed|noframes|link|meta|base|title|head|audio|video|canvas|map|area|xmp|plaintext|listing|portal|dialog)$/,
-      XJ = "http://www.w3.org/1999/xhtml",
-      JJ = /^h[1-6]$/,
-      QJ = new Set(
+      QJ = "http://www.w3.org/1999/xhtml",
+      eQ = /^h[1-6]$/,
+      tQ = new Set(
         "root p ul ol li blockquote table thead tbody tfoot tr th td div caption".split(" "),
       ),
       fI = (e) => e.replace(/[&<>"']/g, (t) => `&#${t.charCodeAt(0)};`),
-      eQ = (e) =>
+      nQ = (e) =>
         new rT({
           gfm: true,
           breaks: true,
@@ -23558,8 +23558,8 @@ Please report this to https://github.com/markedjs/marked.`),
               : {}),
           },
         }),
-      tQ = {},
-      nQ = (e) => (tQ[e] ??= eQ(e));
+      rQ = {},
+      oQ = (e) => (rQ[e] ??= nQ(e));
     function Up(e, t, n) {
       let r = e.getAttribute(t);
       if (!r || !/^\d{1,4}$/.test(r) || Number(r) < 1 || Number(r) > n) return {};
@@ -23574,7 +23574,7 @@ Please report this to https://github.com/markedjs/marked.`),
           : { text: n.text },
       );
     }
-    function rQ(e, t) {
+    function iQ(e, t) {
       let n = Fp(t).trim();
       if (!n) return [{ tag: "a", attrs: { href: e }, children: [{ text: e }] }];
       let r = $p(n);
@@ -23599,16 +23599,16 @@ Please report this to https://github.com/markedjs/marked.`),
         if (o.nodeType === 3) {
           let i = o.nodeValue ?? "";
           if (n.pre) i = o === e.lastChild ? i.replace(/\n$/, "") : i;
-          else if (QJ.has(n.tag)) i = i.replace(/^\n+|\n+$/g, "");
+          else if (tQ.has(n.tag)) i = i.replace(/^\n+|\n+$/g, "");
           if (i) r.push(...bI(i, n.literal));
-        } else if (o.nodeType === 1) r.push(...oQ(o, t, n));
+        } else if (o.nodeType === 1) r.push(...aQ(o, t, n));
       return r;
     }
-    function oQ(e, t, n) {
+    function aQ(e, t, n) {
       let r = e.tagName.toLowerCase();
-      if (e.namespaceURI !== XJ || qJ.test(r)) return [];
+      if (e.namespaceURI !== QJ || JJ.test(r)) return [];
       let o = n.depth + 1;
-      if (o > YJ) return [{ text: e.textContent ?? "" }];
+      if (o > qJ) return [{ text: e.textContent ?? "" }];
       let i = (l, c = {}) =>
         yI(e, t, {
           tag: l,
@@ -23617,7 +23617,7 @@ Please report this to https://github.com/markedjs/marked.`),
           pre: c.pre ?? n.pre,
           widgets: n.widgets,
         });
-      if (JJ.test(r)) return [{ tag: "p", children: [{ tag: "strong", children: i("p") }] }];
+      if (eQ.test(r)) return [{ tag: "p", children: [{ tag: "strong", children: i("p") }] }];
       let a = e.getAttribute("alt") ?? "";
       if (r === "img") {
         let l = t === "html" ? tI(e.getAttribute("src") ?? "") : null;
@@ -23630,11 +23630,11 @@ Please report this to https://github.com/markedjs/marked.`),
           },
         ];
       }
-      if (!(t === "html" ? ZJ : hI).has(r)) return i(n.tag);
+      if (!(t === "html" ? XJ : hI).has(r)) return i(n.tag);
       if (r === "a") {
         let l = Hp(e.getAttribute("href") ?? ""),
           c = i("a", { literal: true });
-        return l ? rQ(l, c) : c;
+        return l ? iQ(l, c) : c;
       }
       if (r === "code") return [{ tag: "code", children: i("code", { literal: true }) }];
       if (r === "pre") {
@@ -23677,7 +23677,7 @@ Please report this to https://github.com/markedjs/marked.`),
       if (r === "ol") Object.assign(s, Up(e, "start", 9999));
       return [{ tag: r, ...(Object.keys(s).length ? { attrs: s } : {}), children: i(r) }];
     }
-    var iQ = new Set("p ul ol li blockquote table tr caption div pre hr".split(" "));
+    var sQ = new Set("p ul ol li blockquote table tr caption div pre hr".split(" "));
     function iT(e, t) {
       let n = "",
         r = () => {
@@ -23700,7 +23700,7 @@ Please report this to https://github.com/markedjs/marked.`),
 `;
             else if (a.tag === "img") n += a.attrs?.alt ?? "";
             else {
-              let l = iQ.has(a.tag);
+              let l = sQ.has(a.tag);
               if (l) r();
               if ((a.tag === "td" || a.tag === "th") && s > 0) n += ", ";
               if ((o(a.children), l)) r();
@@ -23712,11 +23712,11 @@ Please report this to https://github.com/markedjs/marked.`),
       let t = bI(e, false);
       return { nodes: t, spoken: iT(t, true), shown: e };
     }
-    function aQ(e, t, n) {
+    function lQ(e, t, n) {
       let r = globalThis.DOMParser;
-      if (!r || e.length > KJ) return mI(e);
+      if (!r || e.length > ZJ) return mI(e);
       try {
-        let o = nQ(t).parse(e, { async: false }),
+        let o = oQ(t).parse(e, { async: false }),
           i = new r().parseFromString(o, "text/html").body,
           a = yI(i, t, { tag: "root", literal: false, pre: false, depth: 0, widgets: n }),
           s = a.length === 1 ? a[0] : null,
@@ -23726,21 +23726,21 @@ Please report this to https://github.com/markedjs/marked.`),
         return mI(e);
       }
     }
-    var sQ = 400,
+    var cQ = 400,
       wb = new Map();
     function Bp(e, t, n = false) {
       let r = `${t}${n ? "+w" : ""}\x00${e}`,
         o = wb.get(r);
       if (o) return o;
-      let i = aQ(e, t, n);
-      if (wb.size >= sQ) wb.clear();
+      let i = lQ(e, t, n);
+      if (wb.size >= cQ) wb.clear();
       return (wb.set(r, i), i);
     }
     var aT = (e, t) => Bp(e.text, Tb(e, t)).spoken;
     var qi = ee(We(), 1);
     var xl = ee(We(), 1);
     var ur = ee(we(), 1);
-    function lQ(e, t) {
+    function uQ(e, t) {
       let n = new URL(e, location.href);
       if (!/^https?:$/.test(n.protocol)) return;
       let r = document.createElement("a");
@@ -23765,7 +23765,7 @@ Please report this to https://github.com/markedjs/marked.`),
         );
       }, []);
       let f = (m) => {
-          (o(), lQ(m, r));
+          (o(), uQ(m, r));
         },
         p =
           "min-h-11 w-full rounded-xl px-3 py-2 text-start fs-14 hover:bg-[oklch(0.5_0.02_250/0.1)] focus-visible:outline-2 focus-visible:outline-offset-[-2px]";
@@ -23890,7 +23890,7 @@ Please report this to https://github.com/markedjs/marked.`),
     }
     var sT = (e) => e.origin === "https://lianki.com" || e.origin === "https://www.lianki.com",
       kI = (e) => e.searchParams.getAll("site").includes("prod") || e.hash === "#prod";
-    function cQ(e, t) {
+    function dQ(e, t) {
       if (t.origin !== "https://preview.lianki.com") return e;
       try {
         let n = new URL(e, t.href ?? t.origin);
@@ -23911,14 +23911,14 @@ Please report this to https://github.com/markedjs/marked.`),
         )
           ((n = sT(o) ? e : `https://lianki.com${o.pathname}${o.search}${o.hash}`), (r = kI(o)));
       } catch {}
-      return { href: r && n ? n : cQ(e, t), prod: n, forceProd: r };
+      return { href: r && n ? n : dQ(e, t), prod: n, forceProd: r };
     }
     var wl = ee(We(), 1);
     var dt = ee(we(), 1),
       lu = "light-dark(oklch(0.46 0.187 22.3), oklch(0.8 0.132 22.3))",
       Eb = "light-dark(oklch(0.5 0.01 260 / 0.35), oklch(0.85 0.01 260 / 0.35))",
-      uQ = "light-dark(oklch(1 0 0 / 0.7), oklch(0.25 0.01 260 / 0.7))",
-      dQ = {
+      pQ = "light-dark(oklch(1 0 0 / 0.7), oklch(0.25 0.01 260 / 0.7))",
+      fQ = {
         onClick: (e) => e.stopPropagation(),
         onPointerDown: (e) => e.stopPropagation(),
         onKeyDown: (e) => e.stopPropagation(),
@@ -23930,7 +23930,7 @@ Please report this to https://github.com/markedjs/marked.`),
         className:
           "pointer-events-auto my-1 flex max-w-full flex-col gap-1.5 rounded-lg border p-2",
         style: { borderColor: Eb },
-        ...dQ,
+        ...fQ,
         children: [t && dt.jsx("div", { className: "font-semibold", children: t }), n],
       });
     }
@@ -23946,7 +23946,7 @@ Please report this to https://github.com/markedjs/marked.`),
         children: e.labels.use,
       });
     }
-    function pQ({ host: e, expr: t, title: n }) {
+    function mQ({ host: e, expr: t, title: n }) {
       let [r, o] = wl.useState(t),
         i = wl.useId(),
         a = iI(r),
@@ -23965,7 +23965,7 @@ Please report this to https://github.com/markedjs/marked.`),
               value: r,
               onChange: (l) => o(l.target.value),
               className: "min-w-0 flex-1 rounded border px-1.5 py-0.5 font-mono",
-              style: { borderColor: Eb, background: uQ },
+              style: { borderColor: Eb, background: pQ },
             }),
             dt.jsx("output", {
               htmlFor: i,
@@ -23982,7 +23982,7 @@ Please report this to https://github.com/markedjs/marked.`),
       let n = wl.useMemo(() => vb(e), [e]),
         [r, o] = wl.useState(null);
       if (!n) return null;
-      if (n.type === "calc") return dt.jsx(pQ, { host: t, expr: n.expr, title: n.title });
+      if (n.type === "calc") return dt.jsx(mQ, { host: t, expr: n.expr, title: n.title });
       if (n.type === "buttons")
         return dt.jsx(Ab, {
           type: "buttons",
@@ -24094,15 +24094,15 @@ Please report this to https://github.com/markedjs/marked.`),
       });
     }
     var Cr = ee(We(), 1);
-    var fQ = new Set(
+    var gQ = new Set(
         "div span p br hr b i u s strong em small mark sub sup code pre kbd blockquote ul ol li dl dt dd table thead tbody tfoot tr th td caption details summary label form fieldset legend input select option optgroup textarea button output progress meter figure figcaption img a".split(
           " ",
         ),
       ),
-      mQ =
+      hQ =
         /^(script|style|iframe|frame|frameset|object|embed|applet|link|meta|base|title|head|svg|math|template|noscript|noembed|noframes|audio|video|canvas|map|area|xmp|plaintext|listing|portal|dialog|slot)$/,
-      gQ = /^h[1-6]$/,
-      hQ = "http://www.w3.org/1999/xhtml",
+      bQ = /^h[1-6]$/,
+      yQ = "http://www.w3.org/1999/xhtml",
       TI = {
         "*": ["title", "lang", "dir", "id"],
         a: ["href"],
@@ -24151,23 +24151,23 @@ Please report this to https://github.com/markedjs/marked.`),
         details: ["open"],
         fieldset: ["disabled", "name"],
       },
-      bQ = new Set(
+      vQ = new Set(
         "text number email tel url date time datetime-local month week color range checkbox radio search hidden submit reset button".split(
           " ",
         ),
       ),
-      yQ = new Set(
+      kQ = new Set(
         "color background-color font-weight font-style font-size font-family text-align text-decoration text-transform line-height letter-spacing white-space word-break vertical-align list-style-type padding padding-top padding-right padding-bottom padding-left padding-inline padding-block margin margin-top margin-right margin-bottom margin-left margin-inline margin-block border border-top border-right border-bottom border-left border-color border-width border-style border-radius border-collapse border-spacing width min-width max-width height min-height max-height display flex flex-direction flex-wrap flex-grow flex-shrink flex-basis gap row-gap column-gap align-items align-self justify-content grid-template-columns grid-column grid-row opacity box-sizing overflow overflow-x overflow-y accent-color cursor".split(
           " ",
         ),
       ),
-      vQ =
+      xQ =
         /^(block|inline|inline-block|flex|inline-flex|grid|inline-grid|none|list-item|table|table-row|table-cell)$/,
-      kQ =
+      wQ =
         /url\s*\(|image-set|expression|javascript:|@import|\\|attr\s*\(|var\s*\(|env\s*\(|fixed|sticky/i,
-      xQ = 2000,
-      wQ = 32;
-    function SQ(e) {
+      SQ = 2000,
+      TQ = 32;
+    function AQ(e) {
       if (e.querySelector("script, iframe, object, embed")) return true;
       for (let t of Array.from(e.querySelectorAll("*")))
         for (let n of Array.from(t.attributes)) {
@@ -24176,22 +24176,22 @@ Please report this to https://github.com/markedjs/marked.`),
         }
       return false;
     }
-    var TQ = (e) => e.replace(/-([a-z])/g, (t, n) => n.toUpperCase());
-    function AQ(e) {
+    var EQ = (e) => e.replace(/-([a-z])/g, (t, n) => n.toUpperCase());
+    function _Q(e) {
       let t = e.style;
       if (!t || !t.length) return;
       let n = {};
       for (let r = 0; r < t.length; r++) {
         let o = t.item(r);
-        if (!yQ.has(o)) continue;
+        if (!kQ.has(o)) continue;
         let i = t.getPropertyValue(o).trim();
-        if (!i || i.length > 200 || kQ.test(i)) continue;
-        if (o === "display" && !vQ.test(i)) continue;
-        n[TQ(o)] = i;
+        if (!i || i.length > 200 || wQ.test(i)) continue;
+        if (o === "display" && !xQ.test(i)) continue;
+        n[EQ(o)] = i;
       }
       return Object.keys(n).length ? n : undefined;
     }
-    function EQ(e, t, n) {
+    function MQ(e, t, n) {
       let r = {},
         o = new Set([...(TI["*"] ?? []), ...(TI[t] ?? [])]);
       for (let i of Array.from(e.attributes)) {
@@ -24208,7 +24208,7 @@ Please report this to https://github.com/markedjs/marked.`),
         else if (a === "src")
           s = /^data:image\/(png|gif|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(s) ? s : "";
         else if (t === "input" && a === "type")
-          s = bQ.has(s.toLowerCase()) ? s.toLowerCase() : "text";
+          s = vQ.has(s.toLowerCase()) ? s.toLowerCase() : "text";
         if (
           s === "" &&
           (a === "href" ||
@@ -24226,7 +24226,7 @@ Please report this to https://github.com/markedjs/marked.`),
     function AI(e) {
       let t = globalThis.DOMParser;
       if (!t) return /<script|\son\w+\s*=|javascript:/i.test(e);
-      return SQ(new t().parseFromString(e, "text/html"));
+      return AQ(new t().parseFromString(e, "text/html"));
     }
     function EI(e, t) {
       let n = globalThis.DOMParser;
@@ -24236,7 +24236,7 @@ Please report this to https://github.com/markedjs/marked.`),
         i = (a, s, l) => {
           let c = [];
           for (let u of Array.from(a.childNodes)) {
-            if (++o > xQ) break;
+            if (++o > SQ) break;
             if (u.nodeType === 3) {
               let g = u.nodeValue ?? "";
               if (l ? g : g.trim() || / /.test(g)) c.push({ text: l ? g : g.replace(/\s+/g, " ") });
@@ -24245,12 +24245,12 @@ Please report this to https://github.com/markedjs/marked.`),
             if (u.nodeType !== 1) continue;
             let f = u,
               p = f.tagName.toLowerCase();
-            if (f.namespaceURI !== hQ || mQ.test(p)) continue;
-            if (s > wQ) {
+            if (f.namespaceURI !== yQ || hQ.test(p)) continue;
+            if (s > TQ) {
               c.push({ text: f.textContent ?? "" });
               continue;
             }
-            if (gQ.test(p)) {
+            if (bQ.test(p)) {
               c.push({
                 tag: "p",
                 attrs: {},
@@ -24258,7 +24258,7 @@ Please report this to https://github.com/markedjs/marked.`),
               });
               continue;
             }
-            if (!fQ.has(p)) {
+            if (!gQ.has(p)) {
               c.push(...i(f, s + 1, l));
               continue;
             }
@@ -24267,10 +24267,10 @@ Please report this to https://github.com/markedjs/marked.`),
               if (g) c.push({ text: g });
               continue;
             }
-            let m = AQ(f);
+            let m = _Q(f);
             c.push({
               tag: p,
-              attrs: EQ(f, p, t),
+              attrs: MQ(f, p, t),
               ...(m ? { style: m } : {}),
               children:
                 p === "textarea" ? [{ text: f.textContent ?? "" }] : i(f, s + 1, l || p === "pre"),
@@ -24290,9 +24290,9 @@ Please report this to https://github.com/markedjs/marked.`),
       return n ? `↳ ${r}: ${n}` : `↳ ${r}`;
     }
     var cu = ee(we(), 1),
-      _Q = "light-dark(oklch(0.5 0.01 260 / 0.35), oklch(0.85 0.01 260 / 0.35))",
-      MQ = new Set(["br", "hr", "img", "input"]),
-      RQ = {
+      RQ = "light-dark(oklch(0.5 0.01 260 / 0.35), oklch(0.85 0.01 260 / 0.35))",
+      LQ = new Set(["br", "hr", "img", "input"]),
+      CQ = {
         for: "htmlFor",
         colspan: "colSpan",
         rowspan: "rowSpan",
@@ -24305,12 +24305,12 @@ Please report this to https://github.com/markedjs/marked.`),
         method: "data-method",
         target: "data-target",
       },
-      LQ = new Set(["checked", "disabled", "required", "readonly", "multiple", "selected", "open"]);
-    function CQ(e, t) {
+      NQ = new Set(["checked", "disabled", "required", "readonly", "multiple", "selected", "open"]);
+    function OQ(e, t) {
       let n = { key: t };
       for (let [r, o] of Object.entries(e.attrs)) {
-        let i = RQ[r] ?? r;
-        if (LQ.has(r))
+        let i = CQ[r] ?? r;
+        if (NQ.has(r))
           if (r === "checked") n.defaultChecked = true;
           else if (r === "selected") continue;
           else n[i] = true;
@@ -24335,28 +24335,28 @@ Please report this to https://github.com/markedjs/marked.`),
           return r.attrs.href
             ? cu.jsx(Mb, { href: r.attrs.href, children: _b(r.children, t, `${i}.`) }, i)
             : cu.jsx("span", { children: _b(r.children, t, `${i}.`) }, i);
-        let a = CQ(r, i);
+        let a = OQ(r, i);
         if (r.tag === "form") a.onSubmit = t;
         if (r.tag === "textarea")
           return (
             (a.defaultValue = r.children.map((s) => ("text" in s ? s.text : "")).join("")),
             Cr.createElement("textarea", a)
           );
-        if (MQ.has(r.tag)) return Cr.createElement(r.tag, a);
+        if (LQ.has(r.tag)) return Cr.createElement(r.tag, a);
         return Cr.createElement(r.tag, a, ..._b(r.children, t, `${i}.`));
       });
     }
-    var NQ = "light-dark(oklch(0.46 0.187 22.3), oklch(0.8 0.132 22.3))",
-      OQ = 1600;
+    var PQ = "light-dark(oklch(0.46 0.187 22.3), oklch(0.8 0.132 22.3))",
+      DQ = 1600;
     function MI(e) {
       for (let t of e)
-        ((t.style.outline = `2px solid ${NQ}`),
+        ((t.style.outline = `2px solid ${PQ}`),
           (t.style.outlineOffset = "1px"),
           t.setAttribute("data-filled", ""));
       setTimeout(() => {
         for (let t of e)
           ((t.style.outline = ""), (t.style.outlineOffset = ""), t.removeAttribute("data-filled"));
-      }, OQ);
+      }, DQ);
     }
     function RI({ html: e, host: t, lineId: n, store: r = xb }) {
       let o = Cr.useRef(null);
@@ -24400,7 +24400,7 @@ Please report this to https://github.com/markedjs/marked.`),
         "data-widget-line": n,
         className:
           "pointer-events-auto my-1 max-h-[70vh] max-w-full overflow-auto rounded-lg border p-2 [contain:content]",
-        style: { borderColor: _Q },
+        style: { borderColor: RQ },
         onClick: (c) => c.stopPropagation(),
         onPointerDown: (c) => c.stopPropagation(),
         onKeyDown: (c) => c.stopPropagation(),
@@ -24447,7 +24447,7 @@ Please report this to https://github.com/markedjs/marked.`),
       });
     }
     var Xt = ee(we(), 1),
-      PQ = "light-dark(oklch(0.46 0.187 22.3), oklch(0.8 0.132 22.3))",
+      IQ = "light-dark(oklch(0.46 0.187 22.3), oklch(0.8 0.132 22.3))",
       PI = "light-dark(oklch(0.5 0.01 260 / 0.13), oklch(0.85 0.01 260 / 0.16))",
       Rb = "light-dark(oklch(0.5 0.01 260 / 0.35), oklch(0.85 0.01 260 / 0.35))",
       DI = () => (typeof location > "u" ? undefined : location.hostname);
@@ -24470,7 +24470,7 @@ Please report this to https://github.com/markedjs/marked.`),
             "data-testid": "debug-chat-link",
             className:
               "pointer-events-auto underline decoration-1 underline-offset-2 [overflow-wrap:anywhere]",
-            style: { color: PQ },
+            style: { color: IQ },
             onPointerDown: (u) => {
               r.current = { x: u.clientX, y: u.clientY };
             },
@@ -24499,7 +24499,7 @@ Please report this to https://github.com/markedjs/marked.`),
         ],
       });
     }
-    function DQ(e, t, n) {
+    function zQ(e, t, n) {
       if (!n || e.at === undefined) return e.text;
       let r = e.at,
         o = r + e.text.length,
@@ -24526,7 +24526,7 @@ Please report this to https://github.com/markedjs/marked.`),
         td: "max-w-96 border px-1.5 py-0.5 align-top",
         img: "h-auto max-w-full rounded",
       },
-      IQ = {
+      $Q = {
         pre: { background: PI },
         code: { background: PI },
         hr: { borderColor: Rb },
@@ -24537,7 +24537,7 @@ Please report this to https://github.com/markedjs/marked.`),
     function zI(e, t, n = "") {
       return e.map((r, o) => {
         let i = `${n}${o}`;
-        if ("text" in r) return Xt.jsx(zQ, { children: DQ(r, i, t.read) }, i);
+        if ("text" in r) return Xt.jsx(HQ, { children: zQ(r, i, t.read) }, i);
         let { tag: a, attrs: s = {} } = r,
           l = () => zI(r.children, { ...t, inPre: t.inPre || a === "pre" }, `${i}.`);
         if (a === "a")
@@ -24563,7 +24563,7 @@ Please report this to https://github.com/markedjs/marked.`),
             key: i,
             ...m,
             className: g ? undefined : II[a],
-            style: g ? undefined : { ...IQ[a], ...(c ? { textAlign: c } : {}) },
+            style: g ? undefined : { ...$Q[a], ...(c ? { textAlign: c } : {}) },
           };
         if (a === "img")
           return qi.createElement("img", { ...h, loading: "lazy", referrerPolicy: "no-referrer" });
@@ -24571,7 +24571,7 @@ Please report this to https://github.com/markedjs/marked.`),
         return qi.createElement(a, h, ...l());
       });
     }
-    var zQ = ({ children: e }) => Xt.jsx(Xt.Fragment, { children: e });
+    var HQ = ({ children: e }) => Xt.jsx(Xt.Fragment, { children: e });
     function Lb({ rich: e, read: t, onOpenPage: n, widgets: r, lineId: o }) {
       return Xt.jsx(Xt.Fragment, {
         children: zI(e.nodes, { read: t, onOpenPage: n, widgets: r, lineId: o }),
@@ -24592,7 +24592,7 @@ Please report this to https://github.com/markedjs/marked.`),
     }
     var HI = 1500;
     var Sl = 3000,
-      $Q = 2,
+      UQ = 2,
       UI = (e) => e.pref && e.open && !e.expanded && !e.typing && !e.tree && !e.fullLog;
     function FI(e) {
       if (!e.pref || !e.open || !e.expanded) return null;
@@ -24603,11 +24603,11 @@ Please report this to https://github.com/markedjs/marked.`),
     var BI = (e, t, n) => Math.max(e, t + n);
     function VI(e, t) {
       let n = e.at(-1) ?? null;
-      return { asks: e.filter((o) => o !== n && o.ask && uu(o, t) === "open").slice(-$Q), last: n };
+      return { asks: e.filter((o) => o !== n && o.ask && uu(o, t) === "open").slice(-UQ), last: n };
     }
     var jI = "lk:agent-speech-rate",
       Cb = [1, 1.25, 1.5, 2],
-      HQ = 1.5,
+      FQ = 1.5,
       GI = () => {
         try {
           return localStorage2 ?? null;
@@ -24621,7 +24621,7 @@ Please report this to https://github.com/markedjs/marked.`),
         t = e?.getItem(jI) ?? null;
       } catch {}
       let n = Number(t);
-      return t !== null && Cb.includes(n) ? n : HQ;
+      return t !== null && Cb.includes(n) ? n : FQ;
     }
     function WI(e, t = GI()) {
       if (!Cb.includes(e)) return;
@@ -24632,7 +24632,7 @@ Please report this to https://github.com/markedjs/marked.`),
     }
     var YI = (e) =>
         typeof e === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(e) && !/lk_/i.test(e),
-      UQ = (e) => typeof e === "string" && /^[\p{L}\p{N}_-]{1,64}$/u.test(e) && !/lk_/i.test(e),
+      BQ = (e) => typeof e === "string" && /^[\p{L}\p{N}_-]{1,64}$/u.test(e) && !/lk_/i.test(e),
       Ob = (e) => typeof e === "number" && Number.isFinite(e) && e >= 0 && e <= 100000000000000;
     function KI(e, t) {
       if (!YI(e) || !Number.isFinite(t) || t <= 0) return false;
@@ -24641,7 +24641,7 @@ Please report this to https://github.com/markedjs/marked.`),
       for (let r = 0; r < e.length; r++) n = Math.imul(n ^ e.charCodeAt(r), 16777619);
       return (n >>> 0) / 4294967296 < t;
     }
-    function FQ(e = {}) {
+    function VQ(e = {}) {
       let t = e.now ?? Date.now,
         n = e.setTimer ?? ((h, y) => setTimeout(h, y)),
         r = e.clearTimer ?? ((h) => clearTimeout(h)),
@@ -24735,7 +24735,7 @@ Please report this to https://github.com/markedjs/marked.`),
             v = t();
           if (!b || b.receivedAt !== undefined || !Ob(v)) return;
           if (h.from === "owner" || h.from === "friend" || h.from === "agent") b.from = h.from;
-          if (UQ(h.lane)) b.lane = h.lane;
+          if (BQ(h.lane)) b.lane = h.lane;
           if (h.source === "typed" || h.source === "stt") b.source = h.source;
           ((b.receivedAt = v), m(h.id));
         },
@@ -24768,7 +24768,7 @@ Please report this to https://github.com/markedjs/marked.`),
     }
     function Pb() {
       let e = globalThis;
-      return (e.__lkMessageTelemetry ??= FQ());
+      return (e.__lkMessageTelemetry ??= VQ());
     }
     var ZI = 1e4;
     var qI = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
@@ -24788,7 +24788,7 @@ Please report this to https://github.com/markedjs/marked.`),
       }
       return n;
     }
-    function BQ(e, t) {
+    function jQ(e, t) {
       let n = 0,
         r = 0,
         o = 0;
@@ -24797,7 +24797,7 @@ Please report this to https://github.com/markedjs/marked.`),
       for (let [i, a] of e) o += Math.min(a, t.get(i) ?? 0);
       return n + r ? (2 * o) / (n + r) : 0;
     }
-    function VQ(e, t) {
+    function GQ(e, t) {
       let n = ii(e),
         r = { score: 0, against: null, drop: false };
       if (!n || !t.length) return r;
@@ -24813,7 +24813,7 @@ Please report this to https://github.com/markedjs/marked.`),
         let f;
         if (u === n || (!i && u.includes(n))) f = 1;
         else if (i) f = 0;
-        else f = BQ(s, Vp(u, o));
+        else f = jQ(s, Vp(u, o));
         if (f > l.score) l = { score: f, against: c, drop: false };
       }
       return { ...l, score: Math.round(l.score * 1000) / 1000, drop: l.score >= 0.6 };
@@ -24831,13 +24831,13 @@ Please report this to https://github.com/markedjs/marked.`),
       for (let [c, u] of i) ((s += u), (l += Math.min(u, a.get(c) ?? 0)));
       return s ? l / s : 0;
     }
-    var jQ = 1500;
+    var WQ = 1500;
     function Ib(e, t, n, r, o, i = {}) {
       let a = i.windowMs ?? 1e4,
-        s = i.slackMs ?? jQ,
+        s = i.slackMs ?? WQ,
         l = t.filter((h) => (h.end ?? o) >= n - a).map((h) => h.text),
         c = t.some((h) => h.start <= r && (h.end ?? o) >= n),
-        u = VQ(e, l),
+        u = GQ(e, l),
         f = t.filter((h) => h.start <= r + s && (h.end ?? o) + s >= n),
         p = [...ii(e)].length >= 4,
         m =
@@ -24858,15 +24858,15 @@ Please report this to https://github.com/markedjs/marked.`),
         };
       return { ...u, during: c, contained: g };
     }
-    function GQ(e) {
+    function KQ(e) {
       let t = 2166136261;
       for (let n = 0; n < e.length; n++) ((t ^= e.charCodeAt(n)), (t = Math.imul(t, 16777619)));
       return (t >>> 0).toString(36);
     }
     function lT(e, t) {
-      return [...new Set([...Vp(ii(e), t).keys()].map(GQ))];
+      return [...new Set([...Vp(ii(e), t).keys()].map(KQ))];
     }
-    function WQ(e, t, n, r) {
+    function YQ(e, t, n, r) {
       if (![e, t, n, r].every(Number.isFinite)) return null;
       let o = r - e - (n - t);
       if (o < 0 || o > 5000) return null;
@@ -24875,11 +24875,11 @@ Please report this to https://github.com/markedjs/marked.`),
     function XI(e, t = 4) {
       return [...e].sort((n, r) => n.rtt - r.rtt || r.at - n.at).slice(0, t);
     }
-    function KQ(e) {
+    function ZQ(e) {
       let t = XI(e, 1)[0];
       return t ? { offset: t.offset, rtt: t.rtt, at: t.at } : null;
     }
-    function YQ(e = () => Date.now()) {
+    function qQ(e = () => Date.now()) {
       let t = [],
         n = null,
         r = 0;
@@ -24892,11 +24892,11 @@ Please report this to https://github.com/markedjs/marked.`),
         pong(o) {
           if (n === null || o.t0 !== n) return false;
           n = null;
-          let i = WQ(o.t0, Number(o.t1), Number(o.t2), e());
+          let i = YQ(o.t0, Number(o.t1), Number(o.t2), e());
           if (i) t = XI([...t, i]);
           return (r--, r > 0);
         },
-        offset: () => KQ(t)?.offset ?? null,
+        offset: () => ZQ(t)?.offset ?? null,
         stale() {
           if (!t.length) return true;
           return e() - Math.max(...t.map((o) => o.at)) > 600000;
@@ -24909,7 +24909,7 @@ Please report this to https://github.com/markedjs/marked.`),
     }
     function JI() {
       let e = globalThis;
-      return (e.__lkHubClock ??= YQ());
+      return (e.__lkHubClock ??= qQ());
     }
     var ez = 20000,
       QI = 2000,
@@ -24917,8 +24917,8 @@ Please report this to https://github.com/markedjs/marked.`),
         let e = globalThis;
         return (e.__lkPlayReport ??= { on: false, send: null, n: 0 });
       },
-      ZQ = 32;
-    var qQ = () => {
+      XQ = 32;
+    var JQ = () => {
         try {
           return !!globalThis.document?.querySelector?.("[data-lk-private-screen]");
         } catch {
@@ -24948,7 +24948,7 @@ Please report this to https://github.com/markedjs/marked.`),
         s = a && e.alt && e.alt !== e.text ? e.alt.slice(0, QI) : undefined,
         l = !a
           ? {}
-          : qQ()
+          : JQ()
             ? { g2: lT(`${a} ${s ?? ""}`, 2), g3: lT(`${a} ${s ?? ""}`, 3) }
             : { text: a, ...(s ? { alt: s } : {}) },
         c = {
@@ -24962,7 +24962,7 @@ Please report this to https://github.com/markedjs/marked.`),
       if (!cT(c)) return null;
       let f = (t.open ??= new Map());
       f.set(r, c);
-      while (f.size > ZQ) f.delete(f.keys().next().value);
+      while (f.size > XQ) f.delete(f.keys().next().value);
       return r;
     }
     function nz(e) {
@@ -24987,14 +24987,14 @@ Please report this to https://github.com/markedjs/marked.`),
         autoGainControl: false,
         channelCount: 1,
       };
-    var XQ = (e) => {
+    var QQ = (e) => {
         try {
           return localStorage2.getItem(e);
         } catch {
           return null;
         }
       },
-      Xi = () => XQ("lk:voice-aec") !== "0";
+      Xi = () => QQ("lk:voice-aec") !== "0";
     function iz(e) {
       try {
         if (e) localStorage2.removeItem("lk:voice-aec");
@@ -25015,8 +25015,8 @@ Please report this to https://github.com/markedjs/marked.`),
       let t = dT().subs;
       return (t.add(e), () => void t.delete(e));
     }
-    var JQ = () => dT().aec,
-      pu = () => JQ() ?? Xi();
+    var eee = () => dT().aec,
+      pu = () => eee() ?? Xi();
     async function pT(e, t = globalThis) {
       iz(e);
       try {
@@ -25031,12 +25031,12 @@ Please report this to https://github.com/markedjs/marked.`),
       }
     }
     var lz = () => globalThis.__lkTalkOver === true,
-      QQ = "android";
+      tee = "android";
     function cz(e = navigator2?.userAgent ?? "", t = globalThis.__lkCloudWhileMic) {
-      let n = t === "never" || t === "always" || t === "android" ? t : QQ;
+      let n = t === "never" || t === "always" || t === "android" ? t : tee;
       return n === "always" || (n === "android" && /Android/i.test(e));
     }
-    function eee() {
+    function nee() {
       let e = new Set();
       return {
         subscribe(t) {
@@ -25057,21 +25057,21 @@ Please report this to https://github.com/markedjs/marked.`),
     }
     function jp() {
       let e = globalThis;
-      return (e.__lkLiveMic ??= eee());
+      return (e.__lkLiveMic ??= nee());
     }
     var uz = "lk:agent:stt-hint",
       dz = ["zh", "ja", "en"],
-      tee = "日本語、English、中文が混ざります。",
-      nee = "我说中文，有时夹杂日本語和English。",
-      Gp = [nee, tee],
+      ree = "日本語、English、中文が混ざります。",
+      oee = "我说中文，有时夹杂日本語和English。",
+      Gp = [oee, ree],
       pz = 600;
-    function ree(e) {
+    function iee(e) {
       if (/[\p{sc=Hiragana}\p{sc=Katakana}]/u.test(e)) return "ja";
       if (/\p{sc=Han}/u.test(e)) return "zh";
       if (/[A-Za-z]{2,}/.test(e)) return "en";
       return;
     }
-    function oee(e) {
+    function aee(e) {
       for (let t of e) {
         let n = t.slice(0, 2).toLowerCase();
         if (dz.includes(n)) return n;
@@ -25079,7 +25079,7 @@ Please report this to https://github.com/markedjs/marked.`),
       return;
     }
     function fz(e) {
-      let t = ree(e);
+      let t = iee(e);
       if (!t) return;
       try {
         localStorage2.setItem(uz, t);
@@ -25092,7 +25092,7 @@ Please report this to https://github.com/markedjs/marked.`),
       } catch {}
       if (e && dz.includes(e)) return e;
       if (typeof navigator2 > "u") return;
-      return oee(navigator2.languages?.length ? navigator2.languages : [navigator2.language ?? ""]);
+      return aee(navigator2.languages?.length ? navigator2.languages : [navigator2.language ?? ""]);
     }
     var gz = [
         { id: "selection", label: "attachSelection" },
@@ -25100,18 +25100,18 @@ Please report this to https://github.com/markedjs/marked.`),
         { id: "media", label: "attachMedia", upload: true, accept: "image/*,video/*,audio/*" },
       ],
       fT = "lk:chat-add-items",
-      iee = "__lkChatAddItems",
-      aee = [];
+      see = "__lkChatAddItems",
+      lee = [];
     function mT() {
-      return globalThis[iee] ?? aee;
+      return globalThis[see] ?? lee;
     }
-    var see = "lk:chat-attach",
+    var cee = "lk:chat-attach",
       Ub = "__lkChatAttach";
     function hz() {
       let e = globalThis,
         t = () => {
           try {
-            globalThis.dispatchEvent?.(new Event(see));
+            globalThis.dispatchEvent?.(new Event(cee));
           } catch {}
         };
       ((e[Ub] = (e[Ub] ?? 0) + 1), t());
@@ -25121,20 +25121,20 @@ Please report this to https://github.com/markedjs/marked.`),
         ((n = true), (e[Ub] = Math.max(0, (e[Ub] ?? 1) - 1)), t());
       };
     }
-    var lee = 1800000,
+    var uee = 1800000,
       Kp = "[data-debug-chat], [data-lk-chat-host]",
       bz = "[data-sensitive], [data-lk-sensitive]",
-      cee = /password|one-time-code|cc-|csc/i;
+      dee = /password|one-time-code|cc-|csc/i;
     function Wp(e) {
       if (!e) return false;
       if (e.tagName === "INPUT") {
         if ((e.type ?? "").toLowerCase() === "password") return true;
-        if (cee.test(e.getAttribute?.("autocomplete") ?? "")) return true;
+        if (dee.test(e.getAttribute?.("autocomplete") ?? "")) return true;
       }
       return !!e.closest?.(bz);
     }
     var mz = (e) => (!e ? null : e.nodeType === 1 ? e : (e.parentElement ?? null));
-    function uee(e) {
+    function pee(e) {
       let t = e.doc.activeElement;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA") && !e.inChat(t)) {
         if (Wp(t)) return null;
@@ -25178,7 +25178,7 @@ Please report this to https://github.com/markedjs/marked.`),
           r = e.inChat(l.target);
         },
         s = () => {
-          let l = uee(e);
+          let l = pee(e);
           if (l === null) return;
           let c = l.trim();
           if (c) {
@@ -25201,7 +25201,7 @@ Please report this to https://github.com/markedjs/marked.`),
           );
         },
         get() {
-          return n && t() - n.at <= lee ? n : null;
+          return n && t() - n.at <= uee ? n : null;
         },
         clear: () => i(null),
         subscribe(l) {
@@ -25212,7 +25212,7 @@ Please report this to https://github.com/markedjs/marked.`),
     }
     var gT = (e) => e.replace(/\s+/g, " ").trim();
     var hT = "[data-lk-private-screen]";
-    function dee(e = document, t = IS) {
+    function fee(e = document, t = IS) {
       let n = e.defaultView;
       if (!e.body || !n) return "";
       if (e.querySelector(hT)) return "";
@@ -25241,7 +25241,7 @@ Please report this to https://github.com/markedjs/marked.`),
     function vz(e = globalThis.document) {
       if (!e?.defaultView) return;
       try {
-        return rD({ path: e.defaultView.location.pathname, title: e.title, screen: dee(e) });
+        return rD({ path: e.defaultView.location.pathname, title: e.title, screen: fee(e) });
       } catch {
         return;
       }
@@ -25350,11 +25350,11 @@ Please report this to https://github.com/markedjs/marked.`),
         shortSpeechMs: 1200,
         faintProb: 0.5,
       },
-      pee = Bb,
+      mee = Bb,
       yT = { min: 32, max: 2000 };
-    var vT = () => pee,
+    var vT = () => mee,
       Tz = 40,
-      fee = 160,
+      gee = 160,
       Az = {
         謝: "谢",
         觀: "观",
@@ -25380,7 +25380,7 @@ Please report this to https://github.com/markedjs/marked.`),
         賞: "赏",
         語: "语",
       },
-      mee = (e) => [...e].map((t) => Az[t] ?? t).join(""),
+      hee = (e) => [...e].map((t) => Az[t] ?? t).join(""),
       Sz = Object.entries(Az).reduce((e, [t, n]) => ({ ...e, [n]: (e[n] ?? "") + t }), {});
     function ai(e) {
       return e
@@ -25388,7 +25388,7 @@ Please report this to https://github.com/markedjs/marked.`),
         .toLowerCase()
         .replace(/[\p{P}\p{S}\s]/gu, "");
     }
-    var fu = (e) => mee(ai(e)),
+    var fu = (e) => hee(ai(e)),
       Vb = (e) => e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
       qp = (e) =>
         new RegExp(
@@ -25408,13 +25408,13 @@ Please report this to https://github.com/markedjs/marked.`),
           .split("…")
           .map((t) => [...fu(t)].map((n) => (Sz[n] ? `[${n}${Sz[n]}]` : Vb(n))).join(mu))
           .join(`.{0,${Tz}}?`),
-      gee = Fb.filter((e) => e.kind === "credit").map((e) => e.text),
-      hee = qp(gee),
-      bee = qp(Fb.map((e) => e.text));
-    function yee(e) {
+      bee = Fb.filter((e) => e.kind === "credit").map((e) => e.text),
+      yee = qp(bee),
+      vee = qp(Fb.map((e) => e.text));
+    function kee(e) {
       let t = fu(e);
-      if (!t || t.length > fee || !bee.test(t)) return;
-      return hee.test(t) ? "credit" : "courtesy";
+      if (!t || t.length > gee || !vee.test(t)) return;
+      return yee.test(t) ? "credit" : "courtesy";
     }
     function kT(e, t = 512) {
       let n = 0;
@@ -25434,7 +25434,7 @@ Please report this to https://github.com/markedjs/marked.`),
       if (t.short && !t.answer) return "short-speech";
       let o = t.signals;
       if (!t.answer && o?.vadShare !== undefined && o.vadShare < n.minVadShare) return "route-vad";
-      let i = yee(e);
+      let i = kee(e);
       if (!i) return null;
       if (i === "credit" && o?.decoder !== "ctc") return "stock-credit";
       return t.speechMs < n.shortSpeechMs || (t.prob !== undefined && t.prob < n.faintProb)
@@ -25446,11 +25446,11 @@ Please report this to https://github.com/markedjs/marked.`),
     var Xp = { maxRuns: 6, maxShare: 0.6, minKeepChars: 4 };
     var _z = /[\p{L}\p{N}\p{M}]/u,
       Mz = /^\p{N}+$/u,
-      vee = /^[\p{L}\p{M}\p{N}]$/u,
-      kee = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u,
+      xee = /^[\p{L}\p{M}\p{N}]$/u,
+      wee = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u,
       Rz = Xp;
     var wT = () => Rz;
-    function xee(e) {
+    function See(e) {
       let t = [],
         n = [],
         r = 0;
@@ -25463,7 +25463,7 @@ Please report this to https://github.com/markedjs/marked.`),
       }
       return { ch: t, end: n };
     }
-    function wee(e, t) {
+    function Tee(e, t) {
       let n = [];
       for (let r = 1; r <= 8; r++) {
         let o = 0;
@@ -25482,12 +25482,12 @@ Please report this to https://github.com/markedjs/marked.`),
       }
       return n;
     }
-    function See(e, t) {
+    function Aee(e, t) {
       let n = [],
         r = 0;
       for (let i of e.split(/[^\p{L}\p{N}\p{M}]+/u)) {
         if (!i) continue;
-        let a = [...i.normalize("NFKC").toLowerCase()].filter((s) => vee.test(s)).join("");
+        let a = [...i.normalize("NFKC").toLowerCase()].filter((s) => xee.test(s)).join("");
         (n.push({ key: a, at: r }), (r += [...a].length));
       }
       let o = [];
@@ -25496,19 +25496,19 @@ Please report this to https://github.com/markedjs/marked.`),
         while (a < n.length && n[a].key === n[i].key) a++;
         let s = n[i].key,
           l = [...s].length;
-        if (a - i >= t && l > 8 && !kee.test(s) && !Mz.test(s))
+        if (a - i >= t && l > 8 && !wee.test(s) && !Mz.test(s))
           o.push({ start: n[i].at, len: l, runs: a - i });
         i = a;
       }
       return o;
     }
     function ST(e, t = Rz) {
-      let { ch: n, end: r } = xee(e);
+      let { ch: n, end: r } = See(e);
       if (!n.length) return { action: "keep", text: e };
       let o = Math.max(2, t.maxRuns),
         i = [
-          ...wee(n, o),
-          ...See(e, o).map((p) => ({
+          ...Tee(n, o),
+          ...Aee(e, o).map((p) => ({
             start: p.start,
             unit: p.len,
             runs: p.runs,
@@ -25529,14 +25529,14 @@ Please report this to https://github.com/markedjs/marked.`),
       if (u < t.minKeepChars) return { action: "drop", text: "", unit: c, runs: l.runs, share: s };
       return { action: "trim", text: f, unit: c, runs: l.runs, share: s };
     }
-    var Tee = [
+    var Eee = [
         ["j", "q", "x"],
         ["zh", "z"],
         ["ch", "c"],
         ["sh", "s"],
         ["n", "l"],
       ],
-      Aee = [
+      _ee = [
         ["in", "ing"],
         ["en", "eng"],
         ["an", "ang"],
@@ -25546,8 +25546,8 @@ Please report this to https://github.com/markedjs/marked.`),
       ],
       Nz = 1,
       Oz = 3;
-    var Eee = 1;
-    var _ee = [
+    var Mee = 1;
+    var Ree = [
       "zh",
       "ch",
       "sh",
@@ -25573,22 +25573,22 @@ Please report this to https://github.com/markedjs/marked.`),
       "w",
     ];
     function Lz(e) {
-      let t = _ee.find((n) => e.startsWith(n) && e.length > n.length) ?? "";
+      let t = Ree.find((n) => e.startsWith(n) && e.length > n.length) ?? "";
       return [t, e.slice(t.length)];
     }
     var Pz = (e) => {
         let t = new Map();
         return (e.forEach((n, r) => n.forEach((o) => t.set(o, r))), t);
       },
-      Mee = Pz(Tee),
-      Ree = Pz(Aee),
+      Lee = Pz(Eee),
+      Cee = Pz(_ee),
       Cz = (e, t, n) => e.has(t) && e.get(t) === e.get(n);
-    function Lee(e, t) {
+    function Nee(e, t) {
       if (e === t) return "same";
       let [n, r] = Lz(e),
         [o, i] = Lz(t);
-      if (r === i && Cz(Mee, n, o)) return "near";
-      if (n === o && Cz(Ree, r, i)) return "near";
+      if (r === i && Cz(Lee, n, o)) return "near";
+      if (n === o && Cz(Cee, r, i)) return "near";
       return null;
     }
     var Dz = (e) =>
@@ -25607,7 +25607,7 @@ Please report this to https://github.com/markedjs/marked.`),
       }
       return n.length >= 2 ? n : null;
     }
-    function $z(e, t, n, r = Eee) {
+    function $z(e, t, n, r = Mee) {
       let o = 0,
         i = 0,
         a = e[Symbol.iterator]();
@@ -25616,14 +25616,14 @@ Please report this to https://github.com/markedjs/marked.`),
         if (c || !Iz.test(l)) return -1;
         let u = n(l);
         if (!u) return -1;
-        let f = Lee(Dz(u), s);
+        let f = Nee(Dz(u), s);
         if (!f) return -1;
         if (f === "near" && ++i > r) return -1;
         o += l.length;
       }
       return o;
     }
-    var Cee = [
+    var Oee = [
         "svg",
         "g",
         "path",
@@ -25637,13 +25637,13 @@ Please report this to https://github.com/markedjs/marked.`),
         "tspan",
         "title",
       ],
-      Nee = new Set(Cee),
-      Oee = new Set(["text", "tspan", "title"]),
-      Pee = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?(px|%)?$/,
-      Dee = /^[0-9eE.,+\-\s]*$/,
-      Iee = /^[MmLlHhVvCcSsQqTtAaZz0-9eE.,+\-\s]*$/,
+      Pee = new Set(Oee),
+      Dee = new Set(["text", "tspan", "title"]),
+      Iee = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?(px|%)?$/,
+      zee = /^[0-9eE.,+\-\s]*$/,
+      $ee = /^[MmLlHhVvCcSsQqTtAaZz0-9eE.,+\-\s]*$/,
       TT = /(matrix|translate|scale|rotate|skewX|skewY)\s*\([0-9eE.,+\-\s]*\)[\s,]*/y;
-    function zee(e) {
+    function Hee(e) {
       let t = 0;
       while (t < e.length && /\s/.test(e[t])) t++;
       while (t < e.length) {
@@ -25652,12 +25652,12 @@ Please report this to https://github.com/markedjs/marked.`),
       }
       return true;
     }
-    var $ee =
+    var Uee =
         /^(none|currentColor|transparent|[a-zA-Z]{3,20}|#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch)\(\s*[0-9eE.,%+\-\s/]*(deg|turn|rad)?[0-9eE.,%+\-\s/]*\))$/,
-      Hee = new Set(["url", "var", "inherit", "expression", "attr", "env"]),
-      ln = (e) => e.length <= 32 && Pee.test(e.trim()),
-      Hz = (e) => e.length <= 1024 && Dee.test(e),
-      Uz = (e) => e.length <= 64 && $ee.test(e.trim()) && !Hee.has(e.trim().toLowerCase()),
+      Fee = new Set(["url", "var", "inherit", "expression", "attr", "env"]),
+      ln = (e) => e.length <= 32 && Iee.test(e.trim()),
+      Hz = (e) => e.length <= 1024 && zee.test(e),
+      Uz = (e) => e.length <= 64 && Uee.test(e.trim()) && !Fee.has(e.trim().toLowerCase()),
       gu =
         (...e) =>
         (t) =>
@@ -25679,9 +25679,9 @@ Please report this to https://github.com/markedjs/marked.`),
         y1: ln,
         x2: ln,
         y2: ln,
-        d: (e) => e.length <= 4096 && Iee.test(e),
+        d: (e) => e.length <= 4096 && $ee.test(e),
         points: Hz,
-        transform: (e) => e.length <= 512 && zee(e),
+        transform: (e) => e.length <= 512 && Hee(e),
         fill: Uz,
         stroke: Uz,
         "stroke-width": ln,
@@ -25710,9 +25710,9 @@ Please report this to https://github.com/markedjs/marked.`),
       },
       Bz = (e) => new TextEncoder().encode(e).length,
       jz = (e) => e.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
-      Uee = (e) => jz(e).replace(/"/g, "&quot;"),
+      Bee = (e) => jz(e).replace(/"/g, "&quot;"),
       Vz = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
-    function Fee(e) {
+    function Vee(e) {
       let t = /&(?!(#x[0-9a-fA-F]{1,6}|#\d{1,7}|[a-zA-Z]{1,8});)/.test(e),
         n = e.replace(/&(#x[0-9a-fA-F]{1,6}|#\d{1,7}|[a-zA-Z]{1,8});/g, (r, o) => {
           if (o.startsWith("#")) {
@@ -25748,9 +25748,9 @@ Please report this to https://github.com/markedjs/marked.`),
         if (h) {
           let R = o[o.length - 1];
           if (!i && h.trim())
-            if (!Oee.has(R.name)) n.add("text outside text/tspan/title");
+            if (!Dee.has(R.name)) n.add("text outside text/tspan/title");
             else {
-              let M = Fee(h);
+              let M = Vee(h);
               if (M === null) return { ok: false, error: "only the five XML entities are allowed" };
               R.kids.push(M);
             }
@@ -25771,7 +25771,7 @@ Please report this to https://github.com/markedjs/marked.`),
             return { ok: false, error: `mismatched </${v}>` };
           continue;
         }
-        if (i || !Nee.has(v) || (v === "svg" && o.length > 1)) {
+        if (i || !Pee.has(v) || (v === "svg" && o.length > 1)) {
           if (!i) n.add(`<${v}>`);
           if (!w) i++;
           continue;
@@ -25822,7 +25822,7 @@ Please report this to https://github.com/markedjs/marked.`),
           let h = (
               g.name === "svg" ? [["xmlns", "http://www.w3.org/2000/svg"], ...g.attrs] : g.attrs
             )
-              .map(([b, v]) => ` ${b}="${Uee(v)}"`)
+              .map(([b, v]) => ` ${b}="${Bee(v)}"`)
               .join(""),
             y = g.kids.map((b) => (typeof b === "string" ? jz(b) : p(b))).join("");
           return y ? `<${g.name}${h}>${y}</${g.name}>` : `<${g.name}${h}/>`;
@@ -25831,8 +25831,8 @@ Please report this to https://github.com/markedjs/marked.`),
       if (Bz(m) > 4096) return { ok: false, error: "svg over 4096 bytes" };
       return { ok: true, svg: m, dropped: [...n] };
     }
-    var Bee = /^[0-9a-f]{64}$/,
-      AT = (e) => typeof e === "string" && Bee.test(e),
+    var jee = /^[0-9a-f]{64}$/,
+      AT = (e) => typeof e === "string" && jee.test(e),
       Gz = "/api/version/chat-avatar/";
     function hu(e) {
       let t = 2166136261;
@@ -26034,8 +26034,8 @@ Please report this to https://github.com/markedjs/marked.`),
         },
       },
       _T = { rows: 64, names: 24, name: 40, role: 60 },
-      Vee = /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,39}$/u,
-      jee = /^oklch\(\s*[\d.]+%?\s+[\d.]+\s+[\d.]+(?:\s*\/\s*[\d.]+%?)?\s*\)$/,
+      Gee = /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,39}$/u,
+      Wee = /^oklch\(\s*[\d.]+%?\s+[\d.]+\s+[\d.]+(?:\s*\/\s*[\d.]+%?)?\s*\)$/,
       Kz = (e) => {
         if (e === undefined) return [];
         if (!Array.isArray(e) || e.length > _T.names) return null;
@@ -26051,7 +26051,7 @@ Please report this to https://github.com/markedjs/marked.`),
     function Jz(e) {
       if (!e || typeof e !== "object" || Array.isArray(e)) return null;
       let t = e;
-      if (typeof t.id !== "string" || !Vee.test(t.id)) return null;
+      if (typeof t.id !== "string" || !Gee.test(t.id)) return null;
       let n = Kz(t.aliases),
         r = Kz(t.heard);
       if (!n || !r) return null;
@@ -26061,7 +26061,7 @@ Please report this to https://github.com/markedjs/marked.`),
       )
         return null;
       if (t.voice !== undefined && !Qp(t.voice)) return null;
-      if (t.color !== undefined && (typeof t.color !== "string" || !jee.test(t.color))) return null;
+      if (t.color !== undefined && (typeof t.color !== "string" || !Wee.test(t.color))) return null;
       if (
         t.role !== undefined &&
         (typeof t.role !== "string" ||
@@ -26118,14 +26118,14 @@ Please report this to https://github.com/markedjs/marked.`),
     }
     var ds = (e) => typeof e === "string" && (RT(e) || us().some((t) => t.id === e)),
       Qp = (e) => typeof e === "string" && ku.includes(e),
-      Gee = /^\s*【\s*([^】\n]{1,24}?)\s*】\s*/u,
-      Wee = (e) => {
+      Kee = /^\s*【\s*([^】\n]{1,24}?)\s*】\s*/u,
+      Yee = (e) => {
         let t = e.toLowerCase();
         return LT().find((n) => gn(n).aliases.includes(t)) ?? null;
       };
     function Ji(e) {
-      let t = Gee.exec(e.text),
-        n = t ? Wee(t[1]) : null,
+      let t = Kee.exec(e.text),
+        n = t ? Yee(t[1]) : null,
         r = ds(e.lane) ? e.lane : n,
         o = t && n && n === r ? e.text.slice(t[0].length) : e.text;
       return { lane: r, text: o };
@@ -26141,12 +26141,12 @@ Please report this to https://github.com/markedjs/marked.`),
       let t = Ji({ lane: e.lane, text: e.text ?? "" }).lane;
       return t ? gn(t).voice : "main";
     }
-    var Kee = {
+    var Zee = {
         "zh-CN": ["zh-TW"],
         "en-US": ["en-GB", "en-AU", "en-IE", "en-ZA", "en-IN", "en-CA", "en-NZ"],
       },
-      Yee = ["eddy", "flo", "grandma", "grandpa", "reed", "rocko", "sandy", "shelley"],
-      Zee = [
+      qee = ["eddy", "flo", "grandma", "grandpa", "reed", "rocko", "sandy", "shelley"],
+      Xee = [
         "albert",
         "bad news",
         "bahh",
@@ -26174,8 +26174,8 @@ Please report this to https://github.com/markedjs/marked.`),
     function bu(e) {
       let t = (e.voiceURI ?? "").toLowerCase(),
         n = El(e);
-      if (t.includes("speech.synthesis.voice.") || Zee.includes(n)) return 0;
-      if (t.includes("eloquence") || Yee.includes(n)) return 1;
+      if (t.includes("speech.synthesis.voice.") || Xee.includes(n)) return 0;
+      if (t.includes("eloquence") || qee.includes(n)) return 1;
       return 2;
     }
     var Wb = (e) => {
@@ -26193,7 +26193,7 @@ Please report this to https://github.com/markedjs/marked.`),
         return o < 0 ? 1 / 0 : o;
       };
     function t$(e, t, n) {
-      let r = [yu(t), ...(Kee[t] ?? []).map(yu)],
+      let r = [yu(t), ...(Zee[t] ?? []).map(yu)],
         o = e
           .filter((p) => r.includes(yu(p.lang)) && bu(p) > 0)
           .map((p, m) => ({ v: p, i: m, loc: r.indexOf(yu(p.lang)) }))
@@ -26244,13 +26244,13 @@ Please report this to https://github.com/markedjs/marked.`),
       return e;
     }
     var vu = ["en", "es", "fr", "zh", "ja", "ko"],
-      qee = "https://storage.googleapis.com/eleven-public-prod/premade/voices/",
+      Jee = "https://storage.googleapis.com/eleven-public-prod/premade/voices/",
       Al = (e, t, n, r) => ({
         id: e,
         name: t,
         lang: "en",
         note: n,
-        preview: `${qee}${e}/${r}.mp3`,
+        preview: `${Jee}${e}/${r}.mp3`,
       }),
       Zz = [
         Al(
@@ -26299,13 +26299,13 @@ Please report this to https://github.com/markedjs/marked.`),
         "heart",
         "bella",
       ],
-      Xee = /^([a-z]{2,3}-[A-Z]{2})-[A-Za-z0-9]{1,24}(?:-[A-Za-z0-9]{1,24}){0,3}$/,
-      Jee = /^([a-z]{2,3}-[A-Z]{2})-[A-Za-z0-9]{2,40}(?::[A-Za-z0-9]{2,40})?$/,
-      Qee = /^[a-z]{2,3}-[A-Z]{2}$/,
+      Qee = /^([a-z]{2,3}-[A-Z]{2})-[A-Za-z0-9]{1,24}(?:-[A-Za-z0-9]{1,24}){0,3}$/,
+      ete = /^([a-z]{2,3}-[A-Z]{2})-[A-Za-z0-9]{2,40}(?::[A-Za-z0-9]{2,40})?$/,
+      tte = /^[a-z]{2,3}-[A-Z]{2}$/,
       Qi = (e) => e?.kind === "google" || e?.kind === "azure",
       qz = 80,
-      ete = /^[\p{L}\p{N}][\p{L}\p{M}\p{N} ()（）._'’-]{0,63}$/u;
-    function tte(e) {
+      nte = /^[\p{L}\p{N}][\p{L}\p{M}\p{N} ()（）._'’-]{0,63}$/u;
+    function rte(e) {
       if (typeof e !== "string" || !e || e.length > qz)
         return { error: `a voice id is 1–${qz} chars` };
       if (Qp(e)) return { kind: "table", id: e };
@@ -26315,7 +26315,7 @@ Please report this to https://github.com/markedjs/marked.`),
       let r = n[1],
         o = n[2];
       if (r === "device") {
-        if (o.trim() !== o || !ete.test(o))
+        if (o.trim() !== o || !nte.test(o))
           return { error: `not a device voice name: ${JSON.stringify(o)}` };
         return { kind: "device", name: o };
       }
@@ -26342,15 +26342,15 @@ Please report this to https://github.com/markedjs/marked.`),
         return { kind: "eleven", id: i.id, preview: i.preview };
       }
       if (r === "google") {
-        let i = Xee.exec(o);
+        let i = Qee.exec(o);
         if (!i)
           return { error: `not a Google voice name: ${JSON.stringify(o)} (e.g. cmn-TW-Wavenet-A)` };
         return { kind: "google", id: e, name: o, lang: i[1] };
       }
       if (r === "azure") {
         let [i = "", a, s] = o.split("/"),
-          l = Jee.exec(i);
-        if (!l || s !== undefined || (a !== undefined && !Qee.test(a)))
+          l = ete.exec(i);
+        if (!l || s !== undefined || (a !== undefined && !tte.test(a)))
           return {
             error: `not an Azure voice: ${JSON.stringify(o)} (e.g. zh-TW-HsiaoChenNeural, zh-CN-XiaoxiaoDialectsNeural/nan-CN)`,
           };
@@ -26375,7 +26375,7 @@ Please report this to https://github.com/markedjs/marked.`),
       return { error: `unknown voice ${e}: one of ${t}` };
     }
     function Ml(e) {
-      let t = tte(e);
+      let t = rte(e);
       return "error" in t || t.kind === "table" ? undefined : t;
     }
     function OT(e, t) {
@@ -26548,7 +26548,7 @@ Please report this to https://github.com/markedjs/marked.`),
       "y",
       "w",
     ];
-    function nte(e) {
+    function ote(e) {
       let t = e.normalize("NFC").toLowerCase();
       if (!t) return null;
       let n = $T.find((o) => t.startsWith(o) && t.length > o.length),
@@ -26556,7 +26556,7 @@ Please report this to https://github.com/markedjs/marked.`),
       return r.every((o) => zT.has(o)) ? r : null;
     }
     var Kb = null;
-    function rte(e) {
+    function ite(e) {
       if (!Kb) {
         Kb = new Map();
         for (let t of o$.split(" ")) {
@@ -26567,7 +26567,7 @@ Please report this to https://github.com/markedjs/marked.`),
       return Kb.get(e.toLowerCase());
     }
     var IT = /[aeiouy]/,
-      ote = [
+      ate = [
         ["tch", ["CH"]],
         ["sch", ["SH"]],
         ["igh", ["V:AY"]],
@@ -26602,7 +26602,7 @@ Please report this to https://github.com/markedjs/marked.`),
         ["ur", ["V:ER"]],
         ["or", ["V:AO", "R"]],
       ],
-      ite = {
+      ste = {
         b: ["B"],
         d: ["D"],
         f: ["F"],
@@ -26622,11 +26622,11 @@ Please report this to https://github.com/markedjs/marked.`),
         x: ["K", "S"],
         z: ["Z"],
       },
-      ate = { a: "AE", e: "EH", i: "IH", o: "AA", u: "AH", y: "IH" },
-      ste = { a: "EY", e: "IY", i: "AY", o: "OW", u: "UW", y: "AY" },
-      lte = { a: "AA", e: "EY", i: "IY", o: "OW", u: "UW", y: "IY" },
-      cte = { a: "AH", e: "IY", i: "IY", o: "OW", u: "UW", y: "IY" };
-    function ute(e) {
+      lte = { a: "AE", e: "EH", i: "IH", o: "AA", u: "AH", y: "IH" },
+      cte = { a: "EY", e: "IY", i: "AY", o: "OW", u: "UW", y: "AY" },
+      ute = { a: "AA", e: "EY", i: "IY", o: "OW", u: "UW", y: "IY" },
+      dte = { a: "AH", e: "IY", i: "IY", o: "OW", u: "UW", y: "IY" };
+    function pte(e) {
       let t = e
         .toLowerCase()
         .replace(/[^a-z]/g, "")
@@ -26637,7 +26637,7 @@ Please report this to https://github.com/markedjs/marked.`),
       if (/^(kn|wr|gn)/.test(t)) r = 1;
       while (r < t.length) {
         let a = t.slice(r),
-          s = ote.find(([f]) => a.startsWith(f));
+          s = ate.find(([f]) => a.startsWith(f));
         if (s) {
           (n.push(...s[1]), (r += s[0].length));
           continue;
@@ -26652,17 +26652,17 @@ Please report this to https://github.com/markedjs/marked.`),
         if (IT.test(l)) {
           let f = n.some((p) => p.startsWith("V:"));
           if (l === "e" && u && f) break;
-          if (u) n.push(`V:${cte[l]}`);
-          else if (/^[b-df-hj-np-tv-z]e$/.test(t.slice(r + 1)) && l !== "e") n.push(`V:${ste[l]}`);
+          if (u) n.push(`V:${dte[l]}`);
+          else if (/^[b-df-hj-np-tv-z]e$/.test(t.slice(r + 1)) && l !== "e") n.push(`V:${cte[l]}`);
           else if (c && /[b-df-hj-np-tv-z]/.test(c) && t[r + 2] && IT.test(t[r + 2]))
-            n.push(`V:${lte[l]}`);
-          else n.push(`V:${ate[l]}`);
+            n.push(`V:${ute[l]}`);
+          else n.push(`V:${lte[l]}`);
           r++;
           continue;
         }
         if (l === "c") n.push(c && /[eiy]/.test(c) ? "S" : "K");
         else if (l === "g") n.push(c && /[eiy]/.test(c) ? "JH" : "G");
-        else n.push(...(ite[l] ?? []));
+        else n.push(...(ste[l] ?? []));
         r++;
       }
       let o = false,
@@ -26674,7 +26674,7 @@ Please report this to https://github.com/markedjs/marked.`),
         });
       return i.length && i.every((a) => zT.has(a)) ? i : null;
     }
-    var dte = {
+    var fte = {
       a: "EY1",
       b: "B IY1",
       c: "S IY1",
@@ -26702,18 +26702,18 @@ Please report this to https://github.com/markedjs/marked.`),
       y: "W AY1",
       z: "Z IY1",
     };
-    function pte(e) {
-      return [...e.toLowerCase()].flatMap((t) => dte[t]?.split(" ") ?? []);
+    function mte(e) {
+      return [...e.toLowerCase()].flatMap((t) => fte[t]?.split(" ") ?? []);
     }
-    function fte(e) {
-      let t = rte(e);
+    function gte(e) {
+      let t = ite(e);
       if (t) return t;
-      if (!/[aeiouy]/i.test(e) || /^[A-Z]{2,4}$/.test(e)) return pte(e);
-      return ute(e);
+      if (!/[aeiouy]/i.test(e) || /^[A-Z]{2,4}$/.test(e)) return mte(e);
+      return pte(e);
     }
-    var mte = /\p{Script=Han}/u,
-      gte = /[a-z]/i,
-      hte = /[\s.\-_·'’,，、]/u;
+    var hte = /\p{Script=Han}/u,
+      bte = /[a-z]/i,
+      yte = /[\s.\-_·'’,，、]/u;
     function HT(e) {
       let t = e.normalize("NFC").trim();
       if (!t) return null;
@@ -26721,20 +26721,20 @@ Please report this to https://github.com/markedjs/marked.`),
         r = "",
         o = () => {
           if (!r) return true;
-          let i = fte(r);
+          let i = gte(r);
           if (((r = ""), !i)) return false;
           return (n.push(...i), true);
         };
       for (let i of t) {
-        if (gte.test(i) && i.length === 1 && i.charCodeAt(0) < 128) {
+        if (bte.test(i) && i.length === 1 && i.charCodeAt(0) < 128) {
           r += i;
           continue;
         }
         if (!o()) return null;
-        if (hte.test(i)) continue;
-        if (!mte.test(i)) return null;
+        if (yte.test(i)) continue;
+        if (!hte.test(i)) return null;
         let a = Yb(i),
-          s = a ? nte(a) : null;
+          s = a ? ote(a) : null;
         if (!s) return null;
         n.push(...s);
       }
@@ -26755,7 +26755,7 @@ Please report this to https://github.com/markedjs/marked.`),
         .normalize("NFC");
     }
     var tf = null;
-    function bte(e) {
+    function vte(e) {
       if (!tf) {
         tf = new Map();
         for (let n of zT) {
@@ -26767,28 +26767,28 @@ Please report this to https://github.com/markedjs/marked.`),
       let t = tf.get(i$(e)) ?? [e];
       return [e, ...t.filter((n) => n !== e)];
     }
-    var yte = 25;
+    var kte = 25;
     function a$(e) {
-      let t = e.map((o) => (/^[A-Z]/.test(o) || $T.includes(o) ? [o] : bte(o)));
-      if (t.reduce((o, i) => o * i.length, 1) > yte) return [[...e]];
+      let t = e.map((o) => (/^[A-Z]/.test(o) || $T.includes(o) ? [o] : vte(o)));
+      if (t.reduce((o, i) => o * i.length, 1) > kte) return [[...e]];
       let r = [[]];
       for (let o of t) r = r.flatMap((i) => o.map((a) => [...i, a]));
       return r;
     }
-    var vte = ["chat", "codex", "agy"],
-      kte = { claude: "chat", codex: "codex", agy: "agy" },
-      qb = (e) => (e === "main" ? null : (kte[e] ?? e)),
+    var xte = ["chat", "codex", "agy"],
+      wte = { claude: "chat", codex: "codex", agy: "agy" },
+      qb = (e) => (e === "main" ? null : (wte[e] ?? e)),
       Xb = (e) => (e === "chat" ? "claude" : e);
     function Zb() {
-      let e = [...vte];
+      let e = [...xte];
       for (let t of us()) {
         let n = qb(t.id);
         if (n && !e.includes(n)) e.push(n);
       }
       return e;
     }
-    var xte = "chat",
-      wte = {
+    var Ste = "chat",
+      Tte = {
         codex: {
           exact: ["codex", "coco"],
           heard: [
@@ -26879,7 +26879,7 @@ Please report this to https://github.com/markedjs/marked.`),
         },
       };
     function Jb(e) {
-      let t = wte[e] ?? { exact: [], heard: [] },
+      let t = Tte[e] ?? { exact: [], heard: [] },
         n = us().find((i) => qb(i.id) === e);
       if (!n) return t;
       let r = [n.id, ...(n.name ? [n.name] : []), ...(n.aliases ?? [])].map((i) => i.toLowerCase());
@@ -26888,14 +26888,14 @@ Please report this to https://github.com/markedjs/marked.`),
         heard: [...new Set([...t.heard, ...(n.heard ?? [])])],
       };
     }
-    var Ste =
+    var Ate =
         /^(?:\s|@|[,，、:：.。!！~～-])*(?:(?:hey|hi|hello|ok|okay|yo|linky|lenky|林琪|嘿|喂|哎|诶|欸|那个)(?:\s|[,，、:：.。!！~～-])+)*/iu,
-      Tte = /^(?:\s*(?:lane|线|同学|啊|呀|哈)(?![a-z]))?/iu,
-      Ate = /^[\s]*[,，、:：.。!！?？~～—–-]/u,
-      Ete = /^\s/u,
-      _te = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u,
-      Mte = /^\s*(?:和|跟|与|还有|及|and|&|\+|\/|、|@)\s*/iu,
-      Rte = (e) => /^[a-z]+$/i.test(e);
+      Ete = /^(?:\s*(?:lane|线|同学|啊|呀|哈)(?![a-z]))?/iu,
+      _te = /^[\s]*[,，、:：.。!！?？~～—–-]/u,
+      Mte = /^\s/u,
+      Rte = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u,
+      Lte = /^\s*(?:和|跟|与|还有|及|and|&|\+|\/|、|@)\s*/iu,
+      Cte = (e) => /^[a-z]+$/i.test(e);
     function FT(e) {
       let t = null;
       for (let n of Zb()) {
@@ -26903,7 +26903,7 @@ Please report this to https://github.com/markedjs/marked.`),
         for (let o of ["exact", "heard"])
           for (let i of r[o]) {
             let a = -1;
-            if (Rte(i)) {
+            if (Cte(i)) {
               let s = 0,
                 l = 0,
                 c = i.toLowerCase();
@@ -26920,19 +26920,19 @@ Please report this to https://github.com/markedjs/marked.`),
             if (a > 0 && (!t || a > t.end)) t = { lane: n, end: a, exact: o === "exact" };
           }
       }
-      return t ?? Cte(e);
+      return t ?? Ote(e);
     }
     var BT = new Map();
-    function Lte(e) {
+    function Nte(e) {
       if (!BT.has(e)) BT.set(e, zz(e, Yb));
       return BT.get(e);
     }
-    function Cte(e) {
+    function Ote(e) {
       let t = null;
       for (let n of Zb()) {
         let r = Jb(n);
         for (let o of [...r.exact, ...r.heard]) {
-          let i = Lte(o);
+          let i = Nte(o);
           if (!i) continue;
           let a = $z(e, i, Yb);
           if (a > 0 && (!t || a > t.end)) t = { lane: n, end: a, exact: false };
@@ -26940,25 +26940,25 @@ Please report this to https://github.com/markedjs/marked.`),
       }
       return t;
     }
-    function Nte(e, t) {
-      let n = e.slice(Tte.exec(e)[0].length);
+    function Pte(e, t) {
+      let n = e.slice(Ete.exec(e)[0].length);
       if (!n.trim()) return "";
-      let r = Ate.exec(n);
+      let r = _te.exec(n);
       if (r) return n.slice(r[0].length).trimStart();
       if (!t) return null;
       let o = n.trimStart();
       if (o.startsWith("的")) return null;
-      return _te.test(o) || Ete.test(n) ? o : null;
+      return Rte.test(o) || Mte.test(n) ? o : null;
     }
-    var Ote = /^全体[，,、:：!！ ]*/,
-      Pte = /^[^\n]{0,12}?全体|都有报数/u;
+    var Dte = /^全体[，,、:：!！ ]*/,
+      Ite = /^[^\n]{0,12}?全体|都有报数/u;
     function xu(e) {
       let t = typeof e === "string" ? e : "",
-        n = { lanes: [xte], addressed: false, text: t.trim() },
-        r = t.replace(Ste, ""),
-        o = Ote.exec(r);
+        n = { lanes: [Ste], addressed: false, text: t.trim() },
+        r = t.replace(Ate, ""),
+        o = Dte.exec(r);
       if (o) return { lanes: Zb(), addressed: true, all: true, text: r.slice(o[0].length).trim() };
-      if (Pte.test(r)) return { lanes: Zb(), addressed: true, all: true, text: r.trim() };
+      if (Ite.test(r)) return { lanes: Zb(), addressed: true, all: true, text: r.trim() };
       let i = [];
       for (;;) {
         let a = FT(r);
@@ -26967,12 +26967,12 @@ Please report this to https://github.com/markedjs/marked.`),
         let s = r.slice(a.end),
           l = FT(s);
         if (l && l.lane === a.lane) ((s = s.slice(l.end)), (a.exact = true));
-        let c = Mte.exec(s);
+        let c = Lte.exec(s);
         if (c && c[0].trim() && FT(s.slice(c[0].length))) {
           r = s.slice(c[0].length);
           continue;
         }
-        let u = Nte(s, a.exact);
+        let u = Pte(s, a.exact);
         return u === null ? n : { lanes: i, addressed: true, text: u.trim() };
       }
     }
@@ -27039,9 +27039,9 @@ Please report this to https://github.com/markedjs/marked.`),
           .normalize("NFKC")
           .toLowerCase()
           .replace(/[^\p{L}\p{M}\p{N}]/gu, ""),
-      Dte = (e) =>
+      zte = (e) =>
         [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(e)].length,
-      Ite = (e) =>
+      $te = (e) =>
         [...new Intl.Segmenter(undefined, { granularity: "word" }).segment(e)].filter(
           (t) => t.isWordLike,
         ).length;
@@ -27049,28 +27049,28 @@ Please report this to https://github.com/markedjs/marked.`),
       let t = xu(e);
       return t.addressed ? t.text : e;
     }
-    function zte(e, t = ny) {
+    function Hte(e, t = ny) {
       let n = VT(l$(e));
       return !!n && t.words.some((r) => VT(r) === n);
     }
-    function $te(e, t = ny) {
+    function Ute(e, t = ny) {
       let n = l$(e),
         r = VT(n);
       if (!r) return false;
-      let o = Dte(r);
-      return o <= t.maxChars || (o <= t.maxWordChars && Ite(n) === 1);
+      let o = zte(r);
+      return o <= t.maxChars || (o <= t.maxWordChars && $te(n) === 1);
     }
     function ty(e, t, n = ny) {
-      return zte(e, n) || (t && $te(e, n));
+      return Hte(e, n) || (t && Ute(e, n));
     }
-    var Hte = /[?？؟\u037E⸮՞፧]["'”’」』）)\]\s]*$/u;
-    function Ute(e, t = Date.now()) {
+    var Fte = /[?？؟\u037E⸮՞፧]["'”’」』）)\]\s]*$/u;
+    function Bte(e, t = Date.now()) {
       let n = e.findLast((o) => !o.removed && !o.laneEvent);
       if (!n || n.from !== "agent") return false;
       let r = n.ask;
       if (r && !n.answer && !r.withdrawnAt && !(r.expiresAt !== undefined && r.expiresAt <= t))
         return true;
-      return Hte.test(n.text.trim());
+      return Fte.test(n.text.trim());
     }
     var ny = wu;
     var c$ = () => ny,
@@ -27085,7 +27085,7 @@ Please report this to https://github.com/markedjs/marked.`),
     }
     function ry(e = Date.now()) {
       try {
-        return Ute(Qb(), e);
+        return Bte(Qb(), e);
       } catch {
         return false;
       }
@@ -27093,8 +27093,8 @@ Please report this to https://github.com/markedjs/marked.`),
     var jT = 60;
     var oy = 300000,
       GT = 60000;
-    var Fte = /^[A-Za-z0-9_-]{12,40}$/;
-    var d$ = (e) => typeof e === "string" && Fte.test(e);
+    var Vte = /^[A-Za-z0-9_-]{12,40}$/;
+    var d$ = (e) => typeof e === "string" && Vte.test(e);
     function p$(e) {
       let t;
       try {
@@ -27106,8 +27106,8 @@ Please report this to https://github.com/markedjs/marked.`),
       if (t.protocol !== "https:" && !(t.protocol === "http:" && n)) return;
       return t.href.replace(/\/+$/, "");
     }
-    var Bte = "https://lianki.com";
-    function WT(e, t, n, r = [Bte]) {
+    var jte = "https://lianki.com";
+    function WT(e, t, n, r = [jte]) {
       if (!n) return null;
       let o, i;
       try {
@@ -27122,7 +27122,7 @@ Please report this to https://github.com/markedjs/marked.`),
       return e?.on ? p$(e.sink) : undefined;
     }
     var m$ = (e) => Math.max(1, Math.ceil(e / 60000));
-    var Vte = {
+    var Gte = {
       send: {
         gain: 0.16,
         notes: [
@@ -27146,8 +27146,8 @@ Please report this to https://github.com/markedjs/marked.`),
         ],
       },
     };
-    function jte(e, t, n = e.currentTime) {
-      let { gain: r, notes: o } = Vte[t],
+    function Wte(e, t, n = e.currentTime) {
+      let { gain: r, notes: o } = Gte[t],
         i = n;
       for (let [a, s] of o) {
         let l = i + s / 1000,
@@ -27186,9 +27186,9 @@ Please report this to https://github.com/markedjs/marked.`),
       if (t.speaking) return false;
       return e === "end" || t.aec;
     }
-    var Gte = 150,
+    var Kte = 150,
       g$ = 250,
-      Wte = 1500;
+      Yte = 1500;
     function b$(e) {
       let t = e.now ?? (() => Date.now()),
         n = e.setTimer ?? ((p, m) => setTimeout(p, m)),
@@ -27215,10 +27215,10 @@ Please report this to https://github.com/markedjs/marked.`),
             y = () => {
               if (g) return;
               if (((g = true), r(h), m.state !== undefined && m.state !== "running")) return;
-              let b = jte(m, p, Math.max(m.currentTime, i));
+              let b = Wte(m, p, Math.max(m.currentTime, i));
               i = b;
               let v = m.outputLatency ?? m.baseLatency ?? 0;
-              u((b - m.currentTime + v) * 1000 + Gte);
+              u((b - m.currentTime + v) * 1000 + Kte);
             };
           if (
             ((h = n(() => {
@@ -27243,7 +27243,7 @@ Please report this to https://github.com/markedjs/marked.`),
         },
         speechStart() {
           let p = t();
-          if (p - a < Wte) return false;
+          if (p - a < Yte) return false;
           let m = f("start");
           if (m) a = p;
           return m;
@@ -27264,11 +27264,11 @@ Please report this to https://github.com/markedjs/marked.`),
     var y$ = (e) => e === "other" || e === "self",
       nf = 30000,
       v$ = 320,
-      Kte = 30000,
+      Zte = 30000,
       si = 16000,
       qT = 2500,
       XT = 3000,
-      Yte = 1500,
+      qte = 1500,
       YT = "…";
     function A$(e, t, n = false) {
       if (e === "capturing") return "capturing";
@@ -27287,7 +27287,7 @@ Please report this to https://github.com/markedjs/marked.`),
       }
     }
     var E$ = (e) => e?.name;
-    function Zte(e) {
+    function Xte(e) {
       let t = E$(e);
       return t === "NotAllowedError" || t === "SecurityError" || t === "NotFoundError";
     }
@@ -27367,91 +27367,91 @@ Please report this to https://github.com/markedjs/marked.`),
       return ay.test(e.at(-1)) && ay.test(n[0]) ? e + n : `${e} ${n}`;
     }
     var JT = /[。．.!?！？]$/,
-      qte = 3;
+      Jte = 3;
     function R$(e, t) {
-      return t.length - e >= qte && JT.test(t.trim());
+      return t.length - e >= Jte && JT.test(t.trim());
     }
-    var Xte = /(?:吗|嗎|呢|么|麼|吧|か|かな|かしら|の|でしょう|ですか|ますか|니까|나요|까요)$/u,
-      Jte =
+    var Qte = /(?:吗|嗎|呢|么|麼|吧|か|かな|かしら|の|でしょう|ですか|ますか|니까|나요|까요)$/u,
+      ene =
         /^(?:what|why|how|when|where|who|whom|whose|which|can|could|do|does|did|is|are|was|were|will|would|should|shall|may|might|have|has|had)\b/i,
-      Qte = /[\p{P}\s]+$/u;
-    function ene(e) {
+      tne = /[\p{P}\s]+$/u;
+    function nne(e) {
       let t = e.trim();
       if (!t || /[\p{P}～]$/u.test(t)) return t;
-      let n = t.replace(Qte, "");
-      if (ay.test(t)) return t + (Xte.test(n) ? "？" : "。");
-      return t + (Jte.test(n) ? "?" : ".");
+      let n = t.replace(tne, "");
+      if (ay.test(t)) return t + (Qte.test(n) ? "？" : "。");
+      return t + (ene.test(n) ? "?" : ".");
     }
-    var tne = /[\p{L}\p{N}]/u;
+    var rne = /[\p{L}\p{N}]/u;
     function L$(e, t) {
-      let n = ene(t);
+      let n = nne(t);
       if (!n) return { draft: e, send: false };
       let r = On(e, n);
-      return { draft: r, send: tne.test(n) && JT.test(r.trim()) };
+      return { draft: r, send: rne.test(n) && JT.test(r.trim()) };
     }
     var C$ = [...Fb.map((e) => e.text), ...Gp],
-      nne = 0.5,
-      rne = 0.2,
-      one = 0.02,
-      ine = 250,
-      ane = 96;
-    var sne = new Set(["おやすみなさい"]),
-      N$ = C$.filter((e) => !sne.has(e)),
-      lne = qp(C$),
-      cne = qp(N$),
+      one = 0.5,
+      ine = 0.2,
+      ane = 0.02,
+      sne = 250,
+      lne = 96;
+    var cne = new Set(["おやすみなさい"]),
+      N$ = C$.filter((e) => !cne.has(e)),
+      une = qp(C$),
+      dne = qp(N$),
       k$ = N$.map(Ez).join("|"),
-      une = new RegExp(`(?<=^|[\\p{P}\\p{S}\\s])(?:${k$})(?:${mu}(?:${k$}))*${mu}$`, "iu");
-    function dne(e) {
-      let t = une.exec(e);
+      pne = new RegExp(`(?<=^|[\\p{P}\\p{S}\\s])(?:${k$})(?:${mu}(?:${k$}))*${mu}$`, "iu");
+    function fne(e) {
+      let t = pne.exec(e);
       if (!t || t.index === 0) return e;
       let n = e.slice(0, t.index).trimEnd();
       return ai(n) ? n : e;
     }
-    function pne(e) {
+    function mne(e) {
       let t = fu(e);
-      return !!t && lne.test(t);
+      return !!t && une.test(t);
     }
-    var fne = /(?:[。，、！？；：…!?;:\n]|[.,](?=[\s.,。，、！？…!?]|$))+\s*/gu;
+    var gne = /(?:[。，、！？；：…!?;:\n]|[.,](?=[\s.,。，、！？…!?]|$))+\s*/gu;
     function x$(e) {
       let t = [],
         n = 0;
-      for (let r of e.matchAll(fne))
+      for (let r of e.matchAll(gne))
         (t.push({ body: e.slice(n, r.index), end: r[0] }), (n = r.index + r[0].length));
       if (n < e.length) t.push({ body: e.slice(n), end: "" });
       return t;
     }
-    var mne = 4,
-      gne = 8;
-    function hne(e) {
+    var hne = 4,
+      bne = 8;
+    function yne(e) {
       let t = ai(e),
         n = e
           .split(/[。，,.!?！？]/u)
           .map(ai)
-          .filter((r) => r.length >= mne);
+          .filter((r) => r.length >= hne);
       return {
         whole: t,
         clauses: new Set([t, ...n]),
-        inline: [t, ...n.filter((r) => r.length >= gne)],
+        inline: [t, ...n.filter((r) => r.length >= bne)],
       };
     }
-    var bne = (e) => new RegExp([...e].map(Vb).join(mu) + mu, "giu"),
-      yne = new Set(
+    var vne = (e) => new RegExp([...e].map(Vb).join(mu) + mu, "giu"),
+      kne = new Set(
         "a i o an am as at be by do go he hi if in is it me my no of oh ok on or so to up us we ya ye yo ah aw eh ha hm uh um all and any are ask bad big boy but bye can cat day did dog eat far few for fun get god got had has her hey him his how its let lot man may new nor not now off old one our out own put ran red run sad saw say see she sir sit six ten the too top try two use was way who why win yes yet you wow huh hmm yay lol omg".split(
           " ",
         ),
       ),
-      vne = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]$/u;
-    function kne(e) {
+      xne = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]$/u;
+    function wne(e) {
       if (!/^[\p{Script=Latin}']+$/u.test(e)) return false;
       if (!/[aeiouy]/i.test(e)) return true;
-      return e.length <= 3 && !yne.has(e.toLowerCase());
+      return e.length <= 3 && !kne.has(e.toLowerCase());
     }
-    var xne = 4,
-      wne = 6,
-      Sne = 4,
-      Tne = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]|[\p{L}\p{N}']+/gu;
-    function Ane(e) {
-      let t = [...e.matchAll(Tne)].map((i) => ({
+    var Sne = 4,
+      Tne = 6,
+      Ane = 4,
+      Ene = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]|[\p{L}\p{N}']+/gu;
+    function _ne(e) {
+      let t = [...e.matchAll(Ene)].map((i) => ({
           start: i.index,
           end: i.index + i[0].length,
           raw: i[0],
@@ -27462,14 +27462,14 @@ Please report this to https://github.com/markedjs/marked.`),
         o = 0;
       for (let i = 0; i < t.length; ) {
         let a;
-        for (let c = 1; c <= Sne && i + 2 * c <= t.length; c++) {
+        for (let c = 1; c <= Ane && i + 2 * c <= t.length; c++) {
           let u = 1;
           while (
             i + (u + 1) * c <= t.length &&
             t.slice(i + u * c, i + (u + 1) * c).every((p, m) => p.key === t[i + m].key)
           )
             u++;
-          let f = c === 1 && vne.test(t[i].raw) ? wne : xne;
+          let f = c === 1 && xne.test(t[i].raw) ? Tne : Sne;
           if (u >= f && (!a || c * u > a.n * a.k)) a = { n: c, k: u };
         }
         if (!a) {
@@ -27477,7 +27477,7 @@ Please report this to https://github.com/markedjs/marked.`),
           continue;
         }
         let s = t.slice(i, i + a.n),
-          l = s.every((c) => kne(c.raw));
+          l = s.every((c) => wne(c.raw));
         ((r += l
           ? e.slice(o, t[i].start).trimEnd()
           : e.slice(o, t[i].start) + e.slice(t[i].start, s.at(-1).end)),
@@ -27491,13 +27491,13 @@ Please report this to https://github.com/markedjs/marked.`),
     function w$(e, t = Gp, n = true) {
       let r = { text: e, drop: false, prompt: 0, phrase: 0, repeat: 0, removed: [] };
       if (!ai(e)) return r;
-      let o = t.filter((g) => ai(g)).map(hne),
-        i = Ane(e),
+      let o = t.filter((g) => ai(g)).map(yne),
+        i = _ne(e),
         a = i.text;
       ((r.repeat = i.runs.length), r.removed.push(...i.runs));
       for (let g of o)
         for (let h of g.inline) {
-          let y = bne(h),
+          let y = vne(h),
             b = new RegExp(y.source, "iu");
           if (!b.test(a) && b.test(a.normalize("NFKC"))) a = a.normalize("NFKC");
           a = a.replace(y, (v) => (r.prompt++, r.removed.push(v), ""));
@@ -27518,7 +27518,7 @@ Please report this to https://github.com/markedjs/marked.`),
         let y = -1;
         for (let b = n ? s.length : g; b > g && y < 0; b--) {
           let v = fu(ZT(s.slice(g, b)));
-          if (v && cne.test(v)) y = b;
+          if (v && dne.test(v)) y = b;
         }
         if (y > 0) {
           (r.phrase++, r.removed.push(ZT(s.slice(g, y)).trim()), (g = y));
@@ -27528,7 +27528,7 @@ Please report this to https://github.com/markedjs/marked.`),
       }
       if (c && !r.prompt && !r.repeat) return { ...r, phrase: 0, removed: [] };
       let u = ZT(l).trim(),
-        f = n ? dne(u) : u;
+        f = n ? fne(u) : u;
       if (f !== u) (r.phrase++, r.removed.push(u.slice(f.length).trim()), (u = f));
       if (!r.prompt && !r.phrase && !r.repeat) return r;
       let p = x$(u)
@@ -27543,7 +27543,7 @@ Please report this to https://github.com/markedjs/marked.`),
         r = n.map((o) => o.toLowerCase().replace(/[\p{P}\p{S}]/gu, ""));
       return { raw: n, key: r, cjk: t };
     }
-    function Ene(e, t) {
+    function Mne(e, t) {
       let n = S$(e.trim()),
         r = S$(t.trim());
       for (let o = Math.min(n.key.length, r.key.length); o > 0; o--) {
@@ -27632,22 +27632,22 @@ Please report this to https://github.com/markedjs/marked.`),
       };
     }
     var T$ = 600,
-      _ne = 0.25,
-      Mne = 0.35,
-      Rne = 0.8,
-      Lne = 0;
-    function Cne(e = globalThis.__lkVoiceTune) {
+      Rne = 0.25,
+      Lne = 0.35,
+      Cne = 0.8,
+      Nne = 0;
+    function One(e = globalThis.__lkVoiceTune) {
       let t = e && typeof e === "object" ? e.semanticMs : undefined;
-      return typeof t === "number" && Number.isFinite(t) && t >= 0 ? t : Lne;
+      return typeof t === "number" && Number.isFinite(t) && t >= 0 ? t : Nne;
     }
-    function Nne(e) {
+    function Pne(e) {
       return JT.test(e.trim());
     }
-    var One = 0.05;
-    function Pne(e, t = _ne, n = Mne) {
-      return Math.min(Rne, Math.max(n, e + t));
+    var Dne = 0.05;
+    function Ine(e, t = Rne, n = Lne) {
+      return Math.min(Cne, Math.max(n, e + t));
     }
-    var Dne = 500;
+    var zne = 500;
     function sy(e, t) {
       if (e?.keep) e.keep(t);
       else if (t) e?.warm?.();
@@ -27712,7 +27712,7 @@ Please report this to https://github.com/markedjs/marked.`),
           }
         },
         I = (D, F, H, ae) => {
-          if (F >= Dne) be({ wav: D, durationMs: F, at: H, text: "", source: "none", mode: ae });
+          if (F >= zne) be({ wav: D, durationMs: F, at: H, text: "", source: "none", mode: ae });
         },
         X = (D, F) => {
           if (!e.record) return;
@@ -27729,7 +27729,7 @@ Please report this to https://github.com/markedjs/marked.`),
                 return;
               }
               let se = w$(q.text, Gp, q.signals?.decoder !== "ctc");
-              if (se.drop || !se.text.trim() || pne(se.text)) return;
+              if (se.drop || !se.text.trim() || mne(se.text)) return;
               let ye = ST(se.text, e.repeat?.() ?? wT());
               if (ye.action === "drop") return;
               be({
@@ -27768,7 +27768,7 @@ Please report this to https://github.com/markedjs/marked.`),
         },
         Vn = () => {
           let D = v ?? (v = o.add()),
-            F = Math.min(u, b + ke(Yte)),
+            F = Math.min(u, b + ke(qte)),
             H = iy(c).subarray(u - F);
           ((b = 0),
             (x = true),
@@ -27776,7 +27776,7 @@ Please report this to https://github.com/markedjs/marked.`),
             e
               .upload(Ll(H), { seq: D, durationMs: Re(F), partial: true })
               .then(
-                (ae) => o.partial(D, Ene(o.getPartial(D), ae)),
+                (ae) => o.partial(D, Mne(o.getPartial(D), ae)),
                 (ae) => {
                   if (ae instanceof ea && ae.status === 429) w = false;
                   if (ae instanceof ea && ae.status === 401) Bt(ae);
@@ -27843,7 +27843,7 @@ Please report this to https://github.com/markedjs/marked.`),
               (jp().publish(!S && !ae && !te && !B && !e.enrol?.active() ? F : null),
               H !== undefined && i === "listening" && !ae)
             )
-              A.floor += (H - A.floor) * One;
+              A.floor += (H - A.floor) * Dne;
             if (i !== "capturing") {
               if (i !== "listening" || S || ae || te || B || e.enrol?.active()) m();
               else {
@@ -27852,17 +27852,17 @@ Please report this to https://github.com/markedjs/marked.`),
               }
               return;
             }
-            if (e.cue && !ae && (H !== undefined ? H >= rne : O$(F) >= one)) {
-              if (((oe += F.length), te && oe >= ke(ane))) ((te = false), e.onState("capturing"));
-              if (!he && !te && !P && !B && oe >= ke(ine)) ((he = true), e.cue.edge("start"));
+            if (e.cue && !ae && (H !== undefined ? H >= ine : O$(F) >= ane)) {
+              if (((oe += F.length), te && oe >= ke(lne))) ((te = false), e.onState("capturing"));
+              if (!he && !te && !P && !B && oe >= ke(sne)) ((he = true), e.cue.edge("start"));
             }
             if (T && H !== undefined && !A.sent && !ae) {
               let de = e.adapt?.state();
-              if (H >= Pne(A.floor, de?.endpointMargin, de?.endpointMin))
+              if (H >= Ine(A.floor, de?.endpointMargin, de?.endpointMin))
                 ((A.heard = true), (A.quiet = 0));
               else A.quiet += F.length;
-              let Ae = Cne(),
-                O = Ae > 0 && Nne(A.partial),
+              let Ae = One(),
+                O = Ae > 0 && Pne(A.partial),
                 q = O ? Math.min(Ae, de?.endpointMs ?? T$) : (de?.endpointMs ?? T$);
               if (A.heard && A.quiet >= ke(q))
                 ((A.sent = true),
@@ -27874,7 +27874,7 @@ Please report this to https://github.com/markedjs/marked.`),
                   a?.flush());
             }
             if (H !== undefined && !ae && !te) {
-              if ((e.onProb?.(H), (j += H), U++, H >= nne)) ((M += F.length), (G = t()));
+              if ((e.onProb?.(H), (j += H), U++, H >= one)) ((M += F.length), (G = t()));
             }
             if ((c.push(F), (u += F.length), (b += F.length), T)) return void T.frame(F);
             if (w && !P && !B && !x && u >= ke(XT) && b >= ke(qT)) Vn();
@@ -27944,7 +27944,7 @@ Please report this to https://github.com/markedjs/marked.`),
             ((P = false),
               ae?.cancel(),
               new Promise((K, Fe) => {
-                let Ke = n(() => K({ hit: false, error: "gate-timeout" }), Kte);
+                let Ke = n(() => K({ hit: false, error: "gate-timeout" }), Zte);
                 se.spot(F).then(
                   (ve) => (r(Ke), K(ve)),
                   (ve) => (r(Ke), Fe(ve)),
@@ -28162,7 +28162,7 @@ Please report this to https://github.com/markedjs/marked.`),
           try {
             F = await e.load(Tt(D));
           } catch (H) {
-            if (!e.fallback || Zte(H)) {
+            if (!e.fallback || Xte(H)) {
               if (D === l) Q("off");
               e.onError?.(H);
               return;
@@ -28279,7 +28279,7 @@ Please report this to https://github.com/markedjs/marked.`),
     var I$ = "lk:voice-sent";
     var n1 = "lk:agent-local-tts-voice",
       uy = ["neko-moe"],
-      Ine = 200,
+      $ne = 200,
       rf = () => {
         let e = globalThis;
         return (e.__lkVoiceHeard ??= { lines: new Map(), subs: new Set(), ver: 0 });
@@ -28295,7 +28295,7 @@ Please report this to https://github.com/markedjs/marked.`),
         o = r.get(e);
       if (!o) {
         ((o = new Map()), r.set(e, o));
-        while (r.size > Ine) r.delete(r.keys().next().value);
+        while (r.size > $ne) r.delete(r.keys().next().value);
       }
       let i = o.get(t);
       if (i && i.name === n.name && !!i.cycle === !!n.cycle) return;
@@ -28338,11 +28338,11 @@ Please report this to https://github.com/markedjs/marked.`),
       if (o1(n)) return { name: n, cycle: true };
       return { name: uy[t % uy.length], cycle: true };
     }
-    var zne = [70, 110, 150, 185, 220, 255, 290, 325],
-      $ne = 0;
-    var Hne = 0.6,
-      Une = 0.14,
-      i1 = { on: true, hues: zne, minScore: $ne };
+    var Hne = [70, 110, 150, 185, 220, 255, 290, 325],
+      Une = 0;
+    var Fne = 0.6,
+      Bne = 0.14,
+      i1 = { on: true, hues: Hne, minScore: Une };
     function V$(e, t) {
       if (!i1.on || typeof e !== "string" || !lb.test(e)) return false;
       return !(typeof t === "number" && t < i1.minScore);
@@ -28362,7 +28362,7 @@ Please report this to https://github.com/markedjs/marked.`),
         kind: n ? "household" : "letter",
         letter: n ? "" : e,
         hue: o,
-        bg: `oklch(${Hne} ${Une} ${o})`,
+        bg: `oklch(${Fne} ${Bne} ${o})`,
         fg: `oklch(0.98 0.02 ${o})`,
       };
     }
@@ -28373,7 +28373,7 @@ Please report this to https://github.com/markedjs/marked.`),
     }
     var py = ["local:bella", "local:heart", "local:alpha", "local:xiaobei"],
       Y$ = 16;
-    function Bne() {
+    function jne() {
       let e = new Set(ku);
       for (let t of Object.values(NT()).flat()) e.add(`aura:${t}`);
       for (let t of vu) e.add(`melo:${t}`);
@@ -28385,7 +28385,7 @@ Please report this to https://github.com/markedjs/marked.`),
       if (typeof e !== "string") return false;
       let t = Ml(e);
       if (!t || (t.kind !== "local" && !Qi(t))) return false;
-      return !Bne().has(e);
+      return !jne().has(e);
     }
     var of = "lk:voice-capture",
       a1 = {
@@ -28474,22 +28474,22 @@ Please report this to https://github.com/markedjs/marked.`),
         waiting: () => n,
       };
     }
-    var Vne = 40,
+    var Gne = 40,
       af = "merge";
     var Q$ = my,
-      jne = `["'”’」』)）]*`,
-      Gne = new RegExp(`[?？!！]${jne}$`, "u"),
-      Wne = /(?:[,，、;；:：…～—-]|\.\.\.)\s*[。．.]?$/u;
+      Wne = `["'”’」』)）]*`,
+      Kne = new RegExp(`[?？!！]${Wne}$`, "u"),
+      Yne = /(?:[,，、;；:：…～—-]|\.\.\.)\s*[。．.]?$/u;
     function eH(e) {
       let t = e.trim();
-      if (Gne.test(t)) return "final";
-      if (Wne.test(t) || !/\p{P}$/u.test(t)) return "open";
+      if (Kne.test(t)) return "final";
+      if (Yne.test(t) || !/\p{P}$/u.test(t)) return "open";
       return "stop";
     }
     var tH = (e, t) => (/[\uff00-\uffef]$/.test(e) ? e + t.trim() : On(e, t)),
       u1 = (e) => e.parts?.at(-1)?.text ?? e.raw ?? e.text,
       nH = (e) => e.parts?.at(-1)?.timing ?? e.timing;
-    function Kne(e, t) {
+    function Zne(e, t) {
       let n = (s) => ({ ok: false, reason: s });
       if (e.from !== "owner" || e.source !== "stt") return n("not-voice");
       if (!e.mergeable) return n("not-mergeable");
@@ -28515,23 +28515,23 @@ Please report this to https://github.com/markedjs/marked.`),
       if (e.speaker?.decision === "other" || t.speaker?.decision === "other") return n("speaker");
       if (l1(u1(e)) || l1(t.text)) return n("short-answer");
       if (eH(u1(e)) === "final") return n("ended");
-      if ((e.parts?.length ?? 1) >= Vne) return n("parts");
-      if (tH(Yne(e), t.text).length > Gi) return n("long");
+      if ((e.parts?.length ?? 1) >= Gne) return n("parts");
+      if (tH(qne(e), t.text).length > Gi) return n("long");
       return;
     }
-    var Yne = (e) => e.recheck?.heard ?? e.raw ?? e.text;
+    var qne = (e) => e.recheck?.heard ?? e.raw ?? e.text;
     function oH(e) {
       if (typeof e !== "number" || !Number.isFinite(e) || e <= 0 || e > gy) return 0;
       return Math.round(e * 1000);
     }
-    var Zne = [af, "auto", "two-mic"];
-    function qne(e, t, n, r) {
+    var Xne = [af, "auto", "two-mic"];
+    function Jne(e, t, n, r) {
       let o = (u) => ({ ok: false, reason: u });
       if (!(n > 0)) return o("reopen-off");
       if (e.from !== "owner" || e.source !== "stt") return o("not-voice");
       if (!e.mergeable) return o("not-mergeable");
       if (e.removed || e.echo || e.collapsedInto || e.passage || e.summary) return o("superseded");
-      if (e.edited && !Zne.includes(e.edited.by)) return o("edited");
+      if (e.edited && !Xne.includes(e.edited.by)) return o("edited");
       let i = rH(e, t);
       if (i) return o(i);
       let a = e.speaker?.decision,
@@ -28545,36 +28545,36 @@ Please report this to https://github.com/markedjs/marked.`),
       return { ok: true, signal: "reopen" };
     }
     function iH(e, t, n, r) {
-      let o = Kne(e, t);
+      let o = Zne(e, t);
       if (o.ok || !(n > 0)) return o;
-      let i = qne(e, t, n, r);
+      let i = Jne(e, t, n, r);
       return i.ok ? i : { ok: false, reason: `${o.reason}; reopen: ${i.reason}` };
     }
-    var Xne = "lk:agent-clone-tts",
-      Jne = (typeof process < "u" && process.env.NEXT_PUBLIC_LIANKI_CLONE_TTS_BASE) || "",
-      Qne = 20000,
+    var Qne = "lk:agent-clone-tts",
+      ere = (typeof process < "u" && process.env.NEXT_PUBLIC_LIANKI_CLONE_TTS_BASE) || "",
+      tre = 20000,
       hy = "clone:owner";
     var aH = () => {
       let e = globalThis;
       return (e.__lkPolishReadback ??= {
         on: false,
-        timeoutMs: Qne,
+        timeoutMs: tre,
         people: [...py],
         read: new Map(),
       });
     };
     var sH = () => aH().timeoutMs;
-    var ere = (e) => {
+    var nre = (e) => {
       try {
         return localStorage2.getItem(e);
       } catch {
         return null;
       }
     };
-    function lH(e = ere) {
-      let t = e(Xne)?.trim();
+    function lH(e = nre) {
+      let t = e(Qne)?.trim();
       if (t === "off") return null;
-      return cH(t || Jne);
+      return cH(t || ere);
     }
     function cH(e) {
       let t = e.length;
@@ -28591,13 +28591,13 @@ Please report this to https://github.com/markedjs/marked.`),
         o = dH[r] ?? dH[r.split(/[-_]/)[0]];
       return o?.[t] ?? o?.main;
     }
-    var tre = "aura-2",
-      nre = "lk:voice-out",
+    var rre = "aura-2",
+      ore = "lk:voice-out",
       vH = 200,
-      rre = new Set(vu),
+      ire = new Set(vu),
       mH = 0.3,
       sf = () => {},
-      ore = 1500,
+      are = 1500,
       p1 = 64,
       Au = (e) => {
         try {
@@ -28606,7 +28606,7 @@ Please report this to https://github.com/markedjs/marked.`),
           return null;
         }
       },
-      Eu = () => (Au(nre) === "cloud" ? "cloud" : "speech"),
+      Eu = () => (Au(ore) === "cloud" ? "cloud" : "speech"),
       ky = () => {
         try {
           return typeof speechSynthesis > "u" || speechSynthesis.getVoices().length === 0;
@@ -28654,11 +28654,11 @@ Please report this to https://github.com/markedjs/marked.`),
     }
     var hH = (e, t, n) =>
         `/api/words/tts?lang=${encodeURIComponent(t)}&text=${encodeURIComponent(e)}&store=0${n ? `&speaker=${encodeURIComponent(n)}` : ""}`,
-      ire = (e, t) => `/api/voice/tts?voice=${encodeURIComponent(e)}&text=${encodeURIComponent(t)}`,
+      sre = (e, t) => `/api/voice/tts?voice=${encodeURIComponent(e)}&text=${encodeURIComponent(t)}`,
       lf = "lk:agent-local-tts",
       wH = (typeof process < "u" && process.env.NEXT_PUBLIC_LIANKI_LOCAL_TTS_BASE) || "",
       bH = 0,
-      are = (e, t) => {
+      lre = (e, t) => {
         let n = (Au(lf) || wH).replace(/\/+$/, ""),
           r = e === "neko-cycle" ? Cl() : null,
           o = B$(e, bH, r);
@@ -28675,7 +28675,7 @@ Please report this to https://github.com/markedjs/marked.`),
       return null;
     }
     function ps(e, t) {
-      if (!rre.has(t.toLowerCase().split(/[-_]/)[0])) return "lang";
+      if (!ire.has(t.toLowerCase().split(/[-_]/)[0])) return "lang";
       if (!e.trim()) return "empty";
       if (e.length > vH) return "long";
       return null;
@@ -28683,7 +28683,7 @@ Please report this to https://github.com/markedjs/marked.`),
     var m1 = (e, t, n, r) => `${r ?? t}
 ${n ?? ""}
 ${e}`;
-    function sre(e) {
+    function cre(e) {
       let t = e.toUrl ?? ((P) => URL.createObjectURL(P)),
         n = e.revoke ?? ((P) => URL.revokeObjectURL(P)),
         r = e.setTimer ?? ((P, B) => setTimeout(P, B)),
@@ -28696,7 +28696,7 @@ ${e}`;
             return Promise.resolve(null);
           return new Promise((B) => {
             let te = () => B(P.state === "running" ? null : String(P.state));
-            (r(te, ore), P.resume().then(te, te));
+            (r(te, are), P.resume().then(te, te));
           });
         },
         l = new Map(),
@@ -28751,11 +28751,11 @@ ${e}`;
             pe = l.get(Me);
           if (pe) return pe;
           let Re = B.split(/[-_]/)[0],
-            ke = oe?.startsWith("local:") ? are(oe.slice(6), P) : null,
+            ke = oe?.startsWith("local:") ? lre(oe.slice(6), P) : null,
             Q = oe === f1,
             ie = Q ? i() : null;
           if (Q && !ie) return Promise.reject(Error("clone off"));
-          let be = ke ? ke.url : ie ? uH(ie, P) : oe ? ire(oe, P) : hH(P, Re, te),
+          let be = ke ? ke.url : ie ? uH(ie, P) : oe ? sre(oe, P) : hH(P, Re, te),
             X = (
               Q
                 ? new Promise((ue, _e) => {
@@ -28778,7 +28778,7 @@ ${e}`;
                 );
               let _e = await ue.blob(),
                 Ie = ue.headers.get("X-Voice"),
-                Bt = Boolean(te && Ie !== null && Ie !== tre),
+                Bt = Boolean(te && Ie !== null && Ie !== rre),
                 Vn = ke
                   ? ke.heard
                   : Q
@@ -29148,7 +29148,7 @@ ${e}`;
       if (yy) return yy;
       if (typeof Audio > "u" || typeof fetch2 > "u") return null;
       return (
-        (yy = sre({
+        (yy = cre({
           fetch: (e) => fetch2(e),
           element: () => new Audio(),
           plain: () => new Audio(),
@@ -29182,23 +29182,23 @@ ${e}`;
         { term: "Lianki", lang: "en", say: "Lee-ahn-kee" },
         { term: "Lianki", lang: "ja", say: "リアンキ" },
       ];
-    var lre = () => globalThis.__lkLexicon ?? h1;
-    function cre(e, t) {
+    var ure = () => globalThis.__lkLexicon ?? h1;
+    function dre(e, t) {
       if (!e.lang) return 0;
       let n = e.lang.toLowerCase(),
         r = t.toLowerCase().replace(/_/g, "-");
       return r === n || r.startsWith(`${n}-`) ? n.length : -1;
     }
     var SH = new WeakMap(),
-      ure = (e) => e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    function dre(e, t) {
+      pre = (e) => e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    function fre(e, t) {
       let n = SH.get(e);
       if (!n) SH.set(e, (n = new Map()));
       let r = n.get(t);
       if (r) return r;
       let o = new Map();
       for (let c of e) {
-        let u = cre(c, t);
+        let u = dre(c, t);
         if (u < 0) continue;
         let f = c.ignoreCase
             ? `i
@@ -29216,15 +29216,15 @@ ${c.term}`,
       let s = [...new Set([...o.values()].map(({ e: c }) => c.term))].sort(
           (c, u) => u.length - c.length,
         ),
-        l = { re: s.length ? new RegExp(s.map(ure).join("|"), "gi") : null, exact: i, folded: a };
+        l = { re: s.length ? new RegExp(s.map(pre).join("|"), "gi") : null, exact: i, folded: a };
       return (n.set(t, l), l);
     }
     var xy = /[A-Za-z0-9_]/,
-      pre = (e, t, n, r) =>
+      mre = (e, t, n, r) =>
         !(xy.test(r[0]) && t > 0 && xy.test(e[t - 1])) &&
         !(xy.test(r[r.length - 1]) && t + n < e.length && xy.test(e[t + n]));
-    function fre(e, t, n) {
-      let r = dre(n, t),
+    function gre(e, t, n) {
+      let r = fre(n, t),
         o = [];
       if (!r.re || !e) return o;
       let i = new RegExp(r.re.source, r.re.flags),
@@ -29232,13 +29232,13 @@ ${c.term}`,
       while ((a = i.exec(e))) {
         let s = a[0],
           l = r.exact.get(s) ?? r.folded.get(s.toLowerCase());
-        if (l && pre(e, a.index, s.length, s)) o.push({ at: a.index, len: s.length, e: l });
+        if (l && mre(e, a.index, s.length, s)) o.push({ at: a.index, len: s.length, e: l });
         else i.lastIndex = a.index + 1;
       }
       return o;
     }
-    function b1(e, t, n = lre()) {
-      let r = fre(e, t, n);
+    function b1(e, t, n = ure()) {
+      let r = gre(e, t, n);
       if (!r.length) return e;
       let o = "",
         i = 0;
@@ -29257,23 +29257,23 @@ ${c.term}`,
     var df = (e) => !e,
       TH = (e) => e.hidden && !e.desktop;
     var AH = (e) => e.visible || e.desktop;
-    var mre = (e) => e.quiet === true,
-      gre = () => {
+    var hre = (e) => e.quiet === true,
+      bre = () => {
         let e = globalThis;
         return (e.__lkWithdrawn ??= new Set());
       };
     var Sy = (e) =>
       (typeof e.ask === "object" && e.ask !== null && e.ask.withdrawnAt !== undefined) ||
-      (typeof e.id === "string" && gre().has(e.id));
-    function hre(e, t) {
-      if (mre(e)) return "quiet";
+      (typeof e.id === "string" && bre().has(e.id));
+    function yre(e, t) {
+      if (hre(e)) return "quiet";
       if (Sy(e)) return "withdrawn";
       if (t.hidden) return "hidden";
       return null;
     }
-    var bre = () => typeof document > "u" || document.visibilityState === "hidden",
-      Ty = (e = {}) => hre(e, { hidden: TH({ hidden: bre(), desktop: xo() }) }),
-      yre = ["lk:agent-quiet-hours"];
+    var vre = () => typeof document > "u" || document.visibilityState === "hidden",
+      Ty = (e = {}) => yre(e, { hidden: TH({ hidden: vre(), desktop: xo() }) }),
+      kre = ["lk:agent-quiet-hours"];
     function EH(e) {
       let t = e;
       if (t === undefined)
@@ -29282,7 +29282,7 @@ ${c.term}`,
         } catch {
           t = null;
         }
-      for (let n of yre)
+      for (let n of kre)
         try {
           t?.removeItem(n);
         } catch {}
@@ -29346,23 +29346,23 @@ ${c.term}`,
         (n.setItem(Ay(e), t), n.setItem(e, t), Ey(n, e, t, t));
       } catch {}
     }
-    var vre = null;
+    var xre = null;
     function _u(e) {
       try {
-        vre?.(e);
+        xre?.(e);
       } catch {}
     }
     var _y = { li: 3, card: 2, play: 2, para: 1 },
-      kre = () => {
+      wre = () => {
         let e = globalThis;
         return typeof e.addEventListener === "function" && typeof e.dispatchEvent === "function"
           ? e
           : null;
       },
-      xre = 0,
-      My = (e) => `${e}:${++xre}:${Math.random().toString(36).slice(2, 8)}`;
+      Sre = 0,
+      My = (e) => `${e}:${++Sre}:${Math.random().toString(36).slice(2, 8)}`;
     function Ry(e) {
-      let t = e.target === undefined ? kre() : e.target,
+      let t = e.target === undefined ? wre() : e.target,
         n = "idle",
         r = () => ({ id: e.id, prio: e.prio }),
         o = () => {
@@ -29405,15 +29405,15 @@ ${c.term}`,
         dispose: c,
       };
     }
-    var wre = 400,
-      Sre = 30000,
-      Tre = "__lkPageAudio";
-    function Are(e = {}) {
+    var Tre = 400,
+      Are = 30000,
+      Ere = "__lkPageAudio";
+    function _re(e = {}) {
       let t = e.setTimer ?? ((g, h) => setTimeout(g, h)),
         n = e.clearTimer ?? ((g) => clearTimeout(g)),
         r = e.now ?? (() => Date.now()),
-        o = e.tailMs ?? wre,
-        i = e.maxMs ?? Sre,
+        o = e.tailMs ?? Tre,
+        i = e.maxMs ?? Are,
         a = new Set(),
         s = () => {
           for (let g of a) g(c.on);
@@ -29484,16 +29484,16 @@ ${c.term}`,
     }
     function ta() {
       let e = globalThis;
-      return (e[Tre] ??= Are());
+      return (e[Ere] ??= _re());
     }
     var NH = (e, t, n, r = false) => e || (t && (!n || r));
     var DH = "lk:voice-keep-awake",
-      Ere = -72,
-      _re = 300,
-      Mre = 60000,
-      Rre = 1000,
-      Lre = ["pointerdown", "pointerup", "touchend", "keydown"];
-    function Cre(e) {
+      Mre = -72,
+      Rre = 300,
+      Lre = 60000,
+      Cre = 1000,
+      Nre = ["pointerdown", "pointerup", "touchend", "keydown"];
+    function Ore(e) {
       let t = e.now ?? (() => Date.now()),
         n = e.setTimer ?? ((g, h) => setTimeout(g, h)),
         r = e.clearTimer ?? ((g) => clearTimeout(g)),
@@ -29502,7 +29502,7 @@ ${c.term}`,
         a = null,
         s = null,
         l = -1 / 0,
-        c = () => e.activation?.() === true || t() - l < Rre,
+        c = () => e.activation?.() === true || t() - l < Cre,
         u = (g) => {
           try {
             g();
@@ -29522,7 +29522,7 @@ ${c.term}`,
           let g = null;
           try {
             if (((g = e.makeCtx()), !g)) return;
-            let h = 10 ** (Ere / 20),
+            let h = 10 ** (Mre / 20),
               y = g.createBuffer(1, g.sampleRate, g.sampleRate),
               b = y.getChannelData(0);
             for (let x = 0; x < b.length; x++) b[x] = (o() * 2 - 1) * h;
@@ -29544,7 +29544,7 @@ ${c.term}`,
             if (((s = null), !a || e.micOn())) return;
             if (e.busy()) return m();
             f();
-          }, Mre);
+          }, Lre);
         };
       return {
         begin() {
@@ -29553,7 +29553,7 @@ ${c.term}`,
             if (!c()) return 0;
             if ((p(), !a)) return 0;
           }
-          return (m(), Math.max(0, _re - (t() - a.at)));
+          return (m(), Math.max(0, Rre - (t() - a.at)));
         },
         gesture() {
           if (((l = t()), !e.enabled())) return;
@@ -29586,7 +29586,7 @@ ${c.term}`,
         running: () => !!a,
       };
     }
-    function Nre() {
+    function Pre() {
       try {
         return localStorage2.getItem(DH) !== "0";
       } catch {
@@ -29609,9 +29609,9 @@ ${c.term}`,
       if (typeof window > "u" || typeof document > "u") return PH;
       let n = window.AudioContext ?? window.webkitAudioContext;
       if (!n) return PH;
-      let r = Cre({
+      let r = Ore({
         makeCtx: () => new n(),
-        enabled: Nre,
+        enabled: Pre,
         micOn: () => ta().mic(),
         busy: () => ta().playing() || (typeof speechSynthesis < "u" && speechSynthesis.speaking),
         hidden: () => document.visibilityState === "hidden",
@@ -29619,7 +29619,7 @@ ${c.term}`,
       });
       e[OH] = r;
       let o = () => r.gesture();
-      for (let i of Lre) window.addEventListener(i, o, { capture: true, passive: true });
+      for (let i of Nre) window.addEventListener(i, o, { capture: true, passive: true });
       return (
         window.addEventListener("pagehide", () => r.exit("pagehide")),
         document.addEventListener("visibilitychange", () => {
@@ -29632,13 +29632,13 @@ ${c.term}`,
         r
       );
     }
-    var Ore = 400,
+    var Dre = 400,
       v1 = 1500,
-      Pre = 0.25,
-      Dre = 80,
-      Ire = 200,
-      zre = 1500,
-      $re = 0.7,
+      Ire = 0.25,
+      zre = 80,
+      $re = 200,
+      Hre = 1500,
+      Ure = 0.7,
       IH = 8000,
       zH = 1000;
     function BH(e, t) {
@@ -29649,7 +29649,7 @@ ${c.term}`,
       return "lane:main";
     }
     var S1 = "clone:owner";
-    function Hre(e, t, n) {
+    function Fre(e, t, n) {
       if (e === S1 || t === "clone") return "clone";
       if (t && t !== "device") return t;
       return n === "speech" || t === "device" ? "device" : "cloud";
@@ -29660,33 +29660,33 @@ ${c.term}`,
     }
     var $H = 600,
       k1 = 120,
-      Ure = 600,
-      Fre = 1.5,
-      Bre = 3,
-      Vre = 1500;
-    function jre(e, t) {
-      if (e.reduce((o, i) => o + i.text.length, 0) <= Vre) return [];
+      Bre = 600,
+      Vre = 1.5,
+      jre = 3,
+      Gre = 1500;
+    function Wre(e, t) {
+      if (e.reduce((o, i) => o + i.text.length, 0) <= Gre) return [];
       let r = [];
       for (let o of e) if (o.id && !t.has(o.id) && !r.includes(o.id)) r.push(o.id);
       return r;
     }
-    function Gre(e) {
+    function Kre(e) {
       if (!(e > k1)) return 1;
-      return 1 + Math.min(1, (e - k1) / (Ure - k1)) * (Fre - 1);
+      return 1 + Math.min(1, (e - k1) / (Bre - k1)) * (Vre - 1);
     }
-    var Wre = (e, t) => Math.min(Bre, e * Gre(t)),
-      Kre = 0.6,
-      Yre = 0.35,
-      Zre = 6,
-      qre = 200,
+    var Yre = (e, t) => Math.min(jre, e * Kre(t)),
+      Zre = 0.6,
+      qre = 0.35,
+      Xre = 6,
+      Jre = 200,
       A1 = "lk:debug-chat-speak",
       x1 = "lk:agent:voiced",
-      Xre = 600000,
+      Qre = 600000,
       Ly = "__lkVoice",
       jH = 8,
       HH = "。．！？",
       UH = ".!?",
-      Jre = `」』）】〕〉》"'”’)]`;
+      eoe = `」』）】〕〉》"'”’)]`;
     function Ny(e) {
       let t = [],
         n = "",
@@ -29709,18 +29709,18 @@ ${c.term}`,
         n += i;
         let a = HH.includes(i);
         if (!a && !UH.includes(i)) continue;
-        while (o + 1 < e.length && (HH + UH + Jre).includes(e[o + 1])) n += e[++o];
+        while (o + 1 < e.length && (HH + UH + eoe).includes(e[o + 1])) n += e[++o];
         if (a || o + 1 >= e.length || /\s/.test(e[o + 1])) r();
       }
       return (r(), t);
     }
-    var Qre = /[、，,;；:：]/,
-      eoe = /[。．！？，、.!?,;；\n\r]/;
-    function toe(e, t) {
+    var toe = /[、，,;；:：]/,
+      noe = /[。．！？，、.!?,;；\n\r]/;
+    function roe(e, t) {
       let n = Math.floor(Math.min(1, Math.max(0, t)) * e.length),
         r = 0;
       for (let o = 0; o < n; o++) {
-        if (!eoe.test(e[o])) continue;
+        if (!noe.test(e[o])) continue;
         let i = o + 1;
         while (i < e.length && /\s/.test(e[i])) i++;
         if (i <= n) r = i;
@@ -29729,29 +29729,29 @@ ${c.term}`,
     }
     var GH = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u,
       Cy = { cjk: 5, other: 14 };
-    function noe(e, t, n = 1) {
+    function ooe(e, t, n = 1) {
       if (!e.length || t <= 0) return 0;
       let r = GH.test(e) ? Cy.cjk : Cy.other;
       return Math.min(1, ((t / 1000) * r * Math.max(0.1, n)) / e.length);
     }
-    var roe = { cjk: 1000 / Cy.cjk, other: 1000 / Cy.other },
-      ooe = [[GH, "cjk"]];
+    var ioe = { cjk: 1000 / Cy.cjk, other: 1000 / Cy.other },
+      aoe = [[GH, "cjk"]];
     function w1(e, t = 1) {
       let n = 0;
       for (let r of e) {
-        let o = ooe.find(([i]) => i.test(r))?.[1] ?? "other";
-        n += roe[o];
+        let o = aoe.find(([i]) => i.test(r))?.[1] ?? "other";
+        n += ioe[o];
       }
       return n / Math.max(0.1, t);
     }
-    function ff(e, t = qre) {
+    function ff(e, t = Jre) {
       let n = [],
         r = e.trim();
       while (r.length > t) {
         let o = r.slice(0, t),
           i = -1;
         for (let a = o.length - 1; a > t / 3; a--)
-          if (Qre.test(o[a])) {
+          if (toe.test(o[a])) {
             i = a + 1;
             break;
           }
@@ -29764,11 +29764,11 @@ ${c.term}`,
       if (r) n.push(r);
       return n;
     }
-    function ioe(e, t = $re) {
+    function soe(e, t = Ure) {
       if (!e.length) return true;
       return e.reduce((n, r) => n + r, 0) / e.length >= t;
     }
-    function aoe(e) {
+    function loe(e) {
       let t = e.setTimer ?? ((z, N) => setTimeout(z, N)),
         n = e.clearTimer ?? ((z) => clearTimeout(z)),
         r = e.now ?? (() => Date.now()),
@@ -29789,7 +29789,7 @@ ${c.term}`,
         y = false,
         b = [],
         v = () =>
-          Wre(
+          Yre(
             e.rate?.() ?? 1,
             b.reduce((z, N) => z + N.text.length, 0),
           ),
@@ -29955,7 +29955,7 @@ ${c.term}`,
                   (A = t(() => {
                     if (F !== S || T) return;
                     ((y = false), he());
-                  }, Ore)));
+                  }, Dre)));
               he();
             },
             ae = { lang: z.lang, chars: z.text.length },
@@ -30060,7 +30060,7 @@ ${c.term}`,
             ((O.ref = du({
               text: z.text,
               ...(z.written !== undefined ? { alt: z.written } : {}),
-              voice: Hre(z.who, z.pick?.kind, se.route),
+              voice: Fre(z.who, z.pick?.kind, se.route),
               at: O.start,
               ...(z.id ? { line: z.id } : {}),
             })),
@@ -30095,7 +30095,7 @@ ${c.term}`,
               else {
                 let F = D.text.slice(D.from);
                 ((D.from =
-                  T.mark > D.from ? T.mark : D.from + toe(F, noe(F, r() - T.said.start, v()))),
+                  T.mark > D.from ? T.mark : D.from + roe(F, ooe(F, r() - T.said.start, v()))),
                   (D.at = 0));
               }
             T = null;
@@ -30135,9 +30135,9 @@ ${c.term}`,
               let N = z.probs;
               z.probs = [];
               let D = N.length ? N.reduce((F, H) => F + H, 0) / N.length : undefined;
-              if (!ioe(N)) return (f({ ev: "voice-duck-hold", prob: D }), dn());
+              if (!soe(N)) return (f({ ev: "voice-duck-hold", prob: D }), dn());
               (f({ ev: "voice-barge-in", prob: D }), Tn.interrupt("speech"));
-            }, zre)));
+            }, Hre)));
         },
         zn = () => {
           if ((n(C), !w.size)) return;
@@ -30201,7 +30201,7 @@ ${c.term}`,
               Ke = r(),
               ve = `${F ? S1 : H ? `${H.who}@${"id" in H.voice ? H.voice.id : H.voice.name}` : typeof N?.voice === "string" ? N.voice : se}
 ${q}`;
-            if (x.some((pt) => pt.text === ve && Ke - pt.at < Xre))
+            if (x.some((pt) => pt.text === ve && Ke - pt.at < Qre))
               return (f({ ev: "voice-reply-dup", chars: q.length }), O());
             x.push({ text: ve, at: Ke });
             while (x.length > 20) x.shift();
@@ -30239,7 +30239,7 @@ ${q}`;
             let $t = new Set();
             if (T && b[0]?.id) $t.add(b[0].id);
             if (Je.id) $t.add(Je.id);
-            let Ve = jre(b, $t);
+            let Ve = Wre(b, $t);
             if (Ve.length) {
               let pt = b.length,
                 jn = new Set();
@@ -30258,7 +30258,7 @@ ${q}`;
             if (T && c()) {
               if (!M)
                 ((M = { timer: undefined, probs: [] }),
-                  Vn(Pre, Dre),
+                  Vn(Ire, zre),
                   f({ ev: "voice-duck", route: T.p.route }),
                   he());
               dn();
@@ -30279,7 +30279,7 @@ ${q}`;
           },
           userIdle() {
             if (((j = false), M)) {
-              (Tt(Ire), he());
+              (Tt($re), he());
               return;
             }
             if (!w.has("speech") && !w.has("tap")) return;
@@ -30307,7 +30307,7 @@ ${q}`;
                       H.map((se) => se.text),
                     )
                   : 0,
-              O = ae && de && Ae >= Kre,
+              O = ae && de && Ae >= Zre,
               q = {
                 score: Math.round(Ae * 1000) / 1000,
                 against: O ? H.map((se) => se.text).join(" ") : null,
@@ -30316,7 +30316,7 @@ ${q}`;
                 paused: false,
               };
             if (O || !de || !u() || !T || !ae) return q;
-            if (Ae >= Yre || ii(z).length < Zre)
+            if (Ae >= qre || ii(z).length < Xre)
               return (f({ ev: "voice-talk-over-unsure", score: q.score, chars: z.length }), q);
             if (
               (f({ ev: "voice-talk-over", score: q.score, chars: z.length }),
@@ -30357,15 +30357,15 @@ ${q}`;
         };
       return Tn;
     }
-    var soe = () => (typeof speechSynthesis > "u" ? null : speechSynthesis),
+    var coe = () => (typeof speechSynthesis > "u" ? null : speechSynthesis),
       Ru = () => pf(A1) !== "0";
-    function loe() {
+    function uoe() {
       if (typeof document > "u" || document.visibilityState !== "visible") return false;
       return document.activeElement?.getAttribute("data-testid") === "debug-chat-input";
     }
     var Mu = new Set(),
       FH = 4,
-      coe = 50;
+      doe = 50;
     function WH() {
       let e = new Set(),
         t = new Set(),
@@ -30383,7 +30383,7 @@ ${q}`;
         add(r) {
           if (e.has(r)) return;
           let o = new Set(e).add(r);
-          while (o.size > coe) o.delete(o.values().next().value);
+          while (o.size > doe) o.delete(o.values().next().value);
           n(o);
         },
         drop(r) {
@@ -30442,7 +30442,7 @@ ${q}`;
       let t = T1(e);
       return t.__unheard ?? (t.__unheard = WH());
     }
-    var uoe = {
+    var poe = {
       get: () => {
         try {
           return localStorage2.getItem(x1) === "1";
@@ -30457,7 +30457,7 @@ ${q}`;
         } catch {}
       },
     };
-    function doe(e, t) {
+    function foe(e, t) {
       let n = e;
       if (n.__manualReadout) return e;
       let r = e.shouldSpeak;
@@ -30466,12 +30466,12 @@ ${q}`;
     function it() {
       let e = globalThis,
         t = e[Ly];
-      if (t && t.v === jH) return T1(doe(t, Ru));
-      let n = aoe({
-        synth: soe,
+      if (t && t.v === jH) return T1(foe(t, Ru));
+      let n = loe({
+        synth: coe,
         enabled: Ru,
-        here: loe,
-        voiced: uoe,
+        here: uoe,
+        voiced: poe,
         touch: () => !xo(),
         cloud: () => {
           let r = Pl();
@@ -30540,7 +30540,7 @@ ${q}`;
       );
     }
     var Wt = (e, t) => (e !== undefined && t !== undefined && t >= e ? t - e : undefined);
-    function poe(e) {
+    function moe(e) {
       let t = e.timing,
         n = t.t_lastVoice ?? t.t_speechEnd,
         r = {
@@ -30562,7 +30562,7 @@ ${q}`;
       for (let o of Object.keys(r)) if (r[o] === undefined) delete r[o];
       return r;
     }
-    function foe(e, t) {
+    function goe(e, t) {
       let n;
       for (let p of e) {
         let m = p[1];
@@ -30580,7 +30580,7 @@ ${q}`;
       return { timing: { ...l, t_sent: t }, used: o, ...(u ? { stt: u } : {}) };
     }
     var E1 = (e) => (e / 1000).toFixed(1);
-    var moe = 50;
+    var hoe = 50;
     function Oy(e, t, n) {
       let r = e.timing,
         o = r.t_lastVoice ?? r.t_speechEnd,
@@ -30589,7 +30589,7 @@ ${q}`;
           if (m === undefined) return;
           let h = g.filter((b) => b[1] !== undefined),
             y = m - h.reduce((b, v) => b + v[1], 0);
-          if (y >= moe) h.push([t.latOther, y]);
+          if (y >= hoe) h.push([t.latOther, y]);
           return { total: E1(m), parts: h.map(([b, v]) => [b, E1(v)]) };
         },
         s = [
@@ -30631,23 +30631,23 @@ ${q}`;
         if (Math.abs(n.at - e) <= 2000 && (!t || Math.abs(n.at - e) < Math.abs(t.at - e))) t = n;
       return t?.via;
     }
-    var goe = 120000,
-      hoe = 20;
-    function boe(e = {}) {
+    var boe = 120000,
+      yoe = 20;
+    function voe(e = {}) {
       let t = e.now ?? Date.now,
         n = new Map(),
         r = null,
         o = [],
         i = new Set(),
         a = (c) => {
-          for (let [u, f] of n) if (c - (f.t_speechEnd ?? c) > goe) n.delete(u);
+          for (let [u, f] of n) if (c - (f.t_speechEnd ?? c) > boe) n.delete(u);
         },
         s = () => {
           let c = r;
           if (!c) return;
           r = null;
-          let u = poe(c);
-          if ((o.push({ ...c, breakdown: u }), o.length > hoe)) o.shift();
+          let u = moe(c);
+          if ((o.push({ ...c, breakdown: u }), o.length > yoe)) o.shift();
           e.log?.({
             ev: "voice-latency",
             id: c.id,
@@ -30660,7 +30660,7 @@ ${q}`;
           for (let f of i) f();
         },
         l = () => {
-          let c = foe(n, t());
+          let c = goe(n, t());
           if (!c) return {};
           for (let u of c.used) n.delete(u);
           return { timing: c.timing, ...(c.stt ? { stt: c.stt } : {}) };
@@ -30715,7 +30715,7 @@ ${q}`;
       let e = globalThis,
         t = e[YH];
       if (t && t.v === ZH) return t;
-      let n = Object.assign(boe({ log: (r) => it().log(r) }), { v: ZH });
+      let n = Object.assign(voe({ log: (r) => it().log(r) }), { v: ZH });
       return (it().onStart?.(() => n.audible()), (e[YH] = n), n);
     }
     var Dl = ee(we(), 1);
@@ -30756,13 +30756,13 @@ ${q}`;
       if (t < e.length) return { kind: "img", src: e[t] };
       return n ? { kind: "node" } : { kind: "initial" };
     }
-    var yoe = 0.45,
-      QH = { v: yoe },
+    var koe = 0.45,
+      QH = { v: koe },
       mf = { src: "", name: "" };
     var M1 = (e) => (mf.src ? [mf.src] : e);
-    var voe = "ETA timer (automatic)",
-      koe = "状态树提醒",
-      xoe =
+    var xoe = "ETA timer (automatic)",
+      woe = "状态树提醒",
+      Soe =
         "data:image/svg+xml," +
         encodeURIComponent(
           '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="oklch(0.55 0.19 27)"/><path d="M16 6l6 8h-3l4 5h-5v6h-4v-6H9l4-5h-3z" fill="oklch(0.98 0.01 90)"/></svg>',
@@ -30790,9 +30790,9 @@ ${q}`;
         };
       }
       if (e.from === "agent" && e.source === "eta" && e.eta?.kind !== "reply") {
-        let m = (e.label && e.label !== voe ? e.label : "") || t.stateTreeName || koe;
+        let m = (e.label && e.label !== xoe ? e.label : "") || t.stateTreeName || woe;
         return {
-          src: t.stateTreeAvatar ?? xoe,
+          src: t.stateTreeAvatar ?? Soe,
           name: m,
           initialFrom: m,
           seed: "state-tree",
@@ -30869,7 +30869,7 @@ ${q}`;
       );
     }
     var r4 = 300000;
-    function woe(e, t = r4) {
+    function Toe(e, t = r4) {
       return e.map((n, r) => {
         let o = e[r - 1];
         return !o || o.seed !== n.seed || o.node !== n.node || Math.abs(n.at - o.at) > t;
@@ -30884,7 +30884,7 @@ ${q}`;
       );
     }
     function o4(e, t, n = r4) {
-      let r = woe(t, n);
+      let r = Toe(t, n);
       return e.map((o, i) => {
         let a = e[i - 1];
         if (!a) return true;
@@ -30912,7 +30912,7 @@ ${q}`;
     function oo({ src: e, name: t, seed: n, initialFrom: r, size: o = 18, hidden: i = false }) {
       let a = e4(e);
       return gf.jsx(
-        Soe,
+        Aoe,
         {
           srcs: a,
           node: Dy.isValidElement(e) ? e : null,
@@ -30925,7 +30925,7 @@ ${q}`;
         a.join(" "),
       );
     }
-    function Soe({ srcs: e, node: t, name: n, letter: r, seed: o, size: i, hidden: a }) {
+    function Aoe({ srcs: e, node: t, name: n, letter: r, seed: o, size: i, hidden: a }) {
       let [s, l] = Dy.useState(0),
         c = {
           width: i,
@@ -31124,7 +31124,7 @@ ${q}`;
         );
       }, [e, t.messages, t.open, t.compact, t.fullLog, t.tree]);
     }
-    var Toe = {
+    var Eoe = {
         sid: "",
         hub: null,
         deadline: null,
@@ -31136,10 +31136,10 @@ ${q}`;
         stopPending: false,
         stoppedSince: 0,
       },
-      Aoe,
-      Eoe,
+      _oe,
+      Moe,
       So = () =>
-        (Aoe ??= ni("clips", 1, Toe, {
+        (_oe ??= ni("clips", 1, Eoe, {
           storage: "session",
           keys: ["sid", "stopPending", "stoppedSince"],
           clean: (e) => {
@@ -31152,9 +31152,9 @@ ${q}`;
           },
         })),
       C1 = () =>
-        (Eoe ??= ni("clips-device", 1, { device: "", autoStop: false }, { storage: "local" })),
+        (Moe ??= ni("clips-device", 1, { device: "", autoStop: false }, { storage: "local" })),
       L1 = () => {};
-    function _oe(e, t, n) {
+    function Roe(e, t, n) {
       let r = So();
       if (e.ok) return r.setState({ saved: r.getState().saved + 1, failing: false });
       r.setState({ failed: r.getState().failed + 1, failing: true });
@@ -31172,7 +31172,7 @@ ${q}`;
     function N1(e, t, n) {
       let r = So().getState().hub;
       if (!r?.on || r.sink !== e) return Promise.resolve();
-      return t(r.sinkKey).then((o) => _oe(o, e, n));
+      return t(r.sinkKey).then((o) => Roe(o, e, n));
     }
     function bf(e) {
       let t = So(),
@@ -31236,7 +31236,7 @@ ${q}`;
     var ms = ee(We(), 1);
     var dr = ee(we(), 1),
       Iy = () => So().getState().hub;
-    function Moe(e = document) {
+    function Loe(e = document) {
       let t = (r) => {
         if (
           r.defaultPrevented ||
@@ -31274,7 +31274,7 @@ ${q}`;
         s = !!n?.on,
         [l, c] = ms.useState(() => Date.now()),
         [u, f] = ms.useState(null);
-      (ms.useEffect(() => Moe(), []),
+      (ms.useEffect(() => Loe(), []),
         ms.useEffect(() => (s ? f4() : undefined), [s]),
         ms.useEffect(() => f(n?.paused ? Date.now() : null), [n?.paused]),
         ms.useEffect(() => {
@@ -31431,12 +31431,12 @@ ${q}`;
         i = e.now ?? (() => Date.now()),
         a = {
           f: t,
-          session: Roe(t, i),
+          session: Coe(t, i),
           peer: n,
           socket: r,
           origin: o,
           log: e.log,
-          events: e.events ?? Noe,
+          events: e.events ?? Poe,
           setTimer: e.setTimer ?? ((s, l) => setTimeout(s, l)),
           clearTimer: e.clearTimer ?? ((s) => clearTimeout(s)),
           now: i,
@@ -31448,13 +31448,13 @@ ${q}`;
         };
       return (s) => {
         let l = new k4();
-        if (s === "rtc:lianki") Loe(l, a);
-        else if (s === "wss:session") Ooe(l, { f: t, socket: r, log: e.log });
+        if (s === "rtc:lianki") Noe(l, a);
+        else if (s === "wss:session") Doe(l, { f: t, socket: r, log: e.log });
         else queueMicrotask(() => l.fail(4000, "not a public route"));
         return l;
       };
     }
-    function Roe(e, t) {
+    function Coe(e, t) {
       let n = null,
         r = null,
         o = () => {
@@ -31509,7 +31509,7 @@ ${q}`;
         this.fail(1000, "closed");
       }
     }
-    async function Loe(e, t) {
+    async function Noe(e, t) {
       let n;
       try {
         n = await t.session();
@@ -31620,7 +31620,7 @@ ${q}`;
             return;
           }
           if (M.t === "wait")
-            return ((l = true), Coe(S, t.available), x("lobby"), e.fail(4010, "no worker"));
+            return ((l = true), Ooe(S, t.available), x("lobby"), e.fail(4010, "no worker"));
           if (M.t === "ready" && M.resumed && S === s) {
             if (((u = false), typeof M.resume === "string")) a = M.resume;
             return (x("resumed"), void w("resumed"));
@@ -31676,7 +31676,7 @@ ${q}`;
       ((s = t.socket(`${t.origin()}${n.signal}?lobby=1`, ["lianki-stt2", n.ticket])), A(s));
     }
     var gs = null;
-    function Coe(e, t) {
+    function Ooe(e, t) {
       if (gs && gs !== e)
         try {
           gs.close(1000, "replaced");
@@ -31698,7 +31698,7 @@ ${q}`;
           if (gs === e) gs = null;
         }));
     }
-    function Noe(e) {
+    function Poe(e) {
       if (typeof window > "u" || typeof document > "u") return () => {};
       let t = () => {
           if (document.visibilityState === "visible") e("visible");
@@ -31713,7 +31713,7 @@ ${q}`;
         }
       );
     }
-    async function Ooe(e, t) {
+    async function Doe(e, t) {
       let n;
       try {
         n = await P1(t.f);
@@ -31745,9 +31745,9 @@ ${q}`;
         return false;
       }
     }
-    var Poe = "";
-    var w4 = () => Poe;
-    function Doe(e) {
+    var Ioe = "";
+    var w4 = () => Ioe;
+    function zoe(e) {
       if (!e?.on) return H1;
       let t = (n) => typeof n === "number" && Number.isFinite(n);
       return JSON.stringify({
@@ -31759,19 +31759,19 @@ ${q}`;
     }
     var H1 = JSON.stringify({ t: "selfVoice", on: false }),
       _4 = "lk:debug-local-stt",
-      Ioe = 4000,
-      zoe = 2500,
-      $oe = 150,
-      Hoe = 1000,
-      Uoe = 30000,
-      Foe = 1500,
-      Boe = 1e4,
-      Voe = "lianki-stt",
-      joe = "/api/dev/stt-ticket",
-      Goe = 1,
-      Woe = 2,
+      $oe = 4000,
+      Hoe = 2500,
+      Uoe = 150,
+      Foe = 1000,
+      Boe = 30000,
+      Voe = 1500,
+      joe = 1e4,
+      Goe = "lianki-stt",
+      Woe = "/api/dev/stt-ticket",
+      Koe = 1,
+      Yoe = 2,
       M4 = ["localhost", "127.0.0.1", "[::1]"];
-    function Koe(e, t = false) {
+    function Zoe(e, t = false) {
       if (t && Il(e)) return e;
       let n;
       try {
@@ -31787,41 +31787,41 @@ ${q}`;
       let n = (e ?? "")
           .split(/[\s,]+/)
           .filter(Boolean)
-          .map((o) => Koe(o, t))
+          .map((o) => Zoe(o, t))
           .filter((o) => !!o),
         r = [...new Set(n)];
       return r.length ? r.join(" ") : undefined;
     }
-    var Yoe = [
+    var qoe = [
         D1,
         ((typeof process < "u" && process.env.NEXT_PUBLIC_LIANKI_OWNER_LOCAL_STT) || "").trim(),
       ]
         .filter(Boolean)
         .join(" "),
-      Zoe = () => w4() || Yoe,
-      qoe = "off";
+      Xoe = () => w4() || qoe,
+      Joe = "off";
     function R4(e, t, n = false) {
       if (e != null) {
-        let r = e.trim().toLowerCase() === qoe ? undefined : S4(e, n);
+        let r = e.trim().toLowerCase() === Joe ? undefined : S4(e, n);
         return r ? { urls: r, source: "stored" } : { source: "off" };
       }
       if (t) {
-        let r = S4(Zoe(), n);
+        let r = S4(Xoe(), n);
         return r ? { urls: r, source: "owner-default" } : { source: "none" };
       }
       return { source: "none" };
     }
-    var Xoe = ["stt.lianki.com"];
+    var Qoe = ["stt.lianki.com"];
     function T4(e) {
       try {
         let t = new URL(e);
-        return t.protocol === "wss:" && Xoe.includes(t.hostname);
+        return t.protocol === "wss:" && Qoe.includes(t.hostname);
       } catch {
         return false;
       }
     }
-    async function Joe(e = fetch2) {
-      let t = await e(joe, { method: "POST", credentials: "same-origin" });
+    async function eie(e = fetch2) {
+      let t = await e(Woe, { method: "POST", credentials: "same-origin" });
       if (!t.ok) throw Error(`stt ticket: HTTP ${t.status}`);
       let { ticket: n } = await t.json();
       if (typeof n !== "string" || !n) throw Error("stt ticket: none");
@@ -31837,7 +31837,7 @@ ${q}`;
       }
       return n;
     }
-    function Qoe(e) {
+    function tie(e) {
       let t = e && typeof e === "object" ? e : {},
         r = ((o) => (typeof o === "number" && Number.isFinite(o) ? o : undefined))(t.logprob);
       return {
@@ -31845,14 +31845,14 @@ ${q}`;
         ...(r !== undefined ? { logprob: r } : {}),
       };
     }
-    var eie = (e) => {
+    var nie = (e) => {
         let t = e;
         if (!t || typeof t.reason !== "string") return;
         return { reason: t.reason, ...(typeof t.score === "number" ? { score: t.score } : {}) };
       },
-      tie = 8;
-    function nie(e) {
-      if (!Array.isArray(e) || e.length < 2 || e.length > tie) return;
+      rie = 8;
+    function oie(e) {
+      if (!Array.isArray(e) || e.length < 2 || e.length > rie) return;
       let t = [];
       for (let n of e) {
         if (!n || typeof n !== "object" || typeof n.text !== "string" || !n.text.trim()) return;
@@ -31866,13 +31866,13 @@ ${q}`;
       }
       return t;
     }
-    function rie() {
+    function iie() {
       let e = "";
       for (let t of crypto.getRandomValues(new Uint8Array(16))) e += String.fromCharCode(t);
       return btoa(e).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     }
     var U1 = 6000;
-    function oie(e) {
+    function aie(e) {
       if (e === D1) return "rtc";
       if (Il(e)) return e;
       try {
@@ -31885,7 +31885,7 @@ ${q}`;
       }
     }
     function E4(e, t) {
-      return e.map((n) => `${oie(n)}: ${(t.get(n) ?? "timeout").slice(0, 60)}`).join(", ");
+      return e.map((n) => `${aie(n)}: ${(t.get(n) ?? "timeout").slice(0, 60)}`).join(", ");
     }
     function L4(e, t, n) {
       if (e !== "down" || !t || !n) return;
@@ -31894,11 +31894,11 @@ ${q}`;
     function Cu(e, t = {}) {
       let n = (Array.isArray(e) ? e : e.split(/[\s,]+/)).filter(Boolean),
         r = t.open ?? ((N, D) => new WebSocket2(N, D)),
-        o = t.ticket ?? (() => Joe()),
+        o = t.ticket ?? (() => eie()),
         i = t.now ?? (() => performance.now()),
         a = t.setTimer ?? ((N, D) => setTimeout(N, D)),
         s = t.clearTimer ?? ((N) => clearTimeout(N)),
-        l = t.watch ?? iie,
+        l = t.watch ?? sie,
         c =
           t.visible ??
           (() =>
@@ -31987,8 +31987,8 @@ ${q}`;
             (s(D.timer), g.delete(N.id));
             let F = HS(N.speaker),
               H = B(N.enrol),
-              ae = eie(N.filtered),
-              de = ae ? undefined : nie(N.parts);
+              ae = nie(N.filtered),
+              de = ae ? undefined : oie(N.parts);
             D.resolve({
               text: N.text ?? "",
               model: `local:${N.model ?? "?"}`,
@@ -32001,7 +32001,7 @@ ${q}`;
                 ? { proof: N.speakerProof }
                 : {}),
               ...(H ? { enrol: H } : {}),
-              signals: Qoe(N.signals),
+              signals: tie(N.signals),
               ...(ae ? { filtered: ae } : {}),
               ...(typeof N.wouldFilter === "string" ? { wouldFilter: N.wouldFilter } : {}),
               ...(de ? { parts: de } : {}),
@@ -32023,7 +32023,7 @@ ${q}`;
         },
         pe = (N) => {
           if (!y || be() || m || !c()) return;
-          let D = v ? Math.min(Hoe * 2 ** (v - 1), Uoe) - (i() - x) : 0;
+          let D = v ? Math.min(Foe * 2 ** (v - 1), Boe) - (i() - x) : 0;
           if (D > 0) {
             if (T === null)
               T = a(() => {
@@ -32129,7 +32129,7 @@ ${q}`;
                     if (
                       (t.log?.({ ev: "local-stt-close", ...ye, via: P(Ae), livedMs: K }),
                       (u = null),
-                      K < Boe)
+                      K < joe)
                     )
                       Me();
                     else v = 0;
@@ -32147,11 +32147,11 @@ ${q}`;
             de = () => {
               if (N.over || N.started >= n.length) return;
               let Ae = n[N.started++];
-              if (N.started < n.length) N.timers.push(a(de, $oe));
+              if (N.started < n.length) N.timers.push(a(de, Uoe));
               if (!T4(Ae)) return ae(Ae);
               if (!D) return H(Ae, "ticket");
               D.then(
-                (O) => ae(Ae, [Voe, O]),
+                (O) => ae(Ae, [Goe, O]),
                 () => H(Ae, "ticket"),
               );
             };
@@ -32160,7 +32160,7 @@ ${q}`;
               if (N.over) return;
               for (let Ae of ke(N)) Ae.close();
               (Me(), U(E4(n, F)), he("unreachable", undefined, n.join(" ")));
-            }, t.connectTimeoutMs ?? zoe),
+            }, t.connectTimeoutMs ?? Hoe),
           ),
             de());
         },
@@ -32202,7 +32202,7 @@ ${q}`;
             .then(t.selfVoice)
             .catch(() => ({ on: false }))
             .then((N) => {
-              let D = Doe(N);
+              let D = zoe(N);
               if (D === Ie || !be()) return;
               ((Ie = D), I(D));
             });
@@ -32217,7 +32217,7 @@ ${q}`;
             };
           (g.set(D, F), (N.id = D), _e(), Bt());
           let H = N.opts?.enrol,
-            ae = t.device ? rie() : undefined;
+            ae = t.device ? iie() : undefined;
           I(
             JSON.stringify({
               t: "begin",
@@ -32238,7 +32238,7 @@ ${q}`;
               ((N.over = true), H.ko(Ae));
             }));
           let ae = H.audio.length - N.streamed;
-          if (ae > 0) I(A4(Woe, H.audio.subarray(0, ae)));
+          if (ae > 0) I(A4(Yoe, H.audio.subarray(0, ae)));
           F.endAt = i();
           let de = H.eo?.textFrom;
           (I(
@@ -32251,7 +32251,7 @@ ${q}`;
             (F.timer = a(() => {
               if (!g.has(D)) return;
               (g.delete(D), F.reject?.(Error("local stt timed out")));
-            }, Ioe)));
+            }, $oe)));
         },
         dn = (N) => {
           let D = N.attached;
@@ -32293,7 +32293,7 @@ ${q}`;
                   heldMs: Math.round(i() - N.began),
                 }),
                 D.fail("local stt closed"));
-            }, Foe)));
+            }, Voe)));
         },
         Tn = (N, D, F) => {
           let H = {
@@ -32315,7 +32315,7 @@ ${q}`;
             frame(ae) {
               if (H.over || H.ending) return;
               if (!H.waiter && H.id === null) return;
-              let de = A4(Goe, ae);
+              let de = A4(Koe, ae);
               if ((H.frames.push(de), (H.streamed += ae.length), H.id !== null && be())) I(de);
             },
             end(ae, de) {
@@ -32410,7 +32410,7 @@ ${q}`;
         },
       };
     }
-    function iie(e) {
+    function sie(e) {
       if (typeof window > "u" || typeof document > "u") return () => {};
       let t = () => {
           if (document.visibilityState === "visible") e("visible");
@@ -32457,10 +32457,10 @@ ${q}`;
         r = Math.max(n, (t.offsetLeft ?? 0) + t.width - e.width - 8);
       return Math.max(n, Math.min(e.left, r)) - e.left;
     }
-    var aie = "p,li,blockquote,pre,td,th,figcaption,h1,h2,h3,h4,h5,h6",
+    var lie = "p,li,blockquote,pre,td,th,figcaption,h1,h2,h3,h4,h5,h6",
       D4 =
         "[data-sensitive],[data-lk-sensitive],[data-lk-private-screen],[data-debug-chat],[data-lk-chat-host],input,textarea,script,style,template,noscript,[hidden],[aria-hidden=true]",
-      sie = 16000;
+      cie = 16000;
     function $y(e) {
       if (e.closest("[hidden],[aria-hidden=true]")) return true;
       let t = e.ownerDocument.defaultView?.getComputedStyle(e);
@@ -32494,7 +32494,7 @@ ${q}`;
         }
       }
     }
-    function lie(e, t) {
+    function uie(e, t) {
       let n = e.closest("section,article,main") ?? e.ownerDocument.body;
       if (!n) return;
       let r;
@@ -32557,12 +32557,12 @@ ${q}`;
             s.commonAncestorContainer.nodeType === 1
               ? s.commonAncestorContainer
               : s.commonAncestorContainer.parentElement,
-          f = u?.closest(aie) ?? u;
-        if (((l.heading = lie(a, t)), !f)) return Np(l);
+          f = u?.closest(lie) ?? u;
+        if (((l.heading = uie(a, t)), !f)) return Np(l);
         l.selector = P4(f, e);
         let m = !/^(BODY|HTML|MAIN|ARTICLE)$/.test(f.tagName) && !t(f) && !f.querySelector(D4),
           g = m && [...f.querySelectorAll("*")].some($y);
-        if (m && !g && (f.textContent?.length ?? 0) <= sie) {
+        if (m && !g && (f.textContent?.length ?? 0) <= cie) {
           let h = s.cloneRange();
           (h.selectNodeContents(f), h.setEnd(s.startContainer, s.startOffset));
           let y = s.cloneRange();
@@ -32623,13 +32623,13 @@ ${q}`;
     var De = ee(we(), 1),
       na = "__lkPageSelection",
       U4 = 2,
-      cie = Kp;
+      die = Kp;
     function Ou(e) {
       let t = e;
       if (!t || typeof t !== "object") return false;
-      return !!(t.nodeType === 1 ? t : t.parentElement)?.closest?.(cie);
+      return !!(t.nodeType === 1 ? t : t.parentElement)?.closest?.(die);
     }
-    function uie(e, t) {
+    function pie(e, t) {
       if (typeof document > "u") return null;
       let n = globalThis,
         r = `${na}Scope`,
@@ -32657,7 +32657,7 @@ ${q}`;
     }
     var F4 = () => null;
     function B4(e, t) {
-      let n = uie(e, t);
+      let n = pie(e, t);
       return {
         sel: Nr.useSyncExternalStore(n ? n.subscribe : () => () => {}, n ? n.get : F4, F4),
         clear: () => {
@@ -32677,8 +32677,8 @@ ${q}`;
       );
     }
     var ra = (e) => e.preventDefault(),
-      die = new Set(["plus", "link", "uploadSimple", "textAa", "sparkle", "play"]),
-      pie = (e) => (e && die.has(e) ? e : "plus");
+      fie = new Set(["plus", "link", "uploadSimple", "textAa", "sparkle", "play"]),
+      mie = (e) => (e && fie.has(e) ? e : "plus");
     function j4({
       t: e,
       open: t,
@@ -32843,7 +32843,7 @@ ${q}`;
                             background: "oklch(0.6 0.13 30 / 0.14)",
                             color: "oklch(0.55 0.14 30)",
                           },
-                          children: De.jsx(wn, { name: pie(A.icon) }),
+                          children: De.jsx(wn, { name: mie(A.icon) }),
                         }),
                         De.jsx("span", { className: "min-w-0 flex-1 truncate", children: A.title }),
                       ],
@@ -33042,7 +33042,7 @@ ${q}`;
         ],
       });
     }
-    function fie({ ctx: e, t, testid: n }) {
+    function gie({ ctx: e, t, testid: n }) {
       let [r, o] = Nr.useState(false);
       return De.jsx("button", {
         type: "button",
@@ -33055,17 +33055,17 @@ ${q}`;
         children: r ? e.selection : gT(e.selection),
       });
     }
-    var mie = "oklch(0.6 0.11 22.3 / 0.75)";
+    var hie = "oklch(0.6 0.11 22.3 / 0.75)";
     function xf({ t: e, ctx: t }) {
       return De.jsx("span", {
         "data-testid": "debug-chat-quote",
-        style: { borderInlineStartColor: mie },
+        style: { borderInlineStartColor: hie },
         className: "my-0.5 flex max-w-full border-s-2 ps-1.5 fs-11 leading-snug",
-        children: De.jsx(fie, { ctx: t, t: e, testid: "debug-chat-quote-text" }),
+        children: De.jsx(gie, { ctx: t, t: e, testid: "debug-chat-quote-text" }),
       });
     }
-    var gie = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    function hie(e) {
+    var bie = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    function yie(e) {
       if (!Number.isFinite(e)) return null;
       let t = new Date(e),
         n = t.getTime();
@@ -33076,7 +33076,7 @@ ${q}`;
         a =
           ((t.getUTCHours() * 60 + t.getUTCMinutes()) * 60 + t.getUTCSeconds()) * 1000 +
           t.getUTCMilliseconds(),
-        s = (i + a / 86400000) / gie[o],
+        s = (i + a / 86400000) / bie[o],
         l = (o + s) / 12;
       if (!(l >= 0 && l < 1)) return null;
       if (!K4("year", r)) return null;
@@ -33087,7 +33087,7 @@ ${q}`;
       return {
         id: e,
         project(n) {
-          let r = hie(n);
+          let r = yie(n);
           if (!r) return null;
           let o = Math.floor(r.rowIndex / t);
           if (!K4(e, o)) return null;
@@ -33098,15 +33098,15 @@ ${q}`;
         },
       };
     }
-    var fye = V1("decade", 10),
-      mye = V1("century", 100),
-      gye = V1("millennium", 1000);
+    var gye = V1("decade", 10),
+      hye = V1("century", 100),
+      bye = V1("millennium", 1000);
     function K4(e, t) {
       let n = W4(e, t),
         r = W4(e, t + 1);
       return Number.isFinite(new Date(n).getTime()) && Number.isFinite(new Date(r).getTime());
     }
-    var bie = Date.UTC(1970, 0, 5),
+    var vie = Date.UTC(1970, 0, 5),
       Y4 = 604800000,
       $l = 86400000,
       Z4 = 3600000;
@@ -33129,7 +33129,7 @@ ${q}`;
           );
         }
         case "week":
-          return bie + t * Y4;
+          return vie + t * Y4;
         case "day":
           return t * $l;
         case "hour":
@@ -33407,7 +33407,7 @@ ${q}`;
       return { lane: t, lanes: n.length };
     }
     var sA = 8000,
-      yie = 60000;
+      kie = 60000;
     function h5(e) {
       let t = [],
         n = (r) => {
@@ -33421,7 +33421,7 @@ ${q}`;
     function Ky(e, t) {
       return e.filter((n) => !n.done || (n.doneAt !== undefined && t - n.doneAt < sA));
     }
-    function vie(e, t) {
+    function xie(e, t) {
       if (e.done) return 1;
       let n = e.at - e.start;
       if (n <= 0) return t >= e.at ? 1 : 0;
@@ -33433,8 +33433,8 @@ ${q}`;
         o = 0,
         i = 0;
       for (let s of n) {
-        let l = Math.max(yie, s.at - s.start);
-        ((o += l), (i += l * vie(s, t)));
+        let l = Math.max(kie, s.at - s.start);
+        ((o += l), (i += l * xie(s, t)));
       }
       let a = r.reduce((s, l) => Math.max(s, l.at), -1 / 0);
       return {
@@ -33461,24 +33461,24 @@ ${q}`;
       let t = Cf(Math.abs(e));
       return `${e < 0 && t > 0 ? "-" : ""}${Lf(t * 60000, t)}`;
     }
-    var kie = 99;
-    function xie(e, t) {
+    var wie = 99;
+    function Sie(e, t) {
       let n = Pn(e),
         r = Pn(t);
       if (n === r) return r;
-      if (t > 0 && Cf(t) <= kie) return `${Cf(e)}–${Cf(t)}M`;
+      if (t > 0 && Cf(t) <= wie) return `${Cf(e)}–${Cf(t)}M`;
       let o = (i) => /[A-Za-z]+$/.exec(i)?.[0] ?? "";
       return o(n) === o(r) ? `${n.slice(0, -o(n).length)}–${r}` : `${n}–${r}`;
     }
     function Nf(e, t) {
       if (!e.done && e.min !== undefined && e.min > t && e.min < e.at)
-        return xie(e.min - t, e.at - t);
+        return Sie(e.min - t, e.at - t);
       return Pn(e.at - t);
     }
     var la = (e) => !e.done && !!e.parked,
       ys = (e) => (!e.done && e.parked === "owner" ? (e.question ? "?" : "!") : null),
       $u = (e) => Pn(e).startsWith("-"),
-      wie = 60000;
+      Tie = 60000;
     function Yy(e, t) {
       let n = e.filter((a) => !a.done && !a.queued),
         r = Math.max(t, n.length ? Math.min(...n.map((a) => a.at)) : t),
@@ -33497,7 +33497,7 @@ ${q}`;
       if (!n.length) return null;
       let r = Math.min(...n.map((i) => Math.min(i.start, i.at))),
         o = Math.max(...n.map((i) => (i.done && i.doneAt !== undefined ? i.doneAt : i.at)));
-      return { lo: r, hi: Math.max(o, r + wie) };
+      return { lo: r, hi: Math.max(o, r + Tie) };
     }
     function Of(e, t, n) {
       let r = (l) => Math.min(100, Math.max(0, ((l - t.lo) / (t.hi - t.lo)) * 100));
@@ -33511,10 +33511,10 @@ ${q}`;
         s = e.done ? 100 : Math.min(100, Math.max(0, e.pct ?? 0));
       return { left: o, plan: Math.max(0, i - o), fill: s, over: Math.max(0, a - i), now: r(n) };
     }
-    function Sie(e, t) {
+    function Aie(e, t) {
       return e.filter((n) => !n.done && !n.sent && n.at <= t);
     }
-    function Tie(e, t) {
+    function Eie(e, t) {
       let n = 1 / 0;
       for (let r of e) {
         if (r.done) {
@@ -33542,7 +33542,7 @@ ${q}`;
         a = new Set(),
         s = false,
         l = (f) => {
-          for (let p of Sie(i, f)) {
+          for (let p of Aie(i, f)) {
             let m = `${p.id}@${p.at}`;
             if (a.has(m)) continue;
             (a.add(m), e.onDue(p.id));
@@ -33552,7 +33552,7 @@ ${q}`;
           if (o !== undefined) r(o);
           if (((o = undefined), s)) return;
           let f = t(),
-            p = Tie(i, f);
+            p = Eie(i, f);
           if (p === null) return;
           o = n(u, Math.max(0, p - f));
         },
@@ -33579,18 +33579,18 @@ ${q}`;
         r = e.slice(t + 1).trim();
       return n ? { name: n, desc: r } : { name: r, desc: "" };
     }
-    var Aie = (e, t) => e !== t && e.startsWith("/") && t.startsWith(e.endsWith("/") ? e : `${e}/`),
+    var _ie = (e, t) => e !== t && e.startsWith("/") && t.startsWith(e.endsWith("/") ? e : `${e}/`),
       g5 = (e) => (e.startsWith("/") ? e.split("/").filter(Boolean).length : 0);
-    function Eie(e) {
+    function Mie(e) {
       let t = e.filter((i) => !i.done);
       if (!t.length) return null;
-      let n = t.filter((i) => !t.some((a) => Aie(i.id, a.id))),
+      let n = t.filter((i) => !t.some((a) => _ie(i.id, a.id))),
         r = (n.length ? n : t).reduce((i, a) => (a.at < i.at ? a : i)),
         o = t.reduce((i, a) => (a.at > i.at || (a.at === i.at && g5(a.id) < g5(i.id)) ? a : i));
       return r.id === o.id ? { big: o } : { small: r, big: o };
     }
     function x5(e, t) {
-      let n = Eie(e);
+      let n = Mie(e);
       if (!n) return null;
       let r = (o) => ({
         name: io(o.title).name,
@@ -33601,17 +33601,17 @@ ${q}`;
     }
     var w5 = (e) => e.map((t) => `${t.name} ${t.min}`).join(" · ");
     var C5 = "owner";
-    var _ie = /^(\s*)[-*+]\s+(.*)$/,
-      Mie = /^##\s+(.*)$/,
+    var Rie = /^(\s*)[-*+]\s+(.*)$/,
+      Lie = /^##\s+(.*)$/,
       S5 = /^(?:→|->)\s*(.*)$/,
       T5 = /^≈([A-Za-z]{2,3}(?:-[A-Za-z0-9]+)?)?\s+(.*)$/,
-      Rie = /^\[([ xX~!])\]\s*/,
+      Cie = /^\[([ xX~!])\]\s*/,
       cA = /\(!\)/g,
       uA = /\(any order\)/gi,
-      Lie = /\(done\s+(\d{4}-\d{2}-\d{2}(?:[T ][\d:]+)?)\)/i,
-      Cie = /(?:^|\s)@([A-Za-z0-9][\w.-]*)(?:#(\S*))?$/,
-      Nie = /^[A-Za-z0-9_-]{1,40}$/,
-      Oie = { " ": "open", "~": "doing", "!": "blocked", x: "done", X: "done" };
+      Nie = /\(done\s+(\d{4}-\d{2}-\d{2}(?:[T ][\d:]+)?)\)/i,
+      Oie = /(?:^|\s)@([A-Za-z0-9][\w.-]*)(?:#(\S*))?$/,
+      Pie = /^[A-Za-z0-9_-]{1,40}$/,
+      Die = { " ": "open", "~": "doing", "!": "blocked", x: "done", X: "done" };
     function N5(e, t = {}) {
       let n = (t.host ?? "https://github.com").replace(/\/$/, ""),
         r = [],
@@ -33631,33 +33631,33 @@ ${q}`;
       return r;
     }
     var A5 = (e) => e.replaceAll("\t", "  ").length;
-    function Pie(e, t) {
+    function Iie(e, t) {
       if (e === "owner") return { type: "human", name: e };
-      return t && Nie.test(t) ? { type: "agent", name: e, id: t } : { type: "agent", name: e };
+      return t && Pie.test(t) ? { type: "agent", name: e, id: t } : { type: "agent", name: e };
     }
     function E5(e, t) {
       let n = e.trim(),
         r,
-        o = Rie.exec(n);
-      if (o) ((r = Oie[o[1]]), (n = n.slice(o[0].length)));
+        o = Cie.exec(n);
+      if (o) ((r = Die[o[1]]), (n = n.slice(o[0].length)));
       let i = cA.test(n);
       if (((cA.lastIndex = 0), i)) n = n.replace(cA, " ");
       let a = uA.test(n);
       if (((uA.lastIndex = 0), a)) n = n.replace(uA, " ");
-      let s = Lie.exec(n);
+      let s = Nie.exec(n);
       if (s) n = n.replace(s[0], " ");
       n = n.replace(/\s+/g, " ").trim();
-      let l = Cie.exec(n);
+      let l = Oie.exec(n);
       if (l) n = n.slice(0, l.index).trim();
       let c = { title: n, links: N5(n, t), children: [] };
       if (r) ((c.status = r), (c.done = r === "done"));
       if (i) c.needsOwner = true;
       if (a) c.unordered = true;
       if (s) c.doneAt = s[1].replace(" ", "T");
-      if (l) c.assignee = Pie(l[1], l[2]);
+      if (l) c.assignee = Iie(l[1], l[2]);
       return c;
     }
-    function Die(e) {
+    function zie(e) {
       let t = {};
       for (let n of e.split(/\s*[·|]\s*/)) {
         let r = /^(done|doing|next)\s*[:：]\s*(.+)$/i.exec(n.trim());
@@ -33666,7 +33666,7 @@ ${q}`;
       return t;
     }
     function _5(e, t, n) {
-      let r = Die(n);
+      let r = zie(n);
       if (!Object.keys(r).length) return;
       e.summaries ??= {};
       let o = (t ?? "zh").toLowerCase();
@@ -33693,7 +33693,7 @@ ${q}`;
       for (let s of a.split(`
 `)) {
         if (!s.trim()) continue;
-        let l = Mie.exec(s);
+        let l = Lie.exec(s);
         if (l) {
           ((o = E5(l[1], t)), n.children.push(o), (r = []), (i = { indent: -1, node: o }));
           continue;
@@ -33702,7 +33702,7 @@ ${q}`;
           ((o = null), (r = []), (i = null));
           continue;
         }
-        let c = _ie.exec(s);
+        let c = Rie.exec(s);
         if (c && !S5.test(c[2]) && !T5.test(c[2])) {
           let y = A5(c[1]),
             b = E5(c[2], t);
@@ -33748,8 +33748,8 @@ ${y}`
       }
       return { open: t, needsOwner: n };
     }
-    var Iie = { doing: 0, open: 1, blocked: 2, done: 3 },
-      M5 = (e) => (e.status ? Iie[e.status] : 1);
+    var $ie = { doing: 0, open: 1, blocked: 2, done: 3 },
+      M5 = (e) => (e.status ? $ie[e.status] : 1);
     function R5(e) {
       let t = [],
         n = (r, o) => {
@@ -33770,11 +33770,11 @@ ${y}`
         };
       return (n(e, []), t);
     }
-    function zie(e) {
+    function Hie(e) {
       let t = (e ?? "").toLowerCase();
       return [...new Set([t, t.split("-")[0] ?? "", "zh", "en"].filter(Boolean))];
     }
-    function $ie(e, t, n) {
+    function Uie(e, t, n) {
       let r = e[0].chain;
       for (let o of e) {
         let i = 0;
@@ -33796,7 +33796,7 @@ ${y}`
     function dA(e, t, n, r, o = false) {
       let i = { ...L5(t), count: e.length, items: e.map(L5) };
       if (e.length > 1 || o) {
-        let a = $ie(e, n, r);
+        let a = Uie(e, n, r);
         if (a) i.summary = a;
       }
       return i;
@@ -33808,7 +33808,7 @@ ${y}`
         if (!p) return {};
         n = p;
       }
-      let r = zie(t.locale),
+      let r = Hie(t.locale),
         o = t.live ? R5(n).filter((f) => f.node.live) : R5(n),
         i = !!t.live,
         a = {},
@@ -33838,14 +33838,14 @@ ${y}`
       qy = 1,
       Xy = 1,
       D5 = 60000,
-      Hie = (e) => e.ticks?.at(-1)?.by;
+      Fie = (e) => e.ticks?.at(-1)?.by;
     function I5(e, t, n) {
       if (!e) return [];
       let r = new Map(e.map((i) => [i.id, i])),
         o = [];
       for (let i of t) {
         let a = r.get(i.id),
-          s = Hie(i);
+          s = Fie(i);
         if (s === C5) continue;
         let l = { id: i.id, title: i.title, ...(s ? { by: s } : {}) };
         if (!a) {
@@ -33903,7 +33903,7 @@ ${y}`
       if (t >= r) return null;
       return e.since + (Math.floor((t - e.since) / n) + 1) * n;
     }
-    var Uie = {
+    var Bie = {
       new: "etaNewsNew",
       done: "etaNewsDone",
       early: "etaNewsEarly",
@@ -33913,7 +33913,7 @@ ${y}`
       late: "etaNewsLate",
     };
     function F5(e, t) {
-      return t[Uie[e.kind]].replace("{task}", io(e.title).name).replace("{t}", Pn(e.deltaMs ?? 0));
+      return t[Bie[e.kind]].replace("{task}", io(e.title).name).replace("{t}", Pn(e.deltaMs ?? 0));
     }
     var s0 = ee(We(), 1);
     var B5 = [
@@ -33989,18 +33989,18 @@ ${y}`
       V5 = 18,
       j5 = 72,
       Jy = 24,
-      Bie = 6,
+      jie = 6,
       G5 = 1.4;
-    function Vie(e, t) {
+    function Gie(e, t) {
       let n = Math.abs(t.dx - e.dx),
         r = Math.abs(t.dy - e.dy);
-      if (Math.max(n, r) < Bie) return "none";
+      if (Math.max(n, r) < jie) return "none";
       if (n >= r * G5) return "x";
       if (r >= n * G5) return "y";
       return "both";
     }
     function q5(e, t, n = "none") {
-      let r = n === "none" ? Vie(e, t) : n,
+      let r = n === "none" ? Gie(e, t) : n,
         o = Math.max(Jy, t.dx) / Math.max(Jy, e.dx),
         i = Math.max(Jy, t.dy) / Math.max(Jy, e.dy);
       if (r === "none") return { dir: r, fx: 1, fy: 1 };
@@ -34012,10 +34012,10 @@ ${y}`
       if (!Number.isFinite(t) || t <= 0) return cn(Math.round(e), V5, j5);
       return cn(Math.round(e * t), V5, j5);
     }
-    var jie = 1.25,
-      Gie = 1.6,
-      Wie = 0.8,
-      Kie = 0.6;
+    var Wie = 1.25,
+      Kie = 1.6,
+      Yie = 0.8,
+      Zie = 0.6;
     function J5(e, t, n) {
       let r = null,
         o = 1 / 0;
@@ -34036,13 +34036,13 @@ ${y}`
       let { open0: t, targetGroup: n, allGroups: r, fy: o } = e,
         i = (a) => [...new Set(a)];
       if (!Number.isFinite(o) || o <= 0) return [...t];
-      if (o >= Gie) return i([...t, ...r]);
-      if (o >= jie) {
+      if (o >= Kie) return i([...t, ...r]);
+      if (o >= Wie) {
         if (n && !t.includes(n)) return [...t, n];
         return i([...t, ...r]);
       }
-      if (o <= Kie) return [];
-      if (o <= Wie) {
+      if (o <= Zie) return [];
+      if (o <= Yie) {
         if (n && t.includes(n)) return t.filter((a) => a !== n);
         return [];
       }
@@ -34113,8 +34113,8 @@ ${y}`
         outline: `1px solid ${t}`,
         outlineOffset: -1,
       }),
-      Yie = 6;
-    function r6(e, t, n = Yie) {
+      qie = 6;
+    function r6(e, t, n = qie) {
       if (e < t - n) return "behind";
       if (e > t + n) return "ahead";
       return "on";
@@ -34135,23 +34135,23 @@ ${y}`
       Uu = "data-gantt-live",
       i6 = `@keyframes lk-gantt-live{0%,100%{opacity:1}50%{opacity:0.45}}[${Uu}]{animation:lk-gantt-live 1.6s ease-in-out infinite}@media (prefers-reduced-motion: reduce){[${Uu}]{animation:none}[${Uu}][data-gantt-line]{-webkit-mask-image:repeating-linear-gradient(90deg,oklch(0 0 0) 0 4px,transparent 4px 6px);mask-image:repeating-linear-gradient(90deg,oklch(0 0 0) 0 4px,transparent 4px 6px)}}html[data-motion="off"] [${Uu}]{animation:none}`,
       Y5 = 3,
-      Zie = 0.95,
-      qie = 0.75,
+      Xie = 0.95,
+      Jie = 0.75,
       Fu = 0.5;
-    function Xie(e, t) {
+    function Qie(e, t) {
       if (!e.length) return 0;
       let n = [...e].sort((r, o) => r - o);
       return n[Math.min(n.length - 1, Math.max(0, Math.ceil(t * n.length) - 1))];
     }
-    function a6(e, t, n = Zie) {
+    function a6(e, t, n = Xie) {
       if (t < 0) return 0;
       let r = e.slice(Math.max(0, t - Y5), t + Y5 + 1);
-      return Xie(
+      return Qie(
         r.map((o) => vs(o) - Math.min(o.start, o.at)).filter((o) => o > 0),
         n,
       );
     }
-    function s6(e, t, n, r, o, i = qie) {
+    function s6(e, t, n, r, o, i = Jie) {
       let a = Math.max(1, r),
         s = a * cn(i, 0.01, 1);
       if (e === "log") {
@@ -34223,24 +34223,24 @@ ${y}`
       if (e.x > t.left + t.width) return "later";
       return null;
     }
-    var Jie = 0.1;
+    var eae = 0.1;
     function d6(e, t, n) {
       let r = Math.max(0, e.w),
-        o = Math.round(Jie * t.width),
+        o = Math.round(eae * t.width),
         i = r + 2 * o <= t.width ? e.x + r / 2 - t.width / 2 : e.x - o;
       return Math.round(Math.max(0, Math.min(Math.max(0, n - t.width), i)));
     }
-    var Qie = /^[a-z0-9][a-z0-9-]{0,39}$/,
-      eae = (e) => typeof e === "string" && e.startsWith("/") && e.length <= 120 && !/\s/.test(e);
-    function tae(e) {
+    var tae = /^[a-z0-9][a-z0-9-]{0,39}$/,
+      nae = (e) => typeof e === "string" && e.startsWith("/") && e.length <= 120 && !/\s/.test(e);
+    function rae(e) {
       if (!Array.isArray(e)) return null;
       let t = [],
         n = false;
       for (let r of e.slice(0, 50)) {
         let o = r && typeof r === "object" ? r : {};
-        if (typeof o.id !== "string" || !Qie.test(o.id) || t.some((s) => s.id === o.id)) continue;
+        if (typeof o.id !== "string" || !tae.test(o.id) || t.some((s) => s.id === o.id)) continue;
         if (typeof o.name !== "string" || !o.name || o.name.length > 60) continue;
-        let i = Array.isArray(o.match) ? o.match.filter(eae).slice(0, 100) : [],
+        let i = Array.isArray(o.match) ? o.match.filter(nae).slice(0, 100) : [],
           a = { id: o.id, name: o.name, match: i };
         if (o.fallback === true && !n) a.fallback = n = true;
         if (typeof o.label === "string" && o.label && o.label.length <= 60) a.label = o.label;
@@ -34248,8 +34248,8 @@ ${y}`
       }
       return t;
     }
-    var n0 = tae(B5) ?? [];
-    function nae(e, t) {
+    var n0 = rae(B5) ?? [];
+    function oae(e, t) {
       if (e.endsWith("*")) {
         let r = e.slice(0, -1);
         return t.startsWith(r) ? r.length : -1;
@@ -34257,12 +34257,12 @@ ${y}`
       let n = e.replace(/\/+$/, "");
       return t === n || t.startsWith(`${n}/`) ? n.length : -1;
     }
-    function rae(e, t) {
+    function iae(e, t) {
       let n = null,
         r = -1;
       for (let o of t)
         for (let i of o.match) {
-          let a = nae(i, e);
+          let a = oae(i, e);
           if (a > r) ((r = a), (n = o));
         }
       return n ?? t.find((o) => o.fallback) ?? null;
@@ -34271,7 +34271,7 @@ ${y}`
       let n = t[e.name];
       return typeof n === "string" && n ? n : (e.label ?? e.id);
     }
-    function oae(e, t) {
+    function aae(e, t) {
       if (e.done) {
         let r = e.doneAt ?? e.at;
         return { from: Math.min(e.start, r), to: r };
@@ -34285,7 +34285,7 @@ ${y}`
         return { from: Math.min(e.start, t), to: t };
       },
       f6 = (e) => Math.max(60000, e.at - e.start);
-    function iae(e, t, n) {
+    function sae(e, t, n) {
       let r = 0,
         o = 0;
       for (let c of n)
@@ -34305,7 +34305,7 @@ ${y}`
         ...(l ? { parked: l.some((c) => c.parked === "owner") ? "owner" : "blocked" } : {}),
       };
     }
-    function aae(e) {
+    function lae(e) {
       let t = e.map(ys);
       return t.includes("!") ? "!" : t.includes("?") ? "?" : null;
     }
@@ -34313,7 +34313,7 @@ ${y}`
       let i = new Map(),
         a = [];
       for (let l of e) {
-        let c = rae(l.id, t);
+        let c = iae(l.id, t);
         if (!c) {
           a.push(l);
           continue;
@@ -34324,9 +34324,9 @@ ${y}`
       let s = [];
       for (let { def: l, tasks: c } of i.values()) {
         let u = Qy(c),
-          f = iae(l.id, r(l), u),
+          f = sae(l.id, r(l), u),
           p = n.includes(l.id),
-          { lane: m, lanes: g } = m5(u.map((h) => oae(h, o)));
+          { lane: m, lanes: g } = m5(u.map((h) => aae(h, o)));
         s.push({
           task: f,
           line: () => [
@@ -34339,7 +34339,7 @@ ${y}`
               lane: m,
               lanes: g,
               open: p,
-              mark: aae(u),
+              mark: lae(u),
             },
             ...(p ? u.map((h) => ({ kind: "task", key: h.id, task: h, group: l.id })) : []),
           ],
@@ -34356,8 +34356,8 @@ ${y}`
       if (n >= 0) return n;
       return e.findIndex((r) => r.kind === "group" && r.children.some((o) => o.id === t));
     }
-    var sae = 6,
-      m6 = (e, t, n = sae) => Math.max(t, Math.max(1, e) * n),
+    var cae = 6,
+      m6 = (e, t, n = cae) => Math.max(t, Math.max(1, e) * n),
       i0 = (e, t, n) => {
         let r = n / Math.max(1, t);
         return { top: e * r, h: r };
@@ -34389,7 +34389,7 @@ ${y}`
       },
       wA = (e) => `light-dark(${g6.light[e]}, ${g6.dark[e]})`,
       st = wA;
-    function lae({ title: e }) {
+    function uae({ title: e }) {
       let { name: t, desc: n } = io(e);
       return me.jsxs("span", {
         title: e,
@@ -34416,11 +34416,11 @@ ${y}`
       });
     }
     var b6 = (e, t) => (e ? "done" : t ? "past" : "fill"),
-      cae =
+      dae =
         "@keyframes lk-eta-sweep{from{transform:translateX(-100%)}to{transform:translateX(100%)}}@media (prefers-reduced-motion: reduce){[data-eta-shimmer]{display:none}}",
-      uae =
+      pae =
         "linear-gradient(90deg, transparent, light-dark(oklch(1 0 0 / 0.55), oklch(1 0 0 / 0.16)), transparent)";
-    function dae({
+    function fae({
       frac: e,
       tone: t,
       className: n,
@@ -34443,12 +34443,12 @@ ${y}`
               o &&
               me.jsxs(me.Fragment, {
                 children: [
-                  me.jsx("style", { children: cae }),
+                  me.jsx("style", { children: dae }),
                   me.jsx("span", {
                     "data-eta-shimmer": true,
                     "data-testid": "debug-chat-eta-shimmer",
                     className: "absolute inset-0",
-                    style: { background: uae, animation: "lk-eta-sweep 1.8s linear infinite" },
+                    style: { background: pae, animation: "lk-eta-sweep 1.8s linear infinite" },
                   }),
                 ],
               }),
@@ -34474,9 +34474,9 @@ ${y}`
         ],
       });
     }
-    var pae =
+    var mae =
       "@keyframes lk-eta-flash{from{opacity:0.85}to{opacity:0}}@media (prefers-reduced-motion: reduce){[data-eta-flash]{display:none}}";
-    function fae({ kind: e }) {
+    function gae({ kind: e }) {
       if (e === "late")
         return me.jsx("span", {
           className: "inline-flex shrink-0",
@@ -34499,8 +34499,8 @@ ${y}`
         children: me.jsx(wn, { name: t }),
       });
     }
-    var mae = "2.25rem",
-      gae = 3;
+    var hae = "2.25rem",
+      bae = 3;
     function y6(e, t, n) {
       let r = b5(e, t);
       if (!r.count) return null;
@@ -34512,7 +34512,7 @@ ${y}`
             : null;
       return { sum: r, lead: o, leftMs: i, next: a };
     }
-    function hae(e, t, n) {
+    function yae(e, t, n) {
       let r = y6(e, t, n);
       if (!r) return "";
       return [r.lead, r.leftMs === null ? n.etaDone : Pn(r.leftMs), r.next]
@@ -34528,11 +34528,11 @@ ${y}`
         template: r ? n.etaDeadlineLate : n.etaDeadlineLeft,
       };
     }
-    function bae(e, t, n) {
+    function vae(e, t, n) {
       let r = v6(e, t, n);
       return r.template.replace("{task}", r.task).replace("{dur}", r.dur);
     }
-    function yae({ t: e, now: t, strings: n }) {
+    function kae({ t: e, now: t, strings: n }) {
       let r = v6(e, t, n),
         o = r.late ? { color: st("late"), fontWeight: 600 } : undefined;
       return me.jsx(me.Fragment, {
@@ -34579,7 +34579,7 @@ ${y}`
         }),
       });
     }
-    function vae(e, t) {
+    function xae(e, t) {
       let [n, r] = s0.useState(0);
       return (
         s0.useEffect(() => {
@@ -34622,7 +34622,7 @@ ${y}`
     }) {
       let f = y6(e, t, n);
       if (!f) return null;
-      let p = me.jsx(kae, {
+      let p = me.jsx(wae, {
         p: f,
         tasks: e,
         now: t,
@@ -34651,7 +34651,7 @@ ${y}`
         ],
       });
     }
-    function kae({
+    function wae({
       p: e,
       tasks: t,
       now: n,
@@ -34665,12 +34665,12 @@ ${y}`
     }) {
       let { sum: u } = e,
         f = u.leftMs !== null && u.leftMs <= 0,
-        p = vae(Math.min(l, lA(t).length), c * 1000),
+        p = xae(Math.min(l, lA(t).length), c * 1000),
         m = y5(t, p, l),
-        g = hae(t, n, r),
+        g = yae(t, n, r),
         h = s ? F5(s.item, r) : null,
         y = s?.item.by,
-        b = m ? bae(m, n, r) : g,
+        b = m ? vae(m, n, r) : g,
         v = h ? (y ? `${y}: ${h}` : h) : b,
         x = `${g} · ${u.pct}%`;
       return me.jsx("button", {
@@ -34685,7 +34685,7 @@ ${y}`
         onMouseDown: l0,
         onClick: o,
         className: `pointer-events-auto block w-full min-w-0 border-0 bg-transparent p-0 text-start fs-10 ${i ? "" : "mb-1"}`,
-        children: me.jsxs(dae, {
+        children: me.jsxs(fae, {
           frac: u.pct / 100,
           tone: b6(u.leftMs === null, f),
           className: "w-full px-2 py-0.5",
@@ -34705,11 +34705,11 @@ ${y}`
                     opacity: 0,
                     animation: "lk-eta-flash 1.2s ease-out",
                   },
-                  children: me.jsx("style", { children: pae }),
+                  children: me.jsx("style", { children: mae }),
                 },
                 s.since,
               ),
-            s ? me.jsx(fae, { kind: s.item.kind }) : me.jsx(c0, {}),
+            s ? me.jsx(gae, { kind: s.item.kind }) : me.jsx(c0, {}),
             me.jsx("span", {
               "data-testid": "debug-chat-eta-text",
               className: "flex min-w-0 flex-1 items-baseline gap-1",
@@ -34728,7 +34728,7 @@ ${y}`
                     ? me.jsx("span", { children: r.etaDone })
                     : me.jsx(SA, { ms: u.next ? u.next.at - n : e.leftMs })
                   : m
-                    ? me.jsx(yae, { t: m, now: n, strings: r })
+                    ? me.jsx(kae, { t: m, now: n, strings: r })
                     : me.jsxs(me.Fragment, {
                         children: [
                           me.jsx("span", { className: "min-w-0 truncate", children: e.lead }),
@@ -34781,8 +34781,8 @@ ${y}`
             className: "m-0 flex list-none flex-col gap-px p-0",
             children: f.map((p) =>
               p.kind === "task"
-                ? me.jsx(xae, { t: p.task, win: c, now: t, strings: n, child: !!p.group }, p.key)
-                : me.jsx(wae, { line: p, win: c, now: t, strings: n }, p.key),
+                ? me.jsx(Sae, { t: p.task, win: c, now: t, strings: n, child: !!p.group }, p.key)
+                : me.jsx(Tae, { line: p, win: c, now: t, strings: n }, p.key),
             ),
           }),
           me.jsxs("div", {
@@ -34865,7 +34865,7 @@ ${y}`
         style: { insetInlineStart: `${e}%`, background: st("late") },
       });
     }
-    function xae({ t: e, win: t, now: n, strings: r, child: o }) {
+    function Sae({ t: e, win: t, now: n, strings: r, child: o }) {
       let i = Of(e, t, n),
         a = !e.done && e.at <= n,
         s = la(e),
@@ -34880,7 +34880,7 @@ ${y}`
         style: {
           background: st("track"),
           color: st("text"),
-          ...(o ? { paddingInlineStart: mae } : {}),
+          ...(o ? { paddingInlineStart: hae } : {}),
         },
         children: [
           me.jsx(xA, { t: e, win: t, now: n }),
@@ -34895,7 +34895,7 @@ ${y}`
               style: { color: st("late") },
               children: l,
             }),
-          me.jsx(lae, { title: e.title }),
+          me.jsx(uae, { title: e.title }),
           e.done
             ? me.jsx("span", { className: "shrink-0", children: r.etaDone })
             : s
@@ -34910,7 +34910,7 @@ ${y}`
         ],
       });
     }
-    function wae({ line: e, win: t, now: n, strings: r }) {
+    function Tae({ line: e, win: t, now: n, strings: r }) {
       let o = e.task,
         i = Of(o, t, n),
         a = r.etaGroupToggle.replace("{group}", o.title),
@@ -34925,7 +34925,7 @@ ${y}`
         style: {
           background: st("track"),
           color: st("text"),
-          minHeight: e.open ? undefined : e.lanes * gae,
+          minHeight: e.open ? undefined : e.lanes * bae,
         },
         children: [
           e.open
@@ -34990,7 +34990,7 @@ ${y}`
       Bu = { kind: "idle" },
       AA = (e) => e === "touch" || e === "pen",
       u0 = (e, t, n, r, o) => Math.hypot(e - n, t - r) > o,
-      Sae = (e, t = Ul) => Math.exp(e * t.zoomPerPx),
+      Aae = (e, t = Ul) => Math.exp(e * t.zoomPerPx),
       EA = (e) => (e.kind === "zoom" ? { state: Bu, out: { type: "end" } } : { state: Bu });
     function w6(e, t, n = Ul) {
       if (!AA(t.type)) return { state: e };
@@ -35011,7 +35011,7 @@ ${y}`
         };
       }
       if (e.kind === "zoom" && e.id === t.id)
-        return { state: e, out: { type: "zoom", factor: Sae(t.y - e.y0, n), x: t.x } };
+        return { state: e, out: { type: "zoom", factor: Aae(t.y - e.y0, n), x: t.x } };
       return { state: e };
     }
     function T6(e, t, n = Ul) {
@@ -35058,7 +35058,7 @@ ${y}`
         blocked: "阻塞",
         done: "已完成",
       };
-    function Tae(e) {
+    function Eae(e) {
       if (!e) return "doing";
       let t = e.toLowerCase().trim();
       if (t === "done") return "done";
@@ -35068,7 +35068,7 @@ ${y}`
       if (t === "waiting" || t === "queued") return "waiting";
       return "doing";
     }
-    function Aae(e) {
+    function _ae(e) {
       let t = Math.max(0, e);
       if (t < 60000) return `${Math.round(t / 1000)}s`;
       return Lf(t);
@@ -35089,7 +35089,7 @@ ${y}`
       for (let p of s) {
         let m = Math.max(o, Math.min(p.at, i));
         if (m > c) (l.push({ status: u, from: c, to: m }), (c = m));
-        u = Tae(p.status);
+        u = Eae(p.status);
       }
       if (c < i) {
         let p = e.done ? "done" : u;
@@ -35118,7 +35118,7 @@ ${y}`
           from: p.from,
           to: p.to,
           duration: b,
-          durationLabel: Aae(b),
+          durationLabel: _ae(b),
           x: h,
           w: y,
           color: v,
@@ -35129,14 +35129,14 @@ ${y}`
       ca = 26,
       Vu = yA,
       ua = 2,
-      Eae = 3,
+      Mae = 3,
       OA = 4,
       d0 = 22,
-      _ae = () =>
+      Rae = () =>
         typeof window < "u" &&
         (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ||
           document.documentElement.dataset.motion === "off");
-    function Mae({ side: e, label: t, scrollX: n, viewW: r, h: o, onReveal: i }) {
+    function Lae({ side: e, label: t, scrollX: n, viewW: r, h: o, onReveal: i }) {
       return Se.jsx("button", {
         type: "button",
         "data-testid": "debug-chat-gantt-off-arrow",
@@ -35169,17 +35169,17 @@ ${y}`
       });
     }
     var MA = 2,
-      Rae = { change: 12, status: 12, confirm: 7 },
+      Cae = { change: 12, status: 12, confirm: 7 },
       RA = 16,
-      Lae = (e) => {
+      Nae = (e) => {
         let t = Number.parseFloat(getComputedStyle(e).fontSize);
         return Number.isFinite(t) && t > 0 ? (t * 2) / 3 : sa;
       },
-      Cae = "2.75rem",
+      Oae = "2.75rem",
       LA = "pan-x pan-y",
-      Nae = 28,
-      Oae = 12,
-      Pae = 2000,
+      Pae = 28,
+      Dae = 12,
+      Iae = 2000,
       C6 = (e, t = Vu) =>
         e.kind === "group" && !e.open ? Math.round(m6(e.lanes, Vu) * (t / Vu)) : t,
       CA = (e, t) =>
@@ -35192,7 +35192,7 @@ ${y}`
               : e.at <= t
                 ? "reached"
                 : "running";
-    function Dae({ t: e, strings: t }) {
+    function zae({ t: e, strings: t }) {
       let n = ys(e),
         { name: r, desc: o } = io(e.title);
       return Se.jsxs("span", {
@@ -35214,7 +35214,7 @@ ${y}`
         ],
       });
     }
-    function Iae({ t: e, now: t, strings: n }) {
+    function $ae({ t: e, now: t, strings: n }) {
       let r = e.at - t;
       if (la(e)) {
         let i = n.etaReminder.replace("{t}", Pn(r));
@@ -35245,7 +35245,7 @@ ${y}`
         g = m && iA(m, l) ? m : null,
         h = i >= Vu,
         y = h ? OA : Math.max(1, Math.round(i / 4)),
-        b = h ? Eae : Math.max(1, y - 1),
+        b = h ? Mae : Math.max(1, y - 1),
         v = h ? 0 : 0.5,
         x = { top: o + v, height: Math.max(1, i - y - v) },
         w = (T) => `debug-chat-gantt-${a === "slice" ? `slice-${T}` : T}`;
@@ -35465,7 +35465,7 @@ ${y}`
           (S.current = se.scrollLeft),
           B(q),
           j(O.clientHeight),
-          oe(Lae(O)),
+          oe(Nae(O)),
           G(se.axis),
           Z(se.scrollLeft));
         let ye = new ResizeObserver(() => {
@@ -35716,13 +35716,13 @@ ${y}`
           let q = A.current;
           if (!q) return;
           let se = d6(O, { width: q.clientWidth }, q.scrollWidth);
-          q.scrollTo({ left: se, behavior: _ae() ? "auto" : "smooth" });
+          q.scrollTo({ left: se, behavior: Rae() ? "auto" : "smooth" });
         },
         dn = (O, q, se) => {
           let ye = t0(O, { left: V, width: P });
           if (!ye) return null;
           let K = (ye === "earlier" ? n.etaGanttToEarlier : n.etaGanttToLater).replace("{task}", q);
-          return Se.jsx(Mae, {
+          return Se.jsx(Lae, {
             side: ye,
             label: K,
             scrollX: V,
@@ -35758,7 +35758,7 @@ ${y}`
       }, [h, y]),
         He.useEffect(() => {
           if (!Tn) return;
-          let O = setTimeout(() => z(null), Pae);
+          let O = setTimeout(() => z(null), Iae);
           return () => clearTimeout(O);
         }, [Tn]));
       let F = U ? Hl(U) : 0,
@@ -36087,7 +36087,7 @@ ${y}`
                                         left: (RA - MA) / 2,
                                         top: 0,
                                         width: Vt ? MA + 1 : MA,
-                                        height: Vt ? se - OA : Rae[Ve.kind],
+                                        height: Vt ? se - OA : Cae[Ve.kind],
                                         background:
                                           Ve.kind === "status"
                                             ? `repeating-linear-gradient(180deg, ${Ce(Vt ? "text" : "tick")} 0 3px, transparent 3px 5px)`
@@ -36107,11 +36107,11 @@ ${y}`
                                   left: $t === "earlier" ? d0 : 0,
                                   zIndex: 1,
                                   maxWidth: "min(36rem, calc(100vw - 1rem))",
-                                  ...(O.group ? { paddingInlineStart: Cae } : {}),
+                                  ...(O.group ? { paddingInlineStart: Oae } : {}),
                                 },
                                 children: [
-                                  Se.jsx(Dae, { t: Oe, strings: n }),
-                                  Se.jsx(Iae, { t: Oe, now: t, strings: n }),
+                                  Se.jsx(zae, { t: Oe, strings: n }),
+                                  Se.jsx($ae, { t: Oe, now: t, strings: n }),
                                 ],
                               }),
                             ],
@@ -36179,7 +36179,7 @@ ${y}`
                                           style: {
                                             left: vt.x,
                                             top: Ue.top,
-                                            width: Math.max(Oae, vt.w + (la(Oe) ? 0 : vt.over)),
+                                            width: Math.max(Dae, vt.w + (la(Oe) ? 0 : vt.over)),
                                             height: Ue.h,
                                             zIndex: 2,
                                             border: 0,
@@ -36229,7 +36229,7 @@ ${y}`
                                   onClick: () => zn(O.def.id),
                                   className: "tap-40 shrink-0 rounded p-0 leading-none",
                                   style: {
-                                    width: Nae,
+                                    width: Pae,
                                     height: Math.min(se, c) - 4,
                                     border: 0,
                                     background: "transparent",
@@ -36374,8 +36374,8 @@ ${y}`
       let f = H5(a, l, r);
       return f && a.since !== null ? { item: f, since: a.since } : null;
     }
-    var zae = /^image\/(png|jpeg|gif|webp|avif)$/,
-      PA = (e) => zae.test(e);
+    var Hae = /^image\/(png|jpeg|gif|webp|avif)$/,
+      PA = (e) => Hae.test(e);
     function ju(e) {
       if (!Number.isFinite(e) || e < 0) return "";
       if (e < 1024) return `${e} B`;
@@ -36535,7 +36535,7 @@ ${y}`
                   : Ge.jsx("span", {
                       "aria-hidden": true,
                       className: "flex h-16 items-center justify-center text-lg opacity-60",
-                      children: $ae(r.name),
+                      children: Uae(r.name),
                     }),
                 Ge.jsx("button", {
                   type: "button",
@@ -36569,7 +36569,7 @@ ${y}`
         }),
       });
     }
-    function $ae(e) {
+    function Uae(e) {
       let t = /\.([A-Za-z0-9]{1,5})$/.exec(e);
       return t ? t[1].toUpperCase() : "FILE";
     }
@@ -37143,7 +37143,7 @@ Rules:
         else h3(e, i, r ? r(a.value, i) : a.value);
       }
     }
-    function Hae(e, t) {
+    function Fae(e, t) {
       for (let n of Reflect.ownKeys(t)) {
         let r = Object.getOwnPropertyDescriptor(t, n);
         if (!r.enumerable) continue;
@@ -37243,7 +37243,7 @@ Rules:
         int64: [BigInt("-9223372036854775808"), BigInt("9223372036854775807")],
         uint64: [BigInt(0), BigInt("18446744073709551615")],
       };
-    function Uae(e, t) {
+    function Bae(e, t) {
       let n = e._zod.def,
         r = n.checks;
       if (r && r.length > 0)
@@ -37261,7 +37261,7 @@ Rules:
       }
       return r;
     }
-    function Fae(e, t) {
+    function Vae(e, t) {
       let n = e._zod.def,
         r = n.checks;
       if (r && r.length > 0)
@@ -37277,7 +37277,7 @@ Rules:
         ci(e, Ir(n, { shape: a, checks: [] }))
       );
     }
-    function Bae(e, t) {
+    function jae(e, t) {
       if (!Bl(t)) throw Error("Invalid input to extend: expected a plain object");
       let n = e._zod.def.checks;
       if (n && n.length > 0) {
@@ -37292,13 +37292,13 @@ Rules:
     }
     function w3(e, t) {
       let n = {};
-      return (Fl(n, e, Reflect.ownKeys(pa(e))), Hae(n, t), n);
+      return (Fl(n, e, Reflect.ownKeys(pa(e))), Fae(n, t), n);
     }
-    function Vae(e, t) {
+    function Gae(e, t) {
       if (!Bl(t)) throw Error("Invalid input to safeExtend: expected a plain object");
       return ci(e, Ir(e._zod.def, { shape: w3(e, t) }));
     }
-    function jae(e, t) {
+    function Wae(e, t) {
       if (!t?._zod?.def)
         throw Error(
           "Invalid input to merge: expected an object schema. To merge a plain shape, use `.extend()`.",
@@ -37334,7 +37334,7 @@ Rules:
         ci(t, Ir(t._zod.def, { shape: l, checks: [] }))
       );
     }
-    function Gae(e, t, n) {
+    function Kae(e, t, n) {
       let r = n ? new Set(y0(t, n)) : undefined,
         o = {};
       return (
@@ -37407,10 +37407,10 @@ Rules:
       if ((s.path ?? (s.path = []), (s.message = a), t?.reportInput)) s.input = e.input;
       return s;
     }
-    var Wae = /[\uD800-\uDBFF]/;
+    var Yae = /[\uD800-\uDBFF]/;
     function k0(e) {
       let t = e.length;
-      if (!Wae.test(e)) return t;
+      if (!Yae.test(e)) return t;
       let n = t;
       for (let r = 0; r < t - 1; r++)
         if ((e.charCodeAt(r) & 64512) === 55296 && (e.charCodeAt(r + 1) & 64512) === 56320)
@@ -37451,7 +37451,7 @@ Rules:
       for (let n in t) {
         let r = Object.getOwnPropertyDescriptor(t, n);
         if (r.get) Object.defineProperty(e, n, { ...r, enumerable: false });
-        else Kae(e, n, r.value);
+        else Zae(e, n, r.value);
       }
     }
     function fa(e, t, n, r = true) {
@@ -37484,7 +37484,7 @@ Rules:
       }
       return t;
     }
-    function Kae(e, t, n) {
+    function Zae(e, t, n) {
       Object.defineProperty(e, t, {
         configurable: true,
         get() {
@@ -37495,13 +37495,13 @@ Rules:
         },
       });
     }
-    function Yae(e, t) {
+    function qae(e, t) {
       let n = Object.getPrototypeOf(e);
       return t in n ? undefined : n;
     }
     var VA,
       ks = false,
-      Zae = {
+      Xae = {
         configurable: true,
         get() {
           ks = true;
@@ -37518,7 +37518,7 @@ Rules:
         Object.defineProperty(r, t, {
           configurable: true,
           get() {
-            Object.defineProperty(this, t, Zae);
+            Object.defineProperty(this, t, Xae);
             let o = ks;
             ks = false;
             try {
@@ -37535,8 +37535,8 @@ Rules:
           },
         }));
     }
-    function qae(e, t, n, r) {
-      let o = Yae(e, t);
+    function Jae(e, t, n, r) {
+      let o = qae(e, t);
       if (!o) return;
       Object.defineProperty(o, t, {
         configurable: true,
@@ -37559,15 +37559,15 @@ Rules:
         },
       });
     }
-    var Xae = "~constantCatch";
+    var Qae = "~constantCatch";
     function M3(e) {
       let t = () => e;
-      return ((t[Xae] = true), t);
+      return ((t[Qae] = true), t);
     }
     var R3;
     var qA = { value: undefined, enumerable: false },
       L3 = "captureStackTrace" in Error ? Error : null;
-    function Jae(e) {
+    function ese(e) {
       let t = L3;
       if (t) {
         let n = t.stackTraceLimit;
@@ -37622,7 +37622,7 @@ Rules:
       class u extends c {}
       Object.defineProperty(u, "name", { value: e });
       function f(p) {
-        let m = r?.Parent ? Jae(u) : this;
+        let m = r?.Parent ? ese(u) : this;
         l(m, p);
         let g = m._zod.deferred;
         if (g) {
@@ -37664,14 +37664,14 @@ Rules:
       if (e) Object.assign(pr, e);
       return pr;
     }
-    function Qae() {
+    function tse() {
       let e = this._zod;
       return (e.message ?? (e.message = JSON.stringify(e.def, Bf, 2)), e.message);
     }
-    function ese(e) {
+    function nse(e) {
       this._zod.message = e;
     }
-    var tse = { get: Qae, set: ese, enumerable: true, configurable: true },
+    var rse = { get: tse, set: nse, enumerable: true, configurable: true },
       JA = { value: undefined, enumerable: false },
       C3 = new WeakSet([Object.prototype, Error.prototype]),
       N3 = (e, t) => {
@@ -37679,7 +37679,7 @@ Rules:
           (JA.value = t),
           Object.defineProperty(e, "issues", JA),
           (JA.value = undefined),
-          Object.defineProperty(e, "message", tse));
+          Object.defineProperty(e, "message", rse));
         let n = Object.getPrototypeOf(e);
         if (!C3.has(n))
           (C3.add(n),
@@ -37707,8 +37707,8 @@ Rules:
             }));
       },
       O3 = J("$ZodError", N3),
-      P0e = J("$ZodError", N3, undefined, { Parent: Error });
-    function nse(e, t, n) {
+      I0e = J("$ZodError", N3, undefined, { Parent: Error });
+    function ose(e, t, n) {
       if (!Object.prototype.hasOwnProperty.call(e, t))
         if (t === "__proto__")
           Object.defineProperty(e, t, {
@@ -37724,7 +37724,7 @@ Rules:
       let n = {},
         r = [];
       for (let o of e.issues)
-        if (o.path.length > 0) nse(n, o.path[0], () => []).push(t(o));
+        if (o.path.length > 0) ose(n, o.path[0], () => []).push(t(o));
         else r.push(t(o));
       return { formErrors: r, fieldErrors: n };
     }
@@ -37820,21 +37820,21 @@ Rules:
       if (i instanceof Promise) i = await i;
       return i.issues.length ? I3(e, i.issues, o) : { success: true, data: i.value };
     };
-    var rse = Symbol.for("zod.compile.invalid"),
-      ose = Symbol.for("zod.compile.fallback"),
+    var ise = Symbol.for("zod.compile.invalid"),
+      ase = Symbol.for("zod.compile.fallback"),
       QA = (e, t, n) => {
         let r = e._zod.bag.validator;
         if (r !== undefined) {
-          if (r(t) !== rse) return true;
+          if (r(t) !== ise) return true;
           if (r.definite === true && n === undefined) return false;
         }
-        return ise(e, t, n);
+        return sse(e, t, n);
       };
-    function ise(e, t, n) {
+    function sse(e, t, n) {
       let r = n ? { ...n, async: false, abortEarly: true } : { async: false, abortEarly: true },
         o = e._zod.bag.fallbackRun,
         i;
-      if (o) ((r[ose] = true), (i = o({ value: t, issues: [] }, r)));
+      if (o) ((r[ase] = true), (i = o({ value: t, issues: [] }, r)));
       else i = e._zod.run({ value: t, issues: [] }, r);
       if (i instanceof Promise) throw new pi();
       return i.issues.length === 0;
@@ -37902,10 +37902,10 @@ Rules:
       };
     var eU =
       /^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/;
-    var ase =
+    var lse =
       "^(?=[\\s\\S]*[\\p{Extended_Pictographic}\\p{Regional_Indicator}\\u20E3])[\\p{Extended_Pictographic}\\p{Emoji_Component}]+$";
     function tU() {
-      return new RegExp(ase, "u");
+      return new RegExp(lse, "u");
     }
     var nU =
         /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/,
@@ -37921,10 +37921,10 @@ Rules:
       cU = /^\+[1-9]\d{6,14}$/;
     var uU =
       "(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))";
-    function sse(e) {
+    function cse(e) {
       return new RegExp(`^${e}$`);
     }
-    var dU = sse(uU);
+    var dU = cse(uU);
     function tE(e) {
       return typeof e.precision === "number"
         ? e.precision === -1
@@ -38360,7 +38360,7 @@ ${t.join(`
       ),
       BU = (e, t) =>
         e.issues.length ? { issues: e.issues.map((n) => di(n, t, zr())) } : { value: e.value };
-    async function lse(e, t) {
+    async function use(e, t) {
       let n = { async: true };
       return BU(await e._zod.run({ value: t, issues: [] }, n), n);
     }
@@ -38372,7 +38372,7 @@ ${t.join(`
             let r = e._zod.run({ value: t, issues: [] }, n);
             if (!(r instanceof Promise)) return BU(r, n);
           } catch (r) {}
-          return lse(e, t);
+          return use(e, t);
         },
         vendor: "zod",
         version: 1,
@@ -38420,11 +38420,11 @@ ${t.join(`
         return false;
       }
     }
-    function cse(e, t) {
+    function dse(e, t) {
       if (!("normalize" in t) && !("hostname" in t) && !("protocol" in t)) return KU(e) || L0;
-      return use(e, t);
+      return pse(e, t);
     }
-    function use(e, t) {
+    function pse(e, t) {
       if (!t.normalize && t.protocol?.source === lU.source && !/^https?:\/\//i.test(e)) return WU;
       try {
         if (typeof URL < "u") {
@@ -38436,14 +38436,14 @@ ${t.join(`
         return L0;
       }
     }
-    var dse = /[\t\n\r]/g;
+    var fse = /[\t\n\r]/g;
     function NU(e) {
-      return e.replace(dse, "");
+      return e.replace(fse, "");
     }
-    function pse(e, t) {
+    function mse(e, t) {
       return ((t.lastIndex = 0), t.test(e.hostname));
     }
-    function fse(e, t) {
+    function gse(e, t) {
       return (
         (t.lastIndex = 0), t.test(e.protocol.endsWith(":") ? e.protocol.slice(0, -1) : e.protocol)
       );
@@ -38453,7 +38453,7 @@ ${t.join(`
           (e._zod.check = (n) => {
             try {
               let r = n.value.trim(),
-                o = cse(r, t);
+                o = dse(r, t);
               if (o === WU) {
                 n.issues.push({
                   code: "invalid_format",
@@ -38479,7 +38479,7 @@ ${t.join(`
                 n.value = NU(r);
                 return;
               }
-              if (t.hostname && !pse(o, t.hostname))
+              if (t.hostname && !mse(o, t.hostname))
                 n.issues.push({
                   code: "invalid_format",
                   format: "url",
@@ -38489,7 +38489,7 @@ ${t.join(`
                   inst: e,
                   continue: !t.abort,
                 });
-              if (t.protocol && !fse(o, t.protocol))
+              if (t.protocol && !gse(o, t.protocol))
                 n.issues.push({
                   code: "invalid_format",
                   format: "url",
@@ -38550,9 +38550,9 @@ ${t.join(`
       a8 = J("$ZodIPv4", (e, t) => {
         (t.pattern ?? (t.pattern = nU), Nt.init(e, t));
       }),
-      mse = /^[0-9a-fA-F:.]+$/;
+      hse = /^[0-9a-fA-F:.]+$/;
     function s8(e) {
-      if (!mse.test(e)) return false;
+      if (!hse.test(e)) return false;
       return KU(`http://[${e}]`);
     }
     var l8 = J("$ZodIPv6", (e, t) => {
@@ -38572,7 +38572,7 @@ ${t.join(`
     var c8 = J("$ZodCIDRv4", (e, t) => {
       (t.pattern ?? (t.pattern = oU), Nt.init(e, t));
     });
-    function gse(e) {
+    function bse(e) {
       let t = e.split("/");
       if (t.length !== 2) return false;
       let [n, r] = t;
@@ -38586,7 +38586,7 @@ ${t.join(`
       (t.pattern ?? (t.pattern = iU),
         Nt.init(e, t),
         (e._zod.check = (n) => {
-          if (!gse(n.value))
+          if (!bse(n.value))
             n.issues.push({
               code: "invalid_format",
               format: "cidrv6",
@@ -38622,7 +38622,7 @@ ${t.join(`
           }));
       }),
       O0 = /^[A-Za-z0-9_-]*$/;
-    function hse(e) {
+    function yse(e) {
       if (!O0.test(e)) return false;
       let t = e.replace(/[-_]/g, (r) => (r === "-" ? "+" : "/")),
         n = t.padEnd(Math.ceil(t.length / 4) * 4, "=");
@@ -38632,7 +38632,7 @@ ${t.join(`
         (t.pattern ?? (t.pattern = O0),
           Nt.init(e, t),
           (e._zod.check = (n) => {
-            if (hse(n.value)) return;
+            if (yse(n.value)) return;
             n.issues.push({
               code: "invalid_format",
               format: "base64url",
@@ -38645,7 +38645,7 @@ ${t.join(`
       m8 = J("$ZodE164", (e, t) => {
         (t.pattern ?? (t.pattern = cU), Nt.init(e, t));
       });
-    function bse(e, t = null) {
+    function vse(e, t = null) {
       try {
         let n = e.split(".");
         if (n.length !== 3) return false;
@@ -38663,7 +38663,7 @@ ${t.join(`
     var g8 = J("$ZodJWT", (e, t) => {
       (Nt.init(e, t),
         (e._zod.check = (n) => {
-          if (bse(n.value, t.alg)) return;
+          if (vse(n.value, t.alg)) return;
           n.issues.push({
             code: "invalid_format",
             format: "jwt",
@@ -38730,7 +38730,7 @@ ${t.join(`
             n.issues.push({ expected: "never", code: "invalid_type", input: n.value, inst: e }), n
           )));
       });
-    function yse(e, t) {
+    function kse(e, t) {
       let n = ZA(e._zod.def.checks);
       if (!n.length) return;
       let r = Math.min(...n.map((i) => i[0])),
@@ -38747,7 +38747,7 @@ ${t.join(`
         return o(i, a);
       };
     }
-    var vse = (e) => (Array.isArray(e) ? e.length : -1);
+    var xse = (e) => (Array.isArray(e) ? e.length : -1);
     function OU(e, t, n) {
       if (e.issues.length) t.issues.push(...ws(n, e.issues));
       t.value[n] = e.value;
@@ -38774,7 +38774,7 @@ ${t.join(`
           if (a.length) return Promise.all(a).then(() => r);
           return r;
         }),
-        yse(e, vse));
+        kse(e, xse));
     });
     function C0(e, t, n, r, o, i) {
       let a = n in r,
@@ -38798,11 +38798,11 @@ ${t.join(`
         if (a || (o === "defaulted" && !s)) t.value[n] = undefined;
       } else t.value[n] = e.value;
     }
-    var kse = [];
+    var wse = [];
     function x8(e) {
       let t = Object.keys(e.shape),
         n = Object.getOwnPropertySymbols(e.shape),
-        r = n.length ? n : kse,
+        r = n.length ? n : wse,
         o = r.length ? [...t, ...r] : t;
       for (let a of o)
         if (!e.shape?.[a]?._zod?.traits?.has("$ZodType"))
@@ -38847,7 +38847,7 @@ ${t.join(`
       if (!e.length) return n;
       return Promise.all(e).then(() => n);
     }
-    var xse = J("$ZodObject", (e, t) => {
+    var Sse = J("$ZodObject", (e, t) => {
         zt.init(e, t);
         let n = Object.getOwnPropertyDescriptor(t, "shape"),
           r = n?.get ? n.get.raw : (t.shape ?? {});
@@ -38907,7 +38907,7 @@ ${t.join(`
           }));
       }),
       S8 = J("$ZodObjectJIT", (e, t) => {
-        xse.init(e, t);
+        Sse.init(e, t);
         let n = e._zod.parse,
           r = m0(() => x8(t)),
           o = pr.memoizer,
@@ -39629,20 +39629,20 @@ ${t.join(`
             else if (Array.isArray(p)) for (let m of p) i(m);
           }
       }
-      return (t.delete(e), wse(e, o));
+      return (t.delete(e), Tse(e, o));
     }
-    function wse(e, t) {
+    function Tse(e, t) {
       if (t !== I0) B8.set(e, t === Yf);
       return t;
     }
-    function Sse(e, t) {
+    function Ase(e, t) {
       let n = e.buckets.get(t);
       if (!n) ((n = new WeakMap()), e.buckets.set(t, n));
       return n;
     }
     var P0,
       D0 = [],
-      Tse = {
+      Ese = {
         alloc(e, t, n) {
           let r = P0;
           if (!r) return n;
@@ -39656,7 +39656,7 @@ ${t.join(`
             e._zod.deferred.push(() => {
               let n = e._zod.parse,
                 r = (o, i) => {
-                  if (i.direction !== "backward" && Ase(i, o.value)) throw new U8();
+                  if (i.direction !== "backward" && _se(i, o.value)) throw new U8();
                   return n(o, i);
                 };
               if (((e._zod.parse = r), e._zod.run === n)) e._zod.run = r;
@@ -39687,7 +39687,7 @@ ${t.join(`
                   if (!f) ((f = { buckets: new WeakMap(), backEdges: undefined }), (c[mE] = f));
                   let p;
                   if (o === c) p = i;
-                  else ((p = Sse(f, e)), (o = c), (i = p));
+                  else ((p = Ase(f, e)), (o = c), (i = p));
                   let m = p.get(u);
                   if (m) {
                     if (((l.value = m.value), m.issues)) {
@@ -39716,13 +39716,13 @@ ${t.join(`
         },
       };
     function V8() {
-      return Tse;
+      return Ese;
     }
-    function Ase(e, t) {
+    function _se(e, t) {
       let n = e[mE]?.backEdges;
       return n !== undefined && F8(t) && n.has(t);
     }
-    var Ese = () => {
+    var Mse = () => {
       let e = {
         string: { unit: "characters", verb: "to have" },
         file: { unit: "bytes", verb: "to have" },
@@ -39824,7 +39824,7 @@ ${t.join(`
       };
     };
     function gE() {
-      return { localeError: Ese() };
+      return { localeError: Mse() };
     }
     var j8;
 
@@ -39860,10 +39860,10 @@ ${t.join(`
         return this._map.has(e);
       }
     }
-    function _se() {
+    function Rse() {
       return new G8();
     }
-    (j8 = globalThis).__zod_globalRegistry ?? (j8.__zod_globalRegistry = _se());
+    (j8 = globalThis).__zod_globalRegistry ?? (j8.__zod_globalRegistry = Rse());
     var jl = globalThis.__zod_globalRegistry;
     function W8(e) {
       if (e.checks) e.checks = [...e.checks];
@@ -40187,7 +40187,7 @@ ${t.join(`
       return new e({ type: "custom", check: "custom", fn: t, ...Ne(n) });
     }
     function _F(e, t) {
-      let n = Mse(
+      let n = Lse(
         (r) => (
           (r.addIssue = (o) => {
             if (typeof o === "string") r.issues.push(Vl(o, r.value, n._zod.def));
@@ -40206,7 +40206,7 @@ ${t.join(`
       );
       return n;
     }
-    function Mse(e, t) {
+    function Lse(e, t) {
       let n = new Dn({ check: "custom", ...Ne(t) });
       return ((n._zod.check = e), n);
     }
@@ -40420,7 +40420,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       }
       return o;
     }
-    function Rse(e) {
+    function Cse(e) {
       let t = e.allOf;
       if (!Array.isArray(t) || t.length < 2) return;
       for (let o of NF) if (o in e) return;
@@ -40497,7 +40497,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
               if (f) f.push(c);
               else s.set(u, [c]);
             }
-          for (let l of e.intersections) for (let c of s.get(l) ?? []) Rse(c);
+          for (let l of e.intersections) for (let c of s.get(l) ?? []) Cse(c);
         }
       }
       let o = {};
@@ -40629,7 +40629,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         let [r, o] = e[n.format];
         (Ku(t, "minimum", r), Yu(t, "maximum", o));
       },
-      Lse = {
+      Nse = {
         greater_than: (e, t) => Ku(e, t.inclusive ? "minimum" : "exclusiveMinimum", t.value),
         less_than: (e, t) => Yu(e, t.inclusive ? "maximum" : "exclusiveMaximum", t.value),
         multiple_of: (e, t) => $F(e, t.value),
@@ -40652,7 +40652,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       let t = {},
         n = e._zod.def,
         r = e._zod.traits.has("$ZodCheck") ? [e, ...(n.checks ?? [])] : (n.checks ?? []);
-      for (let i of r) Lse[i._zod.def.check]?.(t, i._zod.def);
+      for (let i of r) Nse[i._zod.def.check]?.(t, i._zod.def);
       let o = e._zod.bag;
       if (o.minimum !== undefined) Ku(t, "minimum", o.minimum);
       if (o.exclusiveMinimum !== undefined) Ku(t, "exclusiveMinimum", o.exclusiveMinimum);
@@ -40666,18 +40666,18 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       for (let i of o.patterns ?? []) HF(t, i);
       return t;
     }
-    var Cse = {
+    var Ose = {
         guid: "uuid",
         url: "uri",
         datetime: "date-time",
         json_string: "json-string",
         regex: "",
       },
-      Nse = new Map([
+      Pse = new Map([
         [uE, aU],
         [O0, sU],
       ]),
-      BF = (e) => Nse.get(e) ?? e,
+      BF = (e) => Pse.get(e) ?? e,
       VF = (e, t, n, r) => {
         let o = n;
         o.type = "string";
@@ -40692,7 +40692,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         if (typeof i === "number") o.minLength = i;
         if (typeof a === "number") o.maxLength = a;
         if (s) {
-          if (((o.format = Cse[s] ?? s), o.format === "")) delete o.format;
+          if (((o.format = Ose[s] ?? s), o.format === "")) delete o.format;
           if (s === "time" || u) delete o.format;
         }
         if (c) o.contentEncoding = c;
@@ -40892,7 +40892,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       return m;
     }
     var NE = new WeakMap();
-    function Ose(e) {
+    function Dse(e) {
       let t = new Map();
       for (let r of e.seen.values()) if (r.def && !t.has(r.schema)) t.set(r.schema, r);
       let n = new Map();
@@ -40924,7 +40924,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           if (t.target === "draft-07" || t.target === "draft-2020-12") {
             o.propertyNames = Jt(i.keyType, t, { ...r, path: [...r.path, "propertyNames"] });
             let u = NE.get(t);
-            if (!u) ((u = []), NE.set(t, u), t.deferred.push(() => Ose(t)));
+            if (!u) ((u = []), NE.set(t, u), t.deferred.push(() => Dse(t)));
             u.push(e);
           }
           o.additionalProperties = Jt(i.valueType, t, {
@@ -41028,7 +41028,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         },
       });
     }
-    var Fse = (e, t) => {
+    var Vse = (e, t) => {
       (O3.init(e, t), (e.name = "ZodError"));
       let n = Object.getPrototypeOf(e);
       if (dB.has(n)) return;
@@ -41049,7 +41049,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           },
         }));
     };
-    var $r = J("ZodError", Fse, undefined, { Parent: Error });
+    var $r = J("ZodError", Vse, undefined, { Parent: Error });
     var pB = T0($r),
       fB = A0($r),
       mB = E0($r),
@@ -41062,13 +41062,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       xB = B3($r),
       wB = V3($r),
       SB = j3($r);
-    function Vse() {
+    function Gse() {
       if (!pr.localeError) zr(gE());
     }
     function W0() {
       if (!pr.memoizer) zr({ memoizer: V8() });
     }
-    var Ut = J("ZodType", (e, t) => (Vse(), zt.init(e, t), (e.def = t), (e.type = t.type), e), {
+    var Ut = J("ZodType", (e, t) => (Gse(), zt.init(e, t), (e.def = t), (e.type = t.type), e), {
         check(...e) {
           let t = this.def;
           return this.clone(
@@ -41098,10 +41098,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           return (e.add(this, t), this);
         },
         refine(e, t) {
-          return this.check(Hle(e, t));
+          return this.check(Fle(e, t));
         },
         superRefine(e, t) {
-          return this.check(Ule(e, t));
+          return this.check(Ble(e, t));
         },
         overwrite(e) {
           return this.check(Ss(e));
@@ -41110,7 +41110,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           return EB(this);
         },
         exactOptional() {
-          return Ele(this);
+          return Mle(this);
         },
         nullable() {
           return _B(this);
@@ -41119,7 +41119,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           return EB(_B(this));
         },
         nonoptional(e) {
-          return Nle(this, e);
+          return Ple(this, e);
         },
         array() {
           return In(this);
@@ -41128,25 +41128,25 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           return K0([this, e]);
         },
         and(e) {
-          return wle(this, e);
+          return Tle(this, e);
         },
         transform(e) {
-          return MB(this, Ale(e));
+          return MB(this, _le(e));
         },
         default(e) {
-          return Rle(this, e);
-        },
-        prefault(e) {
           return Cle(this, e);
         },
+        prefault(e) {
+          return Ole(this, e);
+        },
         catch(e) {
-          return Ple(this, e);
+          return Ile(this, e);
         },
         pipe(e) {
           return MB(this, e);
         },
         readonly() {
-          return zle(this);
+          return Hle(this);
         },
         describe(e) {
           let t = this.clone();
@@ -41293,26 +41293,26 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           },
         ),
       ),
-      jse = J(
+      Wse = J(
         "ZodString",
         (e, t) => {
           (N0.init(e, t), RB.init(e, t));
         },
         {
           email(e) {
-            return this.check(Y8(Zse, e));
+            return this.check(Y8(Xse, e));
           },
           url(e) {
-            return this.check(eF(Xse, e));
+            return this.check(eF(Qse, e));
           },
           jwt(e) {
-            return this.check(gF(ple, e));
+            return this.check(gF(mle, e));
           },
           emoji(e) {
-            return this.check(tF(Jse, e));
+            return this.check(tF(ele, e));
           },
           guid(e) {
-            return this.check(Z8(qse, e));
+            return this.check(Z8(Jse, e));
           },
           uuid(e) {
             return this.check(q8(G0, e));
@@ -41327,131 +41327,131 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
             return this.check(Q8(G0, e));
           },
           nanoid(e) {
-            return this.check(nF(Qse, e));
+            return this.check(nF(tle, e));
           },
           cuid(e) {
-            return this.check(rF(ele, e));
+            return this.check(rF(nle, e));
           },
           cuid2(e) {
-            return this.check(oF(tle, e));
+            return this.check(oF(rle, e));
           },
           ulid(e) {
-            return this.check(iF(nle, e));
+            return this.check(iF(ole, e));
           },
           base64(e) {
-            return this.check(pF(cle, e));
+            return this.check(pF(dle, e));
           },
           base64url(e) {
-            return this.check(fF(ule, e));
+            return this.check(fF(ple, e));
           },
           xid(e) {
-            return this.check(aF(rle, e));
+            return this.check(aF(ile, e));
           },
           ksuid(e) {
-            return this.check(sF(ole, e));
+            return this.check(sF(ale, e));
           },
           ipv4(e) {
-            return this.check(lF(ile, e));
+            return this.check(lF(sle, e));
           },
           ipv6(e) {
-            return this.check(cF(ale, e));
+            return this.check(cF(lle, e));
           },
           cidrv4(e) {
-            return this.check(uF(sle, e));
+            return this.check(uF(cle, e));
           },
           cidrv6(e) {
-            return this.check(dF(lle, e));
+            return this.check(dF(ule, e));
           },
           e164(e) {
-            return this.check(mF(dle, e));
+            return this.check(mF(fle, e));
           },
           datetime(e) {
-            return this.check(hF(Gse, e));
+            return this.check(hF(Kse, e));
           },
           date(e) {
-            return this.check(bF(Wse, e));
+            return this.check(bF(Yse, e));
           },
           time(e) {
-            return this.check(yF(Kse, e));
+            return this.check(yF(Zse, e));
           },
           duration(e) {
-            return this.check(vF(Yse, e));
+            return this.check(vF(qse, e));
           },
         },
       );
     function Le(e) {
-      return K8(jse, e);
+      return K8(Wse, e);
     }
     var Ft = J("ZodStringFormat", (e, t) => {
         (Nt.init(e, t), RB.init(e, t));
       }),
-      Gse = J("ZodISODateTime", (e, t) => {
+      Kse = J("ZodISODateTime", (e, t) => {
         (n8.init(e, t), Ft.init(e, t));
       }),
-      Wse = J("ZodISODate", (e, t) => {
+      Yse = J("ZodISODate", (e, t) => {
         (r8.init(e, t), Ft.init(e, t));
       }),
-      Kse = J("ZodISOTime", (e, t) => {
+      Zse = J("ZodISOTime", (e, t) => {
         (o8.init(e, t), Ft.init(e, t));
       }),
-      Yse = J("ZodISODuration", (e, t) => {
+      qse = J("ZodISODuration", (e, t) => {
         (i8.init(e, t), Ft.init(e, t));
       }),
-      Zse = J("ZodEmail", (e, t) => {
+      Xse = J("ZodEmail", (e, t) => {
         (GU.init(e, t), Ft.init(e, t));
       });
-    var qse = J("ZodGUID", (e, t) => {
+    var Jse = J("ZodGUID", (e, t) => {
       (VU.init(e, t), Ft.init(e, t));
     });
     var G0 = J("ZodUUID", (e, t) => {
       (jU.init(e, t), Ft.init(e, t));
     });
-    var Xse = J("ZodURL", (e, t) => {
+    var Qse = J("ZodURL", (e, t) => {
       (YU.init(e, t), Ft.init(e, t));
     });
-    var Jse = J("ZodEmoji", (e, t) => {
+    var ele = J("ZodEmoji", (e, t) => {
       (ZU.init(e, t), Ft.init(e, t));
     });
-    var Qse = J("ZodNanoID", (e, t) => {
+    var tle = J("ZodNanoID", (e, t) => {
       (qU.init(e, t), Ft.init(e, t));
     });
-    var ele = J("ZodCUID", (e, t) => {
+    var nle = J("ZodCUID", (e, t) => {
       (XU.init(e, t), Ft.init(e, t));
     });
-    var tle = J("ZodCUID2", (e, t) => {
+    var rle = J("ZodCUID2", (e, t) => {
       (JU.init(e, t), Ft.init(e, t));
     });
-    var nle = J("ZodULID", (e, t) => {
+    var ole = J("ZodULID", (e, t) => {
       (QU.init(e, t), Ft.init(e, t));
     });
-    var rle = J("ZodXID", (e, t) => {
+    var ile = J("ZodXID", (e, t) => {
       (e8.init(e, t), Ft.init(e, t));
     });
-    var ole = J("ZodKSUID", (e, t) => {
+    var ale = J("ZodKSUID", (e, t) => {
       (t8.init(e, t), Ft.init(e, t));
     });
-    var ile = J("ZodIPv4", (e, t) => {
+    var sle = J("ZodIPv4", (e, t) => {
       (a8.init(e, t), Ft.init(e, t));
     });
-    var ale = J("ZodIPv6", (e, t) => {
+    var lle = J("ZodIPv6", (e, t) => {
       (l8.init(e, t), Ft.init(e, t));
     });
-    var sle = J("ZodCIDRv4", (e, t) => {
+    var cle = J("ZodCIDRv4", (e, t) => {
       (c8.init(e, t), Ft.init(e, t));
     });
-    var lle = J("ZodCIDRv6", (e, t) => {
+    var ule = J("ZodCIDRv6", (e, t) => {
       (u8.init(e, t), Ft.init(e, t));
     });
-    var cle = J("ZodBase64", (e, t) => {
+    var dle = J("ZodBase64", (e, t) => {
       (p8.init(e, t), Ft.init(e, t));
     });
-    var ule = J("ZodBase64URL", (e, t) => {
+    var ple = J("ZodBase64URL", (e, t) => {
       (f8.init(e, t), Ft.init(e, t));
     });
-    var dle = J("ZodE164", (e, t) => {
+    var fle = J("ZodE164", (e, t) => {
       (m8.init(e, t), Ft.init(e, t));
     });
-    var ple = J("ZodJWT", (e, t) => {
+    var mle = J("ZodJWT", (e, t) => {
       (g8.init(e, t), Ft.init(e, t));
     });
     var LB = J(
@@ -41530,31 +41530,31 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     function St(e) {
       return kF(LB, e);
     }
-    var fle = J("ZodNumberFormat", (e, t) => {
+    var gle = J("ZodNumberFormat", (e, t) => {
       (h8.init(e, t), LB.init(e, t));
     });
     function TB(e) {
-      return xF(fle, e);
+      return xF(gle, e);
     }
-    var mle = J("ZodBoolean", (e, t) => {
+    var hle = J("ZodBoolean", (e, t) => {
       (b8.init(e, t), Ut.init(e, t), (e._zod.processJSONSchema = (n, r, o) => GF(e, n, r, o)));
     });
     function Eo(e) {
-      return wF(mle, e);
+      return wF(hle, e);
     }
-    var gle = J("ZodUnknown", (e, t) => {
+    var ble = J("ZodUnknown", (e, t) => {
       (y8.init(e, t), Ut.init(e, t), (e._zod.processJSONSchema = (n, r, o) => KF(e, n, r, o)));
     });
     function IE() {
-      return SF(gle);
+      return SF(ble);
     }
-    var hle = J("ZodNever", (e, t) => {
+    var yle = J("ZodNever", (e, t) => {
       (v8.init(e, t), Ut.init(e, t), (e._zod.processJSONSchema = (n, r, o) => WF(e, n, r, o)));
     });
-    function ble(e) {
-      return TF(hle, e);
+    function vle(e) {
+      return TF(yle, e);
     }
-    var yle = J(
+    var kle = J(
       "ZodArray",
       (e, t) => {
         (W0(),
@@ -41582,16 +41582,16 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       },
     );
     function In(e, t) {
-      return AF(yle, e, t);
+      return AF(kle, e, t);
     }
-    var vle = J(
+    var xle = J(
       "ZodObject",
       (e, t) => {
         (W0(),
           S8.init(e, t),
           Ut.init(e, t),
           (e._zod.processJSONSchema = (n, r, o) => QF(e, n, r, o)),
-          qae(e, "shape", (n) => n._zod.def.shape, false));
+          Jae(e, "shape", (n) => n._zod.def.shape, false));
       },
       {
         keyof() {
@@ -41607,25 +41607,25 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           return this.clone(Ir(this._zod.def, { catchall: IE() }));
         },
         strict() {
-          return this.clone(Ir(this._zod.def, { catchall: ble() }));
+          return this.clone(Ir(this._zod.def, { catchall: vle() }));
         },
         strip() {
           return this.clone(Ir(this._zod.def, { catchall: undefined }));
         },
         extend(e) {
-          return Bae(this, e);
-        },
-        safeExtend(e) {
-          return Vae(this, e);
-        },
-        merge(e) {
           return jae(this, e);
         },
+        safeExtend(e) {
+          return Gae(this, e);
+        },
+        merge(e) {
+          return Wae(this, e);
+        },
         pick(e) {
-          return Uae(this, e);
+          return Bae(this, e);
         },
         omit(e) {
-          return Fae(this, e);
+          return Vae(this, e);
         },
         partial(...e) {
           return S3(CB, this, e[0]);
@@ -41634,28 +41634,28 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           return S3(NB, this, e[0], "exactPartial");
         },
         required(...e) {
-          return Gae(OB, this, e[0]);
+          return Kae(OB, this, e[0]);
         },
       },
     );
     function ga(e, t) {
       let n = { type: "object", shape: e ?? {}, ...Ne(t) };
-      return new vle(n);
+      return new xle(n);
     }
-    var kle = J("ZodUnion", (e, t) => {
+    var wle = J("ZodUnion", (e, t) => {
       (T8.init(e, t),
         Ut.init(e, t),
         (e._zod.processJSONSchema = (n, r, o) => eB(e, n, r, o)),
         (e.options = t.options));
     });
     function K0(e, t) {
-      return new kle({ type: "union", options: e, ...Ne(t) });
+      return new wle({ type: "union", options: e, ...Ne(t) });
     }
-    var xle = J("ZodIntersection", (e, t) => {
+    var Sle = J("ZodIntersection", (e, t) => {
       (A8.init(e, t), Ut.init(e, t), (e._zod.processJSONSchema = (n, r, o) => tB(e, n, r, o)));
     });
-    function wle(e, t) {
-      return new xle({ type: "intersection", left: e, right: t });
+    function Tle(e, t) {
+      return new Sle({ type: "intersection", left: e, right: t });
     }
     var AB = J("ZodRecord", (e, t) => {
       (W0(),
@@ -41695,7 +41695,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       let n = Array.isArray(e) ? Object.fromEntries(e.map((r) => [r, r])) : e;
       return new zE({ type: "enum", entries: n, ...Ne(t) });
     }
-    var Sle = J("ZodLiteral", (e, t) => {
+    var Ale = J("ZodLiteral", (e, t) => {
       (M8.init(e, t),
         Ut.init(e, t),
         (e._zod.processJSONSchema = (n, r, o) => ZF(e, n, r, o)),
@@ -41711,9 +41711,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         }));
     });
     function $E(e, t) {
-      return new Sle({ type: "literal", values: Array.isArray(e) ? e : [e], ...Ne(t) });
+      return new Ale({ type: "literal", values: Array.isArray(e) ? e : [e], ...Ne(t) });
     }
-    var Tle = J("ZodTransform", (e, t) => {
+    var Ele = J("ZodTransform", (e, t) => {
       (W0(),
         R8.init(e, t),
         Ut.init(e, t),
@@ -41734,8 +41734,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           return ((n.value = o), n);
         }));
     });
-    function Ale(e) {
-      return new Tle({ type: "transform", transform: e });
+    function _le(e) {
+      return new Ele({ type: "transform", transform: e });
     }
     var CB = J("ZodOptional", (e, t) => {
       (pE.init(e, t),
@@ -41752,27 +41752,27 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         (e._zod.processJSONSchema = (n, r, o) => PE(e, n, r, o)),
         (e.unwrap = () => e._zod.def.innerType));
     });
-    function Ele(e) {
+    function Mle(e) {
       return new NB({ type: "optional", innerType: e });
     }
-    var _le = J("ZodNullable", (e, t) => {
+    var Rle = J("ZodNullable", (e, t) => {
       (C8.init(e, t),
         Ut.init(e, t),
         (e._zod.processJSONSchema = (n, r, o) => rB(e, n, r, o)),
         (e.unwrap = () => e._zod.def.innerType));
     });
     function _B(e) {
-      return new _le({ type: "nullable", innerType: e });
+      return new Rle({ type: "nullable", innerType: e });
     }
-    var Mle = J("ZodDefault", (e, t) => {
+    var Lle = J("ZodDefault", (e, t) => {
       (N8.init(e, t),
         Ut.init(e, t),
         (e._zod.processJSONSchema = (n, r, o) => aB(e, n, r, o)),
         (e.unwrap = () => e._zod.def.innerType),
         (e.removeDefault = e.unwrap));
     });
-    function Rle(e, t) {
-      return new Mle({
+    function Cle(e, t) {
+      return new Lle({
         type: "default",
         innerType: e,
         get defaultValue() {
@@ -41780,14 +41780,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         },
       });
     }
-    var Lle = J("ZodPrefault", (e, t) => {
+    var Nle = J("ZodPrefault", (e, t) => {
       (O8.init(e, t),
         Ut.init(e, t),
         (e._zod.processJSONSchema = (n, r, o) => sB(e, n, r, o)),
         (e.unwrap = () => e._zod.def.innerType));
     });
-    function Cle(e, t) {
-      return new Lle({
+    function Ole(e, t) {
+      return new Nle({
         type: "prefault",
         innerType: e,
         get defaultValue() {
@@ -41801,24 +41801,24 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         (e._zod.processJSONSchema = (n, r, o) => oB(e, n, r, o)),
         (e.unwrap = () => e._zod.def.innerType));
     });
-    function Nle(e, t) {
+    function Ple(e, t) {
       return new OB({ type: "nonoptional", innerType: e, ...Ne(t) });
     }
-    var Ole = J("ZodCatch", (e, t) => {
+    var Dle = J("ZodCatch", (e, t) => {
       (D8.init(e, t),
         Ut.init(e, t),
         (e._zod.processJSONSchema = (n, r, o) => lB(e, n, r, o)),
         (e.unwrap = () => e._zod.def.innerType),
         (e.removeCatch = e.unwrap));
     });
-    function Ple(e, t) {
-      return new Ole({
+    function Ile(e, t) {
+      return new Dle({
         type: "catch",
         innerType: e,
         catchValue: typeof t === "function" ? t : M3(t),
       });
     }
-    var Dle = J("ZodPipe", (e, t) => {
+    var zle = J("ZodPipe", (e, t) => {
       (I8.init(e, t),
         Ut.init(e, t),
         (e._zod.processJSONSchema = (n, r, o) => cB(e, n, r, o)),
@@ -41826,37 +41826,37 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         (e.out = t.out));
     });
     function MB(e, t) {
-      return new Dle({ type: "pipe", in: e, out: t });
+      return new zle({ type: "pipe", in: e, out: t });
     }
-    var Ile = J("ZodReadonly", (e, t) => {
+    var $le = J("ZodReadonly", (e, t) => {
       (z8.init(e, t),
         Ut.init(e, t),
         (e._zod.processJSONSchema = (n, r, o) => uB(e, n, r, o)),
         (e.unwrap = () => e._zod.def.innerType));
     });
-    function zle(e) {
-      return new Ile({ type: "readonly", innerType: e });
+    function Hle(e) {
+      return new $le({ type: "readonly", innerType: e });
     }
-    var $le = J("ZodCustom", (e, t) => {
+    var Ule = J("ZodCustom", (e, t) => {
       ($8.init(e, t), Ut.init(e, t), (e._zod.processJSONSchema = (n, r, o) => qF(e, n, r, o)));
     });
-    function Hle(e, t = {}) {
-      return EF($le, e, t);
+    function Fle(e, t = {}) {
+      return EF(Ule, e, t);
     }
-    function Ule(e, t) {
+    function Ble(e, t) {
       return _F(e, t);
     }
-    var Fle = ["owner", "all", "system"];
-    var Ble = /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,39}$/u,
+    var Vle = ["owner", "all", "system"];
+    var jle = /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,39}$/u,
       PB = ga({
         cwd: Le().min(1).max(200),
         cli: Le()
           .regex(/^[a-z0-9_-]{1,24}$/)
           .optional(),
-        lane: Le().regex(Ble, "a lane name: the token's name"),
+        lane: Le().regex(jle, "a lane name: the token's name"),
         resident: Eo().optional(),
         wake: Eo().optional(),
-        scope: ha(Fle).optional(),
+        scope: ha(Vle).optional(),
         answerUnnamed: Eo().optional(),
       }).strict(),
       ba = {
@@ -41899,18 +41899,18 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     var DB = 4000,
       IB = 30000;
     var zB = /^[A-Za-z0-9@][A-Za-z0-9._:/@+-]{0,119}$/,
-      Vle = ["cheap", "balanced", "strong"],
-      jle = /^https:\/\/[^\s/?#@]+(\/[^\s?#]*)?$/,
-      Gle =
+      Gle = ["cheap", "balanced", "strong"],
+      Wle = /^https:\/\/[^\s/?#@]+(\/[^\s?#]*)?$/,
+      Kle =
         /^(https:\/\/[^\s/?#@]+|http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d{1,5})?)(\/[^\s?#]*)?$/,
-      HE = Le().max(300).regex(jle, "an https:// link"),
-      Wle = ga({
+      HE = Le().max(300).regex(Wle, "an https:// link"),
+      Yle = ga({
         id: Le()
           .regex(/^[a-z0-9][a-z0-9-]{0,31}$/, "a short lowercase id")
           .refine((e) => e !== "custom", "custom is built in"),
         name: Le().trim().min(1).max(40),
         protocol: ha(["openai", "anthropic"]),
-        baseUrl: Le().max(300).regex(Gle, "https://…, or http://localhost"),
+        baseUrl: Le().max(300).regex(Kle, "https://…, or http://localhost"),
         model: Le().regex(zB, "a model name"),
         browser: Eo(),
         keyless: Eo().optional(),
@@ -41918,7 +41918,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         policyUrl: HE.optional(),
         pricingUrl: HE.optional(),
         keyUrl: HE.optional(),
-        models: In(ga({ id: Le().regex(zB), tier: ha(Vle) }).strict())
+        models: In(ga({ id: Le().regex(zB), tier: ha(Gle) }).strict())
           .max(6)
           .optional(),
         note: Y0(
@@ -41926,7 +41926,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           Le().trim().min(1).max(240),
         ).optional(),
       }).strict(),
-      $B = In(Wle)
+      $B = In(Yle)
         .min(1)
         .max(30)
         .refine((e) => new Set(e.map((t) => t.id)).size === e.length, "ids must differ"),
@@ -42069,7 +42069,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           keyless: true,
         },
       ],
-      Kle = {
+      Zle = {
         openai: { host: "api.openai.com", paths: ["/v1/chat/completions"] },
         anthropic: { host: "api.anthropic.com", paths: ["/v1/messages"] },
         deepseek: {
@@ -42082,7 +42082,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         },
         openrouter: { host: "openrouter.ai", paths: ["/api/v1/chat/completions"] },
       },
-      Yle = {
+      qle = {
         id: "custom",
         name: "Custom",
         protocol: "openai",
@@ -42090,25 +42090,25 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         model: "",
         browser: true,
       },
-      Zle = (e) => {
+      Xle = (e) => {
         try {
           return new URL(e).hostname.toLowerCase();
         } catch {
           return null;
         }
       };
-    function qle(e) {
+    function Jle(e) {
       return [
         ...e.map((n) => {
           let { relay: r, ...o } = n,
-            i = Kle[o.id];
-          return i && Zle(o.baseUrl) === i.host ? { ...o, relay: i } : o;
+            i = Zle[o.id];
+          return i && Xle(o.baseUrl) === i.host ? { ...o, relay: i } : o;
         }),
-        Yle,
+        qle,
       ];
     }
-    var Xle = qle(UE),
-      lxe = Xle.filter((e) => e.relay);
+    var Qle = Jle(UE),
+      uxe = Qle.filter((e) => e.relay);
     function HB(e) {
       if (typeof e !== "string" || e.length > 1000) return null;
       let t = e.split("||").map((r) => r.trim());
@@ -42228,7 +42228,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     function W(e) {
       return { ...e, schema: St().int().min(e.min).max(e.max) };
     }
-    var Jle =
+    var ece =
         /^(?:rtc:lianki|wss:session|wss:\/\/[^\s,/]+(?:\/\S*)?|ws:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/\S*)?)$/,
       q0 = {
         "words.nativeAudioTimeoutMs": W({
@@ -42692,7 +42692,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
                 e
                   .split(/[\s,]+/)
                   .filter(Boolean)
-                  .every((t) => Jle.test(t)),
+                  .every((t) => ece.test(t)),
               "routes: rtc:lianki, wss:session, wss://… (ws:// only on localhost), separated by spaces",
             ),
           group: "voice",
@@ -44483,11 +44483,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
             "按当日观察到的主 Worker CPU 粗略推算整月超过多少毫秒时告警；KV 并发和休眠可能漏计，不是账单。",
         }),
       },
-      Qle = Object.keys(q0),
-      Vxe = Qle.filter((e) => q0[e].audience === "public");
-    var ece = {};
+      tce = Object.keys(q0),
+      Gxe = tce.filter((e) => q0[e].audience === "public");
+    var nce = {};
     function GB(e) {
-      return ece[e] ?? q0[e].default;
+      return nce[e] ?? q0[e].default;
     }
     var Sn = ee(We(), 1);
     function Zu() {
@@ -44496,7 +44496,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       let t = Array.from(e, (n) => n.toString(16).padStart(2, "0")).join("");
       return `${t.slice(0, 8)}-${t.slice(8, 12)}-${t.slice(12, 16)}-${t.slice(16, 20)}-${t.slice(20)}`;
     }
-    var tce = {
+    var rce = {
         maxItems: 40,
         maxBytes: 8000000,
         maxTries: 5,
@@ -44505,26 +44505,26 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         offTtlMs: 3600000,
       },
       FE = "/api/my/recordings";
-    function nce(e) {
+    function oce(e) {
       return new Date(e).toISOString().slice(0, 10);
     }
-    function rce() {
+    function ice() {
       let e = "";
       for (let t of crypto.getRandomValues(new Uint8Array(16))) e += String.fromCharCode(t);
       return btoa(e).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     }
-    function oce(e) {
+    function ace(e) {
       let t = "";
       for (let n = 0; n < e.length; n += 32768)
         t += String.fromCharCode(...e.subarray(n, n + 32768));
       return btoa(t);
     }
     function WB(e) {
-      let t = tce,
+      let t = rce,
         n = e.now ?? Date.now,
         r = e.setTimer ?? ((w, T) => setTimeout(w, T)),
-        o = e.id ?? rce,
-        i = e.day ?? nce,
+        o = e.id ?? ice,
+        i = e.day ?? oce,
         a = e.log ?? (() => {}),
         s = [],
         l = 0,
@@ -44629,7 +44629,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
               mode: w.mode,
               device: w.device,
               ...(w.speaker ? { speaker: w.speaker } : {}),
-              wav: oce(w.wav),
+              wav: ace(w.wav),
             });
           (s.push({ body: A, bytes: w.wav.length, tries: 0, id: T }), (l += w.wav.length));
           while (s.length > t.maxItems || (l > t.maxBytes && s.length > 1))
@@ -44917,7 +44917,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           .normalize("NFKC")
           .toLowerCase()
           .replace(/[^\p{L}\p{N}]/gu, "");
-    function ice(e, t) {
+    function sce(e, t) {
       let n = ZB(e),
         r = ZB(t);
       if (!n || !r) return false;
@@ -44931,10 +44931,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       }
       return o[r.length] >= Math.ceil(r.length * 0.5);
     }
-    var ace = "__lkSpeakerTags",
+    var lce = "__lkSpeakerTags",
       GE = () => {
         let e = globalThis;
-        return (e[ace] ??= []);
+        return (e[lce] ??= []);
       };
     function QB(e, t) {
       let n = GE();
@@ -44954,7 +44954,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     var VE = "lk:agent-voice-filter",
       nV = "lk:agent-voice-filtered",
       rV = 30000,
-      sce = () => new Date().toLocaleDateString("en-CA"),
+      cce = () => new Date().toLocaleDateString("en-CA"),
       nm = () => {
         try {
           return localStorage2;
@@ -44963,7 +44963,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         }
       };
     function WE() {
-      let e = { day: sce(), n: 0, would: 0 };
+      let e = { day: cce(), n: 0, would: 0 };
       try {
         let t = JSON.parse(nm()?.getItem(nV) ?? "null");
         if (t && t.day === e.day && typeof t.n === "number" && typeof t.would === "number")
@@ -45006,7 +45006,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         return false;
       }
     }
-    function lce(e) {
+    function uce(e) {
       try {
         if (e) nm()?.setItem(VE, "off");
         else nm()?.removeItem(VE);
@@ -45014,10 +45014,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     }
     var em = { on: false },
       X0 = null,
-      cce = 2000;
+      dce = 2000;
     async function aV(e = fetch2, t = Date.now) {
       let n = e === fetch2;
-      if (n && X0 && t() - X0.at < cce) return X0.p;
+      if (n && X0 && t() - X0.at < dce) return X0.p;
       let r = (async () => {
         try {
           let o = await e("/api/dev/voice-filter", { headers: { accept: "application/json" } });
@@ -45044,10 +45044,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     async function YE(e = fetch2) {
       return (await aV(e)).filter;
     }
-    async function uce(e = fetch2) {
+    async function pce(e = fetch2) {
       return (await aV(e)).selfVoice;
     }
-    function sV(e = uce, t = Date.now) {
+    function sV(e = pce, t = Date.now) {
       let n = -1 / 0,
         r = Promise.resolve(em);
       return () => {
@@ -45080,7 +45080,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       for (let r of e.bands) if (t >= r.minS) n = r;
       return n;
     }
-    function dce(e) {
+    function fce(e) {
       let t = e?.speaker;
       if (!e || !t) return { decision: "unreachable" };
       let n = t.decision === "self";
@@ -45095,13 +45095,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         ...(e.filtered ? { filtered: "stopped" } : e.wouldFilter ? { filtered: "would" } : {}),
       };
     }
-    var pce = 5,
+    var mce = 5,
       uV = (e) => e.step === "recording" || e.step === "saving",
       Qf = () => null,
-      fce = () => [],
-      mce = () => {},
-      gce = 60000;
-    function hce(e) {
+      gce = () => [],
+      hce = () => {},
+      bce = 60000;
+    function yce(e) {
       let t =
           typeof e.created === "string" && /^\d{4}-\d{2}-\d{2}/.test(e.created)
             ? e.created.slice(0, 10)
@@ -45109,7 +45109,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         n = /^(\d{2})\.wav$/.exec(e.name)?.[1] ?? "00";
       return `voiceprint ${e.device} ${t} ${n}.wav`;
     }
-    var bce = (e) => /^voiceprint ([a-z0-9][a-z0-9-]{0,31}) /.exec(e)?.[1] ?? null;
+    var vce = (e) => /^voiceprint ([a-z0-9][a-z0-9-]{0,31}) /.exec(e)?.[1] ?? null;
     function qB(e) {
       let t = new DataView(e);
       if (
@@ -45141,7 +45141,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       }
       return null;
     }
-    var yce = [
+    var kce = [
       "device",
       "model",
       "dim",
@@ -45156,7 +45156,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     ];
     function BE(e) {
       let t = {};
-      for (let n of yce) if (n in e && e[n] !== undefined) t[n] = e[n];
+      for (let n of kce) if (n in e && e[n] !== undefined) t[n] = e[n];
       return t;
     }
     function dV(e, t) {
@@ -45225,7 +45225,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
             });
           }
           let Z = G.n,
-            P = ice(j.text, V),
+            P = sce(j.text, V),
             B = P || U.again === "text" ? U.index + 1 : U.index;
           if (Z >= tm || (B >= Gl.length && Z >= Ts)) return void g(S, Z);
           c({
@@ -45273,7 +45273,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
             let j = f(
                 await e.request(
                   { t: "voiceprint", op: "export", device: "*", ticket: M, recordings: true },
-                  { timeoutMs: gce },
+                  { timeoutMs: bce },
                 ),
               ),
               U = (Array.isArray(j.prints) ? j.prints : []).map(BE);
@@ -45293,7 +45293,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
             j = 0;
           for (let U of R) {
             if (typeof U?.wav !== "string" || typeof U.device !== "string") continue;
-            let G = hce(U);
+            let G = yce(U);
             if (M.has(G)) continue;
             let V = atob(U.wav),
               Z = new Uint8Array(V.length);
@@ -45338,7 +45338,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
                   kept: G,
                 };
               } catch (V) {
-                throw (e.request({ t: "enrol", op: "cancel", enrolment: U }).catch(mce), V);
+                throw (e.request({ t: "enrol", op: "cancel", enrolment: U }).catch(hce), V);
               }
             },
           },
@@ -45352,7 +45352,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
             if (!j) throw Error(`no extractor "${R}"`);
             let U = new Map();
             for (let Z of await M.recordings.list()) {
-              let P = bce(Z.name);
+              let P = vce(Z.name);
               if (P) U.set(P, [...(U.get(P) ?? []), Z]);
             }
             if (!U.size) throw Error("no recordings in My Files");
@@ -45481,7 +45481,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
             if (n.step === "status" && n.local && n.cloud?.prints.length) A(r);
           },
           pauseFilter(S) {
-            if ((lce(S), n.step === "status" && n.filter))
+            if ((uce(S), n.step === "status" && n.filter))
               c({ ...n, filter: { ...n.filter, paused: S } });
           },
           enrol() {
@@ -45547,7 +45547,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
                 G = null;
               }
               if (R !== r || n.step !== "test") return;
-              let V = dce(G),
+              let V = fce(G),
                 Z = n,
                 P = { ...Z.tally };
               if (V.decision !== "unreachable") P[V.decision]++;
@@ -45557,7 +45557,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
                 score: V.score,
                 reason: V.reason,
               }),
-                c({ ...Z, results: [V, ...Z.results].slice(0, pce), tally: P }));
+                c({ ...Z, results: [V, ...Z.results].slice(0, mce), tally: P }));
             };
             try {
               ((a = true), await e.testCapture(true, j));
@@ -45607,7 +45607,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
               if (M !== r) return;
               if (V) throw V;
               e.log?.({ ev: "voiceprint-deleted", files: U, ...(R ? { cloud: !Z } : {}) });
-              let P = e.cloud ? await e.cloud.recordings.list().catch(fce) : [];
+              let P = e.cloud ? await e.cloud.recordings.list().catch(gce) : [];
               if (M !== r) return;
               c({
                 step: "deleted",
@@ -47409,7 +47409,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           live: "개발 서버 실시간 데이터",
         },
       };
-    var vce = {
+    var xce = {
         stateTree: "State tree",
         closeTree: "Close the state tree",
         noTreeSource: "No tree source",
@@ -47543,7 +47543,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         peopleBusy: "Working on something now",
         peopleStuck: "Stuck, may need you",
       },
-      kce = {
+      wce = {
         stateTree: "状态树",
         closeTree: "关闭状态树",
         noTreeSource: "没有状态树来源",
@@ -47675,7 +47675,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         peopleBusy: "正在忙",
         peopleStuck: "卡住了，可能需要你",
       },
-      xce = {
+      Sce = {
         stateTree: "状態ツリー",
         closeTree: "状態ツリーを閉じる",
         noTreeSource: "状態ツリーのソースがありません",
@@ -47811,7 +47811,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         peopleBusy: "いま作業中",
         peopleStuck: "止まっている。助けが要るかも",
       },
-      wce = {
+      Tce = {
         tree: "状态树",
         back: "返回聊天",
         needsMe: "待我处理",
@@ -47836,7 +47836,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         upNext: "下一步",
         live: "来自开发服务器的实时数据",
       },
-      Sce = {
+      Ace = {
         tree: "状態ツリー",
         back: "チャットに戻る",
         needsMe: "自分待ち",
@@ -47868,14 +47868,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       return /^ja\b/i.test(e ?? "");
     }
     var As = (e) => {
-        if (rm(e)) return kce;
-        if (ev(e)) return xce;
-        let t = ro(e);
-        return t === "en" || t === "zh" || t === "ja" ? vce : { ...pV[t], ...BP[t] };
-      },
-      mV = (e) => {
         if (rm(e)) return wce;
         if (ev(e)) return Sce;
+        let t = ro(e);
+        return t === "en" || t === "zh" || t === "ja" ? xce : { ...pV[t], ...BP[t] };
+      },
+      mV = (e) => {
+        if (rm(e)) return Tce;
+        if (ev(e)) return Ace;
         let t = ro(e);
         return t === "en" || t === "zh" || t === "ja" ? {} : fV[t];
       },
@@ -47985,7 +47985,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         return "restricted";
       return t?.type === "wifi" || t?.type === "ethernet" ? "unmetered" : "unknown";
     }
-    function Tce() {
+    function Ece() {
       let e = navigator2;
       return {
         connection: e?.connection ?? e?.mozConnection ?? e?.webkitConnection,
@@ -48007,7 +48007,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       }
     }
     async function yV(e) {
-      let t = e.network ?? Tce,
+      let t = e.network ?? Ece,
         n = e.fetch ?? fetch2,
         r;
       try {
@@ -48156,16 +48156,16 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           "b75814d1f900cc99efc7de51ae561ffb2517456307488ec4387689c953b9b983",
         [`${t_}preload.data`]: "4ca3ae0d147df1576fac87a4837f5a8959f4f87600a8306c57cc67eb8b40494d",
       },
-      Ace = [
+      _ce = [
         ...Object.entries(SV).map(([e, t]) => ({ url: e, sha256: t })),
         { url: `${t_}preload.js.metadata` },
       ],
       xV = "lk-wake-v1",
-      Ece = 8000,
-      _ce = 15000,
+      Mce = 8000,
+      Rce = 15000,
       n_ = 16000,
-      Mce = 1,
-      Rce = (e) => `
+      Lce = 1,
+      Cce = (e) => `
 const O = ${JSON.stringify(e)};
 let prepared = new Map();
 const hex = (b) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
@@ -48237,8 +48237,8 @@ self.onmessage = async (e) => {
   }
 };
 `;
-    function Lce(e) {
-      let t = new Float32Array(e.length + Math.round(Mce * n_));
+    function Nce(e) {
+      let t = new Float32Array(e.length + Math.round(Lce * n_));
       for (let n = 0; n < e.length; n++) {
         let r = e[n];
         t[n] = r > 1 ? 1 : r < -1 ? -1 : Number.isFinite(r) ? r : 0;
@@ -48250,7 +48250,7 @@ self.onmessage = async (e) => {
           e.worker ??
           (() => {
             let x = URL.createObjectURL(
-                new Blob([Rce({ base: e_, glue: wV, model: t_, sha: SV, cache: xV })], {
+                new Blob([Cce({ base: e_, glue: wV, model: t_, sha: SV, cache: xV })], {
                   type: "text/javascript",
                 }),
               ),
@@ -48347,7 +48347,7 @@ self.onmessage = async (e) => {
                     : e.worker
                       ? []
                       : await yV({
-                          assets: Ace,
+                          assets: _ce,
                           cacheName: xV,
                           estimatedMb: e.estimatedMb ?? 0,
                           confirm: e.confirmDownload,
@@ -48377,7 +48377,7 @@ self.onmessage = async (e) => {
                 (s("failed"),
                   e.log?.({ ev: "wake-kws", ok: false, error: "load-timeout", ms: Date.now() - x }),
                   R(Error("load-timeout")));
-              }, e.loadTimeoutMs ?? _ce);
+              }, e.loadTimeoutMs ?? Rce);
               A.then(S, R).finally(() => clearTimeout(M));
             });
           return (C.catch(() => {}), (o = C), C);
@@ -48389,11 +48389,11 @@ self.onmessage = async (e) => {
           return { hit: false, error: String(C?.message ?? C), unchecked: true };
         }
         let w = ++i,
-          T = Lce(x),
+          T = Nce(x),
           A = await new Promise((C) => {
             let S = setTimeout(() => {
               (a.delete(w), C({ hits: [], error: "timeout" }));
-            }, e.timeoutMs ?? Ece);
+            }, e.timeoutMs ?? Mce);
             (a.set(w, (R) => {
               (clearTimeout(S), C(R));
             }),
@@ -48418,7 +48418,7 @@ self.onmessage = async (e) => {
         },
       };
     }
-    function Cce(e) {
+    function Oce(e) {
       let t = qb(e),
         n = t ? Jb(t) : { exact: [], heard: [] },
         r = n.heard.filter((i) => /^\p{Script=Han}+$/u.test(i)),
@@ -48428,10 +48428,10 @@ self.onmessage = async (e) => {
       );
     }
     var _V = new Set(["main", "chat"]);
-    var Nce = 2,
-      Oce = 0.1,
-      Pce = "lk:wake-sense";
-    function Dce(
+    var Pce = 2,
+      Dce = 0.1,
+      Ice = "lk:wake-sense";
+    function zce(
       e = (t) => {
         try {
           return typeof localStorage2 > "u" ? null : localStorage2.getItem(t);
@@ -48442,16 +48442,16 @@ self.onmessage = async (e) => {
     ) {
       let t = "";
       try {
-        t = e(Pce) ?? "";
+        t = e(Ice) ?? "";
       } catch {
         t = "";
       }
       let n = /^\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*$/.exec(t),
         r = n ? Number(n[1]) : NaN,
         o = n ? Number(n[2]) : NaN;
-      return r > 0 && o > 0 && o < 1 ? { score: r, threshold: o } : { score: Nce, threshold: Oce };
+      return r > 0 && o > 0 && o < 1 ? { score: r, threshold: o } : { score: Pce, threshold: Dce };
     }
-    var Ice = 5;
+    var $ce = 5;
     function AV(e) {
       let t = [],
         n = (r, o) => {
@@ -48460,13 +48460,13 @@ self.onmessage = async (e) => {
         };
       for (let r of LT()) {
         let o = gn(r).name;
-        if (o) t.push({ name: o, kind: "agent", spellings: Cce(r) });
+        if (o) t.push({ name: o, kind: "agent", spellings: Oce(r) });
       }
       n(e.mainName, "agent");
       for (let r of e.agents ?? []) n(r, "agent");
       return (n(e.owner, "owner"), t);
     }
-    function zce(e, t) {
+    function Hce(e, t) {
       let n = Array.from({ length: t.length + 1 }, (r, o) => o);
       for (let r = 1; r <= e.length; r++) {
         let o = [r];
@@ -48481,11 +48481,11 @@ self.onmessage = async (e) => {
         r = t.map(UT),
         [o, i] = n.length <= r.length ? [n, r] : [r, n];
       if (o.every((a, s) => a === i[s])) return true;
-      return o.length <= Ice && zce(n, r) <= 1;
+      return o.length <= $ce && Hce(n, r) <= 1;
     }
     var r_ = "agent:",
       o_ = "owner:";
-    function $ce(e) {
+    function Uce(e) {
       let t = HT(e.name),
         n = new Set(),
         r = [];
@@ -48499,7 +48499,7 @@ self.onmessage = async (e) => {
       }
       return { tokens: t, variants: r };
     }
-    function Hce(e) {
+    function Fce(e) {
       let t = [],
         n = [],
         r = [],
@@ -48509,7 +48509,7 @@ self.onmessage = async (e) => {
         if (o.has(c)) continue;
         o.add(c);
         for (let h of l.spellings ?? []) o.add(h.toLowerCase());
-        let { tokens: u, variants: f } = $ce(l);
+        let { tokens: u, variants: f } = Uce(l);
         if (!f.length) {
           n.push(l.name);
           continue;
@@ -48528,7 +48528,7 @@ self.onmessage = async (e) => {
         let g = `${l.kind === "owner" ? o_ : r_}${l.name}`;
         t.push({ ...l, label: g, tokens: u ?? m[0], variants: m });
       }
-      let i = Dce(),
+      let i = zce(),
         a = [
           am,
           ...t.map((l) => ({
@@ -48551,7 +48551,7 @@ self.onmessage = async (e) => {
       let t = i_(e);
       return t && t.kind === "agent" ? `@${t.name}` : "";
     }
-    function Uce() {
+    function Bce() {
       let e = {},
         t = [],
         n = new Set(),
@@ -48566,7 +48566,7 @@ self.onmessage = async (e) => {
             s = AV({}).length;
           for (let c of a) r(c.name);
           let l = a.slice(s).sort((c, u) => r(c.name) - r(u.name));
-          return Hce([...a.slice(0, s), ...l]);
+          return Fce([...a.slice(0, s), ...l]);
         },
         i = o();
       return {
@@ -48584,12 +48584,12 @@ self.onmessage = async (e) => {
         },
       };
     }
-    var Fce = "__lkWakeNames";
+    var Vce = "__lkWakeNames";
     function tv() {
       let e = globalThis;
-      return (e[Fce] ??= Uce());
+      return (e[Vce] ??= Bce());
     }
-    function Bce() {
+    function jce() {
       let e = [],
         t = new Set(),
         n = 0,
@@ -48651,7 +48651,7 @@ self.onmessage = async (e) => {
     }
     function nv() {
       let e = globalThis;
-      return (e.__lkMicTaps ??= Bce());
+      return (e.__lkMicTaps ??= jce());
     }
     function RV(e) {
       if (e.state !== "off") return "on";
@@ -49107,7 +49107,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     function UV(e) {
       return e.armed && (e.pressed || (e.anchoredInChat && !e.collapsed));
     }
-    var Vce = {
+    var Gce = {
       light: { l: 0.98, c: 0.01, h: 90, a: 0.6 },
       dark: { l: 0.18, c: 0.01, h: 260, a: 0.55 },
     };
@@ -49120,8 +49120,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     function VV(e) {
       return ov(e) || e.micActive || e.fullLog;
     }
-    var jce = 6;
-    function jV(e, t = jce) {
+    var Wce = 6;
+    function jV(e, t = Wce) {
       return {
         top: "auto",
         right: "auto",
@@ -49135,7 +49135,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     function GV(e) {
       let t = !e.blur || e.reduce,
         n = (s) => (t ? 0.9 : s.a),
-        { light: r, dark: o } = Vce,
+        { light: r, dark: o } = Gce,
         i = e.lightDark
           ? `light-dark(${FV(r, n(r))}, ${FV(o, n(o))})`
           : `color-mix(in oklch, var(--background) ${Math.round(n(r) * 100)}%, transparent)`,
@@ -49163,7 +49163,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     }
     var YV = "border-color 150ms ease-out, background-color 150ms ease-out";
     var Xu = 500,
-      Gce = 10,
+      Kce = 10,
       lm = "data-lk-chat-holding",
       ZV = `html[${lm}] body *:not(${qu}):not(${qu} *):not(:has(${qu})):not([data-lk-chat-host]){-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important}`;
     function qV(e) {
@@ -49176,7 +49176,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       if (e.log.right - e.log.left <= 0 || e.log.bottom - e.log.top <= 0) return false;
       return JV(e.log, e.x, e.y);
     }
-    function ej(e, t, n = Gce) {
+    function ej(e, t, n = Kce) {
       return Math.hypot(t.x - e.x, t.y - e.y) <= n;
     }
     function tj(e, t, n) {
@@ -49197,13 +49197,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       if (t.inLog && t.busy) return "open";
       return e;
     }
-    var Wce = Xu;
-    var Kce = 80,
+    var Yce = Xu;
+    var Zce = 80,
       d_ = 2097152,
-      Yce = 44;
+      qce = 44;
     function rj(e, t = {}) {
-      let n = t.holdMs ?? Wce,
-        r = t.cancelPx ?? Kce,
+      let n = t.holdMs ?? Yce,
+        r = t.cancelPx ?? Zce,
         o = t.now ?? (() => Date.now()),
         i = t.setTimer ?? ((f, p) => setTimeout(f, p)),
         a = t.clearTimer ?? ((f) => clearTimeout(f)),
@@ -49251,7 +49251,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       };
     }
     function oj(e, t = d_) {
-      let n = Math.max(1, Math.floor((t - Yce) / 2));
+      let n = Math.max(1, Math.floor((t - qce) / 2));
       if (e.length <= n) return [e];
       let r = [];
       for (let o = 0; o < e.length; o += n) r.push(e.subarray(o, o + n));
@@ -49295,12 +49295,12 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       cj = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/",
       uj = "https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/",
       iv = "oklch(0.6 0.22 25)",
-      Zce = `@keyframes lk-mic-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.12)}}
+      Xce = `@keyframes lk-mic-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.12)}}
 @media (prefers-reduced-motion:reduce){[data-testid="debug-chat-mic-ring"][data-rec]{animation:none!important;box-shadow:0 0 0 3px ${iv}!important}}`,
       dj = "oklch(0.75 0.14 80)",
       f_ = "oklch(0.5 0.2 27)",
       pj = "oklch(0.62 0.03 70)",
-      qce = {
+      Jce = {
         ready: "oklch(0.7 0.16 150)",
         connecting: "oklch(0.78 0.14 80)",
         down: "oklch(0.65 0 0)",
@@ -49312,10 +49312,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             ?.suspend()
             .catch(() => {});
       },
-      Xce = "__lkCues";
+      Qce = "__lkCues";
     function ya() {
       let e = globalThis;
-      return (e[Xce] ??= b$({
+      return (e[Qce] ??= b$({
         ctx: () => Nl(),
         allowed: (t) => {
           let n = it().state();
@@ -49343,12 +49343,12 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             document.head.append(r));
         }),
       m_ = null,
-      Jce = async () => {
+      eue = async () => {
         let e = Xi(),
           t = await navigator2.mediaDevices.getUserMedia({ audio: $b(e) });
         return (kH(t, e), (m_ = t), t);
       },
-      Qce = () => (m_?.getAudioTracks().some((e) => e.readyState === "live") ? m_ : null);
+      tue = () => (m_?.getAudioTracks().some((e) => e.readyState === "live") ? m_ : null);
     function yj(e, t, n = lV(), r = sV()) {
       if (yf(e))
         return Cu(e, {
@@ -49380,7 +49380,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               let l = Nl();
               if (!l) throw Error("no audio context");
               if (l.state !== "running") await l.resume();
-              let c = Qce(),
+              let c = tue(),
                 u = c ?? (await navigator2.mediaDevices.getUserMedia({ audio: $b(Xi()) }));
               if (!c) r = u;
               if (i) {
@@ -49445,7 +49445,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       };
     }
     var mj = 32;
-    async function eue(e) {
+    async function nue(e) {
       let t = globalThis.AudioContext ?? globalThis.webkitAudioContext;
       if (!t) return null;
       let n = new t();
@@ -49477,18 +49477,18 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       };
     }
     var av = null,
-      tue = (e) => ({
+      rue = (e) => ({
         frame: (t, n, r) => void av?.setGain(e.frame(t, n, r)),
         end: () => {},
         state: () => e.state(),
       });
-    async function nue(e, t) {
+    async function oue(e, t) {
       (await fj(`${cj}ort.wasm.min.js`), await fj(`${uj}bundle.min.js`));
       let n = globalThis.vad;
       if (!n) throw Error("vad-web did not load");
       let r = fy(),
         o = Yi(),
-        i = await eue(t).catch(() => null);
+        i = await nue(t).catch(() => null);
       av = i;
       let a = i?.stream ?? t,
         s = globalThis.__lkVoiceTune ?? {},
@@ -49526,7 +49526,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         },
       };
     }
-    async function rue(e, t) {
+    async function iue(e, t) {
       let n = Nl();
       if (!n) throw Error("no Web Audio");
       let r = n.createMediaStreamSource(t),
@@ -49560,7 +49560,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         }
       );
     }
-    var oue = 3000,
+    var aue = 3000,
       cm = () => {
         let e = null;
         try {
@@ -49583,10 +49583,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           guard: () => ya().guard(),
           edge: (t) => void (t === "start" ? ya().speechStart() : ya().speechEnd()),
         },
-        getStream: Jce,
-        adapt: tue(Yi(() => e.state().speaking)),
-        load: (t, n) => nue(t, n),
-        fallback: (t, n) => rue(t, n),
+        getStream: eue,
+        adapt: rue(Yi(() => e.state().speaking)),
+        load: (t, n) => oue(t, n),
+        fallback: (t, n) => iue(t, n),
         onState: (t, n) => {
           let r = t !== "off";
           if ((e.setMic(r), ta().setMic(r), t === "capturing"))
@@ -49765,7 +49765,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           "M128,176a48.05,48.05,0,0,0,48-48V64a48,48,0,0,0-96,0v64A48.05,48.05,0,0,0,128,176ZM96,64a32,32,0,0,1,64,0v64a32,32,0,0,1-64,0Zm40,143.6V240a8,8,0,0,1-16,0V207.6A80.11,80.11,0,0,1,48,128a8,8,0,0,1,16,0,64,64,0,0,0,128,0,8,8,0,0,1,16,0A80.11,80.11,0,0,1,136,207.6Z",
         fill: "M80,128V64a48,48,0,0,1,96,0v64a48,48,0,0,1-96,0Zm128,0a8,8,0,0,0-16,0,64,64,0,0,1-128,0,8,8,0,0,0-16,0,80.11,80.11,0,0,0,72,79.6V240a8,8,0,0,0,16,0V207.6A80.11,80.11,0,0,0,208,128Z",
       },
-      iue = ({ fill: e }) =>
+      sue = ({ fill: e }) =>
         un.jsx("svg", {
           viewBox: "0 0 256 256",
           width: "1em",
@@ -49778,7 +49778,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         typeof navigator2 < "u" &&
         !!navigator2.mediaDevices?.getUserMedia &&
         !!(globalThis.AudioContext ?? globalThis.webkitAudioContext),
-      aue = 8;
+      lue = 8;
     function wj({
       onText: e,
       onBreak: t,
@@ -49883,7 +49883,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       Sn.useEffect(() => {
         let Q,
           ie = oV(() => {
-            (G(true), clearTimeout(Q), (Q = setTimeout(() => G(false), oue)));
+            (G(true), clearTimeout(Q), (Q = setTimeout(() => G(false), aue)));
           });
         return () => {
           (ie(), clearTimeout(Q));
@@ -49926,7 +49926,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         className: "relative flex shrink-0",
         style: kf,
         children: [
-          un.jsx("style", { children: Zce }),
+          un.jsx("style", { children: Xce }),
           un.jsx("span", {
             role: "status",
             "aria-live": "polite",
@@ -49946,7 +49946,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               role: "alert",
               "data-testid": "debug-chat-mic-note",
               className: "pointer-events-none absolute start-0 bottom-full whitespace-nowrap fs-10",
-              style: { color: "oklch(0.6 0.17 45)", marginBottom: aue + l },
+              style: { color: "oklch(0.6 0.17 45)", marginBottom: lue + l },
               children: Z,
             }),
           un.jsxs("button", {
@@ -50077,7 +50077,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                         },
                         "ring",
                       ),
-              un.jsx(iue, { fill: S !== "off" }),
+              un.jsx(sue, { fill: S !== "off" }),
               S !== "off" &&
                 y.local &&
                 y.local !== "idle" &&
@@ -50089,7 +50089,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   "aria-label": ke,
                   title: ke,
                   className: `pointer-events-none absolute end-1 top-0 size-1.5 rounded-full ${y.local === "connecting" ? "animate-pulse motion-reduce:animate-none" : ""}`,
-                  style: { background: qce[y.local] },
+                  style: { background: Jce[y.local] },
                 }),
             ],
           }),
@@ -50097,8 +50097,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       });
     }
     var Sj = "mlx-whisper",
-      sue = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/,
-      lue = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/;
+      cue = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/,
+      uue = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/;
     function Tj(e) {
       if (!e.parts || e.parts.length < 2) return "not-merged";
       if (e.settled || e.passage || e.summary || e.collapsedInto) return "closed";
@@ -50106,7 +50106,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       if ((e.edited && e.edited.by !== af) || (e.raw ?? e.text) !== e.text) return "edited";
       return;
     }
-    function cue(e, t, n) {
+    function due(e, t, n) {
       if (!n.on) return { skip: "off" };
       if (!e) return { skip: "no-line" };
       let r = Tj(e);
@@ -50139,19 +50139,19 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         },
       };
     }
-    function uue(e, t, n) {
+    function pue(e, t, n) {
       if (!t || t.ok !== true || t.auto !== true || t.run !== e.run) return;
       let r = typeof t.text === "string" ? t.text.trim() : "";
       if (!r || r.length > Gi) return;
       if (!n || n.id !== e.run || Tj(n)) return;
       if (n.parts.length !== e.parts || n.text !== e.text) return;
-      let o = typeof t.engine === "string" && sue.test(t.engine) ? t.engine : Sj;
+      let o = typeof t.engine === "string" && cue.test(t.engine) ? t.engine : Sj;
       return {
         id: e.run,
         parts: e.parts,
         text: r,
         engine: o,
-        ...(typeof t.lang === "string" && lue.test(t.lang) ? { lang: t.lang } : {}),
+        ...(typeof t.lang === "string" && uue.test(t.lang) ? { lang: t.lang } : {}),
         ...(e.from > 0 ? { from: e.from } : {}),
       };
     }
@@ -50170,7 +50170,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       return (n) => {
         let r = e.conf(),
           o = e.recheck(),
-          i = r && o ? cue(n, (e.now ?? Date.now)(), r) : undefined;
+          i = r && o ? due(n, (e.now ?? Date.now)(), r) : undefined;
         if (!i || "skip" in i) return void e.send();
         let a = `${i.run}:${i.parts}`;
         if (t === a) return;
@@ -50184,7 +50184,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               if (t === a) t = null;
               let l = e.line(i.run);
               if (l?.parts && l.parts.length !== i.parts) return;
-              e.send(uue(i, s, l));
+              e.send(pue(i, s, l));
             })
         );
       };
@@ -50192,12 +50192,12 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     var Kl = ee(We(), 1),
       Ju = ee(we(), 1),
       _j = 1500;
-    function due(e, t, n = _j) {
+    function fue(e, t, n = _j) {
       return () => {
         (e(true), clearTimeout(t.current), (t.current = setTimeout(() => e(false), n)));
       };
     }
-    function pue(e) {
+    function mue(e) {
       return {
         onClick(t) {
           (t.stopPropagation(), e());
@@ -50231,12 +50231,12 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             border: 0,
             padding: 0,
           },
-          ...pue(
+          ...mue(
             n
               ? () => {
                   if (l.current) n(l.current.getBoundingClientRect());
                 }
-              : due(a, s, t),
+              : fue(a, s, t),
           ),
           children: [
             Ju.jsx("svg", {
@@ -50323,7 +50323,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         for (let n of new Uint8Array(e)) t += String.fromCharCode(n);
         return btoa(t).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
       };
-    async function fue(e, t = navigator2.credentials) {
+    async function gue(e, t = navigator2.credentials) {
       let n = await t.get({
         publicKey: {
           challenge: Rj(e.challenge),
@@ -50371,7 +50371,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     function Cj(e) {
       return (y_.add(e), () => void y_.delete(e));
     }
-    var mue = 5000;
+    var hue = 5000;
     async function Nj(e, t, n = {}) {
       let r = n.fetch ?? fetch2,
         o = n.now ?? Date.now,
@@ -50397,7 +50397,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       let a = e === "enrol" && n.keepAudio === true,
         s = n.client,
         l = fi;
-      if (l && s && l.client === s && l.exp * 1000 - o() > mue) {
+      if (l && s && l.client === s && l.exp * 1000 - o() > hue) {
         try {
           let p = await i({
             op: e,
@@ -50414,7 +50414,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         if (fi === l) k_();
       }
       let c = await i({ op: e, device: t, step: "options", keepAudio: a }),
-        u = await fue(c.options, n.creds ?? navigator2.credentials),
+        u = await gue(c.options, n.creds ?? navigator2.credentials),
         f = await i({
           op: e,
           device: t,
@@ -50443,7 +50443,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         }
       );
     }
-    function gue(e = "reload") {
+    function bue(e = "reload") {
       for (let t of uv().checks)
         try {
           if (t(e)) return true;
@@ -50460,7 +50460,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     }
     function Pj(e = (t) => globalThis.confirm(t)) {
       let t = uv().guard;
-      if (!(t ? t.isDirty() : gue("leave"))) return true;
+      if (!(t ? t.isDirty() : bue("leave"))) return true;
       return e(t?.message ?? "You have unsaved changes. Leave anyway?");
     }
     var x_ = ee(we(), 1);
@@ -50489,7 +50489,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     }
     var Ee = ee(we(), 1),
       w_ = (e) => `color-mix(in oklch, currentColor ${e}%, transparent)`,
-      hue = {
+      yue = {
         borderRadius: 9999,
         borderWidth: 1,
         borderStyle: "solid",
@@ -50501,9 +50501,9 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         cursor: "pointer",
       },
       S_ = "oklch(0.58 0.2 27)",
-      bue = { me: "oklch(0.56 0.15 150)", other: "oklch(0.58 0.14 60)", unknown: "inherit" },
-      yue = { me: "✓", other: "✕", unknown: "?" },
-      vue = "https://lianki.com/dev/flags#stt.voiceprint-filter";
+      vue = { me: "oklch(0.56 0.15 150)", other: "oklch(0.58 0.14 60)", unknown: "inherit" },
+      kue = { me: "✓", other: "✕", unknown: "?" },
+      xue = "https://lianki.com/dev/flags#stt.voiceprint-filter";
     function $j(e) {
       let t = Cu(e.url, { device: e.device, log: e.log });
       return {
@@ -50518,17 +50518,17 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         capture: e.capture,
         ...(e.testCapture ? { testCapture: e.testCapture } : {}),
         filterInfo: async (n) => ({ flag: await YE(), paused: KE(), state: n, tally: WE() }),
-        cloud: xue(),
+        cloud: Sue(),
         log: e.log,
         close: () => t.close(),
       };
     }
-    var kue = "/api/my/voiceprint",
+    var wue = "/api/my/voiceprint",
       Ij = "/api/import/files",
       zj = "/api/my/files";
-    function xue(e = (t, n) => fetch2(t, n)) {
+    function Sue(e = (t, n) => fetch2(t, n)) {
       let t = async (r, o = "", i) => {
-          let a = await e(kue + o, {
+          let a = await e(wue + o, {
               method: r,
               credentials: "same-origin",
               headers: {
@@ -50649,7 +50649,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             onClick: (S) => (C.trusted && !S.nativeEvent.isTrusted ? undefined : A()),
             className: "tap-40 pointer-events-auto",
             style: {
-              ...hue,
+              ...yue,
               borderColor: C.danger ? S_ : w_(C.primary ? 100 : 35),
               color: C.danger ? S_ : "inherit",
               fontWeight: C.primary ? 600 : 400,
@@ -51183,10 +51183,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                                 children: [
                                   Ee.jsxs("strong", {
                                     style: {
-                                      color: bue[R.decision],
+                                      color: vue[R.decision],
                                       fontSize: "calc(14px * var(--lk-fs-k, 1))",
                                     },
-                                    children: [yue[R.decision], " ", w[R.decision]],
+                                    children: [kue[R.decision], " ", w[R.decision]],
                                   }),
                                   R.decision === "unknown" &&
                                     R.reason &&
@@ -51256,7 +51256,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                         : e.vpFilterWaiting,
                   ),
                   Ee.jsx("a", {
-                    href: vue,
+                    href: xue,
                     target: "_blank",
                     rel: "noopener",
                     className: "pointer-events-auto",
@@ -51369,8 +51369,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     }
     var Vj = "lk-read-sweep",
       dv = "data-lk-sweep",
-      wue = "light-dark(oklch(0.86 0.1 90 / 0.85), oklch(0.44 0.09 22.3 / 0.85))",
-      Sue = "light-dark(oklch(0.95 0.035 90 / 0.6), oklch(0.3 0.04 22.3 / 0.55))",
+      Tue = "light-dark(oklch(0.86 0.1 90 / 0.85), oklch(0.44 0.09 22.3 / 0.85))",
+      Aue = "light-dark(oklch(0.95 0.035 90 / 0.6), oklch(0.3 0.04 22.3 / 0.55))",
       pv = "light-dark(oklch(0.92 0.06 90 / 0.7), oklch(0.36 0.055 22.3 / 0.7))",
       Uj = (e) => `linear-gradient(${e}, ${e})`,
       T_ = (e) => `${e} 100%, 100% 100%`,
@@ -51378,7 +51378,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     function Gj(e) {
       if (e.dur === null) return null;
       return {
-        backgroundImage: `${Uj(wue)}, ${Uj(Sue)}`,
+        backgroundImage: `${Uj(Tue)}, ${Uj(Aue)}`,
         backgroundRepeat: "no-repeat",
         backgroundSize: T_("0%"),
         boxDecorationBreak: "slice",
@@ -51394,13 +51394,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       };
     }
     var Wj = (e = {}) => ({ queue: [], done: e, speaking: null, queued: 0, unmatched: 0 }),
-      Tue = 200,
-      Aue = (e, t) => {
+      Eue = 200,
+      _ue = (e, t) => {
         if (!t.length) return e;
         let n = { ...e };
         for (let o of t) n[o.id] = Math.max(n[o.id] ?? 0, o.idx + 1);
         let r = Object.keys(n);
-        for (let o of r.slice(0, Math.max(0, r.length - Tue))) delete n[o];
+        for (let o of r.slice(0, Math.max(0, r.length - Eue))) delete n[o];
         return n;
       };
     function Kj(e, t) {
@@ -51417,7 +51417,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           return {
             ...e,
             queue: i,
-            done: Aue(e.done, o),
+            done: _ue(e.done, o),
             speaking: a ? e.speaking : null,
             queued: n,
             unmatched: Math.max(0, e.unmatched - (e.queued - n - r)),
@@ -51467,7 +51467,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       if (!n.length) return e ? [{ start: 0, end: e.length }] : [];
       return ((n[n.length - 1].end = e.length), n);
     }
-    var Eue = 600000;
+    var Mue = 600000;
     function Zj(e, t) {
       let n = [];
       for (let r of e.queue)
@@ -51475,7 +51475,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       return n;
     }
     function qj(e, t) {
-      return e.filter((n) => n.at > 0 && t - n.at < Eue);
+      return e.filter((n) => n.at > 0 && t - n.at < Mue);
     }
     function Xj(e, t, n) {
       if (e.speaking && e.speaking.id === t && e.speaking.idx === n) return "speaking";
@@ -51520,7 +51520,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         },
       };
     }
-    var _ue = 400;
+    var Rue = 400;
     function __(e = Date.now) {
       let t = null;
       return {
@@ -51531,13 +51531,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           t = e();
         },
         wasDrag() {
-          let n = t !== null && e() - t < _ue;
+          let n = t !== null && e() - t < Rue;
           return ((t = null), n);
         },
       };
     }
-    var Mue = 8;
-    function M_(e = Mue) {
+    var Lue = 8;
+    function M_(e = Lue) {
       let t = null,
         n = null;
       return {
@@ -51659,12 +51659,12 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         };
       return { left: l, top: f(e.bottom + 4), maxHeight: u, width: a };
     }
-    var Rue = {
+    var Cue = {
       request: (e) => requestAnimationFrame(e),
       cancel: (e) => cancelAnimationFrame(e),
       now: () => performance.now(),
     };
-    function rG(e, t = Rue) {
+    function rG(e, t = Cue) {
       let n = null,
         r = false,
         o,
@@ -51724,20 +51724,20 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     var sG = "lk:drag-perf";
     var lG = 1e4,
       cG = 6,
-      Lue = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
-    function Cue(e) {
+      Nue = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+    function Oue(e) {
       let t = 0,
         n = 0;
       for (let r of e.trim())
-        if (Lue.test(r)) t++;
+        if (Nue.test(r)) t++;
         else n++;
       return t / 6 + n / 15;
     }
     function fm(e) {
-      return Math.max(2500, Math.round(Cue(e) * 1000 * 2));
+      return Math.max(2500, Math.round(Oue(e) * 1000 * 2));
     }
     var uG = (e, t = 0) => Math.max(fm(e), Math.round(t));
-    function Nue(e) {
+    function Pue(e) {
       let t = e.now ?? (() => Date.now()),
         n = e.setTimer ?? ((c, u) => setTimeout(c, u)),
         r = e.clearTimer ?? ((c) => clearTimeout(c)),
@@ -51770,7 +51770,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         }
       );
     }
-    var Oue = 600000;
+    var Due = 600000;
     function R_() {
       let e = new Map(),
         t = new Map(),
@@ -51800,7 +51800,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       let r = e.at(-1);
       if (!r) return null;
       let o = n(r.id);
-      return o !== undefined && t - o <= Oue ? r : null;
+      return o !== undefined && t - o <= Due ? r : null;
     }
     function fG(e) {
       let t = e.setTimer ?? ((u, f) => setTimeout(u, f)),
@@ -51817,7 +51817,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               ((i = null), a("gone"));
             }, e.fadeMs ?? 1e4)));
         },
-        l = Nue({
+        l = Pue({
           ms: e.ms,
           onDone: () => (e.reducedMotion ? a("gone") : s()),
           now: e.now,
@@ -51852,7 +51852,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     var Hr = ee(we(), 1),
       L_ = "oklch(0.55 0.19 27)",
       C_ = { id: null, status: "idle", pos: 0, dur: NaN, live: false };
-    function Pue(e, t) {
+    function Iue(e, t) {
       if (e.status === "blocked") return `\uD83D\uDD0A ${t.playTap}`;
       if (e.status === "waiting") return t.playWaiting;
       if (e.why === "mic") return t.playMicOn;
@@ -51860,7 +51860,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         return e.why === "hls" || e.why === "unsupported" ? t.playNoStream : t.playFailed;
       return null;
     }
-    var Due = (e) => {
+    var zue = (e) => {
       if (!Number.isFinite(e) || e < 0) return "";
       return `${Math.floor(e / 60)}:${String(Math.floor(e % 60)).padStart(2, "0")}`;
     };
@@ -51875,7 +51875,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         a = i.status === "playing" || i.status === "loading",
         s = i.id ? i.live : t.kind !== "file",
         l = !s && Number.isFinite(i.dur) && i.dur > 0 ? Math.min(100, (i.pos / i.dur) * 100) : 0,
-        c = Pue(i, o),
+        c = Iue(i, o),
         u = t.title ?? o.playAudio,
         f =
           "tap-40 inline-flex size-7 items-center justify-center rounded-full border border-current/25 fs-11";
@@ -51940,7 +51940,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                       i.id &&
                         Hr.jsx("span", {
                           className: "shrink-0 fs-10 text-gray-500",
-                          children: Due(i.pos),
+                          children: zue(i.pos),
                         }),
                     ],
                   }),
@@ -51958,10 +51958,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         ],
       });
     }
-    var Iue = ["file", "stream", "rtc", "gen", "webaudio"],
+    var $ue = ["file", "stream", "rtc", "gen", "webaudio"],
       gG = ["file", "stream"];
-    var zue = /^[0-9a-f]{20}$/,
-      $ue = {
+    var Hue = /^[0-9a-f]{20}$/,
+      Uue = {
         mp3: "audio/mpeg",
         ogg: "audio/ogg",
         oga: "audio/ogg",
@@ -51973,11 +51973,11 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         aac: "audio/aac",
         flac: "audio/flac",
       };
-    var Hue = [".localhost", ".local", ".internal", ".lan", ".home.arpa", ".intranet"];
-    function Uue(e) {
+    var Fue = [".localhost", ".local", ".internal", ".lan", ".home.arpa", ".intranet"];
+    function Bue(e) {
       return e.startsWith("[") || /^\d{1,3}(\.\d{1,3}){3}$/.test(e);
     }
-    function Fue(e, t) {
+    function Vue(e, t) {
       let n = e.toLowerCase();
       return t.some((r) => n === r || n.endsWith(`.${r}`));
     }
@@ -51989,23 +51989,23 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         return "";
       }
     }
-    var Bue = (e) =>
+    var jue = (e) =>
       e
         .replace(/[\p{Cc}\p{Cf}]/gu, " ")
         .replace(/\s+/g, " ")
         .trim();
-    function Vue(e, t = {}) {
+    function Gue(e, t = {}) {
       let n = typeof e.src === "string" ? e.src.trim() : "";
       if (!n) return { ok: false, error: "--play needs a src: an https URL or file:<id>" };
       if (n.length > 2048) return { ok: false, error: "--play src longer than 2048 chars" };
       let r;
       if (e.title !== undefined) {
         if (typeof e.title !== "string") return { ok: false, error: "title must be text" };
-        r = Bue(e.title).slice(0, 120) || undefined;
+        r = jue(e.title).slice(0, 120) || undefined;
       }
       let o;
       if (e.kind !== undefined) {
-        if (!Iue.includes(e.kind))
+        if (!$ue.includes(e.kind))
           return { ok: false, error: `unknown kind ${String(e.kind)} (${gG.join(", ")})` };
         if (!gG.includes(e.kind))
           return {
@@ -52017,7 +52017,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       let i = r ? { title: r } : {};
       if (n.startsWith("file:")) {
         let m = n.slice(5);
-        if (!zue.test(m)) return { ok: false, error: "file:<id> takes a My Files id (20 hex)" };
+        if (!Hue.test(m)) return { ok: false, error: "file:<id> takes a My Files id (20 hex)" };
         if (o === "stream") return { ok: false, error: "a My Files file is kind file" };
         return { ok: true, audio: { src: n, kind: "file", ...i } };
       }
@@ -52030,13 +52030,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       if (a.protocol !== "https:") return { ok: false, error: "--play plays https URLs only" };
       if (a.username || a.password) return { ok: false, error: "no credentials in a --play URL" };
       let s = a.hostname.toLowerCase();
-      if (Uue(s)) return { ok: false, error: "--play needs a host name, not an IP address" };
-      if (!s.includes(".") || s === "localhost" || Hue.some((m) => s.endsWith(m)))
+      if (Bue(s)) return { ok: false, error: "--play needs a host name, not an IP address" };
+      if (!s.includes(".") || s === "localhost" || Fue.some((m) => s.endsWith(m)))
         return { ok: false, error: `--play needs a public host, not ${s}` };
-      if (Fue(s, t.deny ?? [])) return { ok: false, error: `${s} is on the play deny list` };
+      if (Vue(s, t.deny ?? [])) return { ok: false, error: `${s} is on the play deny list` };
       let l = /\.([a-z0-9]{2,5})$/i.exec(a.pathname)?.[1]?.toLowerCase(),
         c = l === "m3u8",
-        u = l ? $ue[l] : undefined,
+        u = l ? Uue[l] : undefined,
         f = o ?? (u ? "file" : "stream"),
         p = c ? "application/vnd.apple.mpegurl" : u;
       return { ok: true, audio: { src: a.href, kind: f, ...(p ? { mime: p } : {}), ...i } };
@@ -52044,16 +52044,16 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     function N_(e) {
       if (!e || typeof e !== "object") return;
       let t = e,
-        n = Vue({ src: t.src, title: t.title, kind: t.kind });
+        n = Gue({ src: t.src, title: t.title, kind: t.kind });
       return n.ok ? n.audio : undefined;
     }
     var hG = (e) => e.mime === "application/vnd.apple.mpegurl";
     var bG = "__lkLiPlay",
       vG = 1,
-      jue = { id: null, status: "idle", pos: 0, dur: NaN, live: false },
-      Gue = () => {},
-      Wue = (e) => /NotAllowed/.test(String(e?.name ?? e));
-    function Kue() {
+      Wue = { id: null, status: "idle", pos: 0, dur: NaN, live: false },
+      Kue = () => {},
+      Yue = (e) => /NotAllowed/.test(String(e?.name ?? e));
+    function Zue() {
       let t = new Uint8Array(204),
         n = new DataView(t.buffer),
         r = (i, a) => [...a].forEach((s, l) => n.setUint8(i + l, s.charCodeAt(0)));
@@ -52117,13 +52117,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         },
       };
     };
-    function Yue(e) {
+    function que(e) {
       let t = new Map([
           ["file", yG],
           ["stream", yG],
         ]),
         n = new Set(),
-        r = jue,
+        r = Wue,
         o = null,
         i = null,
         a = null,
@@ -52225,7 +52225,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               b({ status: "playing", dur: Z.dur(), live: w(P.audio, Z.dur()) }));
           } catch (B) {
             if (V !== p) return r;
-            let te = Wue(B);
+            let te = Yue(B);
             if ((x({ id: P.id, outcome: te ? "blocked" : "error", host: td(P.audio.src) }), te))
               (A(), b({ status: "blocked", why: "locked" }));
             else (A(), b({ status: "error", why: "load" }));
@@ -52356,13 +52356,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           if (((l = true), o)) return;
           let V = m(() => e.el(), null);
           if (!V || !V.paused) return;
-          V.src = Kue();
+          V.src = Zue();
           let Z = p;
           m(
             () =>
               Promise.resolve(V.play()).then(() => {
                 if (Z === p && !o) V.pause();
-              }, Gue),
+              }, Kue),
             undefined,
           );
         },
@@ -52387,21 +52387,21 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       if (n && (n.v ?? 0) >= vG) return n;
       let r = e ?? O_();
       if (!r) return null;
-      if (n) Zue(() => n.retire());
-      let o = Yue(r);
+      if (n) Xue(() => n.retire());
+      let o = que(r);
       return ((t[bG] = o), o);
     }
-    var Zue = (e) => {
+    var Xue = (e) => {
         try {
           e();
         } catch {}
       },
-      que = "__lkMic";
+      Jue = "__lkMic";
     function O_(e) {
       if (typeof Audio > "u" || typeof fetch2 > "u") return null;
       let t = null,
         n = globalThis,
-        r = () => n[que];
+        r = () => n[Jue];
       return {
         el: () => (t ??= new Audio()),
         async resolveFile(o) {
@@ -52424,29 +52424,29 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         log: e,
       };
     }
-    var Xue = 5;
+    var Que = 5;
     function D_(e) {
       return e.from === "owner" && e.source === "stt" && !e.removed;
     }
     var P_ = (e) => typeof e === "number" && Number.isFinite(e);
-    function Jue(e) {
+    function ede(e) {
       if (!e || !P_(e.t_speechEnd)) return null;
       let t = P_(e.t_uploadStart) ? e.t_uploadStart : undefined;
       if (t === undefined || t < e.t_speechEnd) return null;
       return { from: e.t_speechEnd, to: t };
     }
-    function Que(e) {
+    function tde(e) {
       return (e.parts?.length ? e.parts.map((n) => n.timing) : [e.timing])
-        .map(Jue)
+        .map(ede)
         .filter((n) => n !== null);
     }
     async function kG(e, t) {
       if (!D_(e)) return [];
       let n = [];
-      for (let r of Que(e)) {
+      for (let r of tde(e)) {
         let o;
         try {
-          o = await t(`${FE}?before=${r.to + 1}&limit=${Xue}`, {
+          o = await t(`${FE}?before=${r.to + 1}&limit=${Que}`, {
             headers: { accept: "application/json" },
             credentials: "same-origin",
           });
@@ -52507,7 +52507,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     }
     var at = ee(we(), 1),
       z_ = "oklch(0.6 0.11 22.3)";
-    function ede({ heard: e, pinned: t, words: n, onPin: r }) {
+    function nde({ heard: e, pinned: t, words: n, onPin: r }) {
       if (!e.length) return null;
       let o = e.some((a) => a.cycle),
         i =
@@ -52566,7 +52566,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         ],
       });
     }
-    function tde({ line: e, words: t }) {
+    function rde({ line: e, words: t }) {
       let n = Aj(e);
       if (!n) return null;
       let r = [
@@ -52592,13 +52592,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         ),
       });
     }
-    function nde({ lineId: e, words: t }) {
+    function ode({ lineId: e, words: t }) {
       return (
         Ur.useSyncExternalStore(U$, r1, r1),
-        at.jsx(ede, { heard: H$(e), pinned: Cl(), words: t, onPin: F$ })
+        at.jsx(nde, { heard: H$(e), pinned: Cl(), words: t, onPin: F$ })
       );
     }
-    function rde({ message: e, words: t, ui: n }) {
+    function ide({ message: e, words: t, ui: n }) {
       let r = um(e) ? Mj(e) : [];
       if (!r.length) return null;
       let o = (i, a) => {
@@ -52638,7 +52638,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         ),
       });
     }
-    function ode({ message: e, ui: t }) {
+    function ade({ message: e, ui: t }) {
       let n = wo(),
         [, r] = Ur.useState(0);
       Ur.useEffect(() => n.subscribe(() => r((l) => l + 1)), [n]);
@@ -52783,14 +52783,14 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                     children: p.toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" }),
                   }),
                 f && o && r && at.jsx(SG, { message: f, words: r.lineReplay }),
-                f && n && r && at.jsx(rde, { message: f, words: r, ui: n }),
-                f && n && at.jsx(ode, { message: f, ui: n }),
-                t && f && typeof f.id === "string" && at.jsx(nde, { lineId: f.id, words: t }),
+                f && n && r && at.jsx(ide, { message: f, words: r, ui: n }),
+                f && n && at.jsx(ade, { message: f, ui: n }),
+                t && f && typeof f.id === "string" && at.jsx(ode, { lineId: f.id, words: t }),
                 f &&
                   t?.levelHeard &&
                   t.levelWhisper &&
                   t.levelPolished &&
-                  at.jsx(tde, {
+                  at.jsx(rde, {
                     line: f,
                     words: {
                       levelHeard: t.levelHeard,
@@ -52817,10 +52817,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     }
     var H_ = 1200,
       $_ = 4000,
-      ide = (e) => gn(e).mark?.bg ?? "currentColor",
+      sde = (e) => gn(e).mark?.bg ?? "currentColor",
       bv = "data-lk-flash",
       EG = `@keyframes lk-addr-pulse{0%{box-shadow:0 0 0 0 var(--lk-ring);transform:scale(1)}35%{box-shadow:0 0 0 3px var(--lk-ring);transform:scale(1.15)}100%{box-shadow:0 0 0 5px transparent;transform:scale(1)}}[${bv}]{border-radius:9999px;animation:lk-addr-pulse ${H_ / 2}ms ease-out 2}@media (prefers-reduced-motion: reduce){[${bv}]{animation:none!important;box-shadow:0 0 0 2px var(--lk-ring)}}html[data-motion="off"] [${bv}]{animation:none!important;box-shadow:0 0 0 2px var(--lk-ring)}`,
-      vv = (e) => ({ [bv]: e, style: { "--lk-ring": ide(e) } });
+      vv = (e) => ({ [bv]: e, style: { "--lk-ring": sde(e) } });
     function _G() {
       let e = new Set(),
         t = -1 / 0,
@@ -52862,8 +52862,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       return t;
     }
     var RG = [22.3, 60, 100, 145, 190, 235, 275, 320],
-      ade = 0.58,
-      sde = 0.15;
+      lde = 0.58,
+      cde = 0.15;
     function LG(e) {
       let t = /^s([1-9]\d*)$/.exec(e),
         n = t ? Number(t[1]) - 1 : hu(`voice:${e}`),
@@ -52872,7 +52872,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       return {
         hue: r,
         glyph: o,
-        bg: `oklch(${ade} ${sde} ${r})`,
+        bg: `oklch(${lde} ${cde} ${r})`,
         fg: `oklch(0.98 0.02 ${r})`,
         paths: Jp[o],
       };
@@ -52946,7 +52946,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       });
     }
     var CG = new Map();
-    function lde(e) {
+    function ude(e) {
       let t = CG.get(e);
       if (!t)
         ((t = fetch2(`${Gz}${e}`, { credentials: "omit" })
@@ -52960,12 +52960,12 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           CG.set(e, t));
       return t;
     }
-    function cde({ avatar: e, name: t }) {
+    function dde({ avatar: e, name: t }) {
       let [n, r] = kv.useState(null);
       if (
         (kv.useEffect(() => {
           let o = true;
-          if (AT(e)) lde(e).then((i) => o && r(i));
+          if (AT(e)) ude(e).then((i) => o && r(i));
           return () => {
             o = false;
           };
@@ -52984,7 +52984,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       });
     }
     function Yl(e) {
-      if (e.avatar && AT(e.avatar)) return Qt.jsx(cde, { avatar: e.avatar, name: e.name });
+      if (e.avatar && AT(e.avatar)) return Qt.jsx(dde, { avatar: e.avatar, name: e.name });
       return (e.lane && xv(e.lane)) || NG(e.name);
     }
     function wv({ inline: e = false }) {
@@ -52994,17 +52994,17 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         children: "MCP",
       });
     }
-    function ude({ lane: e, agentName: t, inline: n = false, mcp: r = false }) {
+    function pde({ lane: e, agentName: t, inline: n = false, mcp: r = false }) {
       let o = gn(e).name || t;
       if (!o) return r ? Qt.jsx(wv, { inline: n }) : null;
       return Qt.jsx(U_, { name: o, lane: e, inline: n, mcp: r });
     }
-    var dde = "Learning Partner AI";
+    var fde = "Learning Partner AI";
     function Sv({ m: e, name: t, agentName: n, partnerName: r, inline: o = false }) {
       let i = e.client === "mcp";
-      if (e.lane === "main" && e.label === dde)
+      if (e.lane === "main" && e.label === fde)
         return Qt.jsx(U_, { name: r || e.label, lane: "main", inline: o, mcp: i });
-      if (ds(e.lane)) return Qt.jsx(ude, { lane: e.lane, agentName: n, inline: o, mcp: i });
+      if (ds(e.lane)) return Qt.jsx(pde, { lane: e.lane, agentName: n, inline: o, mcp: i });
       if (e.via === "token") {
         let a = t || e.tokenLane;
         return a ? Qt.jsx(U_, { name: a, inline: o, mcp: i }) : null;
@@ -53048,7 +53048,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       });
     }
     var fr = ee(we(), 1);
-    function pde(e, t, n) {
+    function mde(e, t, n) {
       let r = e?.trim();
       if (!r) return null;
       if (r === "auto") return { name: t, auto: true, lane: null };
@@ -53056,8 +53056,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       if (o === "main") return { name: n?.trim() || r, auto: false, lane: o, main: true };
       return { name: (o && gn(o).name) || r, auto: false, lane: o };
     }
-    var fde = 500,
-      mde = 1500;
+    var gde = 500,
+      hde = 1500;
     function IG({
       icon: e,
       label: t,
@@ -53069,7 +53069,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       mainAvatar: s,
     }) {
       let l = kn(),
-        c = pde(i, l.polishedAuto, a),
+        c = mde(i, l.polishedAuto, a),
         u = c ? l.polishedBy.replace("{name}", c.name) : t,
         f = so.useId(),
         p = so.useRef(null),
@@ -53110,8 +53110,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   ((w.current = true),
                     b(true),
                     clearTimeout(x.current),
-                    (x.current = setTimeout(() => b(false), mde)));
-                }, fde)));
+                    (x.current = setTimeout(() => b(false), hde)));
+                }, gde)));
             },
             onPointerUp: T,
             onPointerLeave: T,
@@ -53304,7 +53304,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       );
     }
     var HG = 24,
-      gde = 44,
+      bde = 44,
       UG = 32,
       FG = 4,
       BG = 32,
@@ -53318,18 +53318,18 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     var j_ = (e, t) => e.filter((n) => t.has(n)),
       GG = (e) => e.at(-1) ?? null;
     function G_(e) {
-      return Math.max(0, Math.round(e.scrollTop + e.lineTop - e.rootTop - gde));
+      return Math.max(0, Math.round(e.scrollTop + e.lineTop - e.rootTop - bde));
     }
     var WG = (e, t) => e.replaceAll("{count}", String(t));
-    var hde = '[data-testid="debug-chat-line"]',
-      bde = '[data-testid="debug-chat-ask"]',
-      yde = 1e7,
-      Av = (e, t) => [...e.querySelectorAll(hde)].find((n) => n.dataset.msg === t) ?? null;
+    var yde = '[data-testid="debug-chat-line"]',
+      vde = '[data-testid="debug-chat-ask"]',
+      kde = 1e7,
+      Av = (e, t) => [...e.querySelectorAll(yde)].find((n) => n.dataset.msg === t) ?? null;
     function KG(e, t, n) {
       if (typeof IntersectionObserver > "u") return () => {};
       let r = new Map();
       for (let a of t) {
-        let s = Av(e, a)?.querySelector(bde);
+        let s = Av(e, a)?.querySelector(vde);
         if (s) r.set(s, a);
       }
       let o = new Set(),
@@ -53350,7 +53350,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             }
             n(new Set(o));
           },
-          { root: e, rootMargin: `-${HG}px 0px ${yde}px 0px` },
+          { root: e, rootMargin: `-${HG}px 0px ${kde}px 0px` },
         );
       for (let a of r.keys()) i.observe(a);
       return () => i.disconnect();
@@ -53360,7 +53360,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       W_ = null;
     function qG() {
       if (typeof window > "u" || typeof document > "u") return () => {};
-      if (ZG++ === 0) W_ = kde(window, document);
+      if (ZG++ === 0) W_ = wde(window, document);
       let e = false;
       return () => {
         if (e) return;
@@ -53374,7 +53374,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     function K_(e) {
       return XG(e)?.closest(qu) ?? null;
     }
-    function vde(e, t) {
+    function xde(e, t) {
       let r = e.ownerDocument.createTreeWalker(e, NodeFilter.SHOW_TEXT, {
         acceptNode: (i) =>
           i.nodeValue?.trim() && i.parentElement?.closest(sm)
@@ -53389,7 +53389,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       for (let i = r.nextNode(); i; i = r.nextNode()) o = i;
       return o ? [o, o.nodeValue.length] : [e, e.childNodes.length];
     }
-    function kde(e, t) {
+    function wde(e, t) {
       let n = t.getElementById(YG) ?? t.createElement("style");
       if (((n.id = YG), (n.textContent = zV), !n.isConnected))
         (t.head ?? t.documentElement).append(n);
@@ -53429,7 +53429,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           }
           let x = $V(b, v);
           if (!x) return;
-          let [w, T] = vde(h, x);
+          let [w, T] = xde(h, x);
           try {
             g.extend(w, T);
           } catch {
@@ -53490,16 +53490,16 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       return Math.max(0, Math.round(e.scrollHeight - e.clientHeight - Math.max(0, e.gap)));
     }
     var nd = [1, 2, 4, 8].map((e) => `0 0 ${e}px var(--background)`).join(", ");
-    function xde(e, t, n) {
+    function Sde(e, t, n) {
       return Math.max(t, Math.min(e, (n - e) * 1e9));
     }
-    var wde = 1600;
+    var Tde = 1600;
     function tW(e) {
       let t = e.gap ?? QG,
         n = Math.max(e.safe.top, e.visibleTop) + t,
         r = Math.round(Math.min(e.visibleBottom, e.vh - e.safe.bottom, e.barTop ?? 1 / 0) - t),
         o = r - n,
-        i = Math.round(xde(o, e.log.height, wde - (e.vh - o)));
+        i = Math.round(Sde(o, e.log.height, Tde - (e.vh - o)));
       return {
         left: Math.round(e.log.left),
         width: Math.round(e.log.width),
@@ -53508,20 +53508,20 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         hideBar: e.barTop === undefined,
       };
     }
-    var Sde = {
+    var Ade = {
         light: { l: 0.98, c: 0.01, h: 90, a: 0.72 },
         dark: { l: 0.18, c: 0.01, h: 260, a: 0.66 },
       },
-      Tde = 0.92,
+      Ede = 0.92,
       mm = "blur(20px) saturate(1.6)",
       JG = (e, t) => `oklch(${e.l * 100}% ${e.c} ${e.h} / ${t})`;
     function q_(e) {
-      let { light: t, dark: n } = Sde,
-        r = (o) => (e ? Tde : o.a);
+      let { light: t, dark: n } = Ade,
+        r = (o) => (e ? Ede : o.a);
       return `light-dark(${JG(t, r(t))}, ${JG(n, r(n))})`;
     }
-    var Ade = 0.45,
-      X_ = (e) => Math.round(e * Ade);
+    var _de = 0.45,
+      X_ = (e) => Math.round(e * _de);
     function nW(e, t) {
       let n = null,
         r = Number.POSITIVE_INFINITY;
@@ -53668,9 +53668,9 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       let n = e.children.get(t) ?? [];
       return n.length ? 1 + Math.max(...n.map((r) => gW(e, r))) : 0;
     }
-    var Ede = 3;
+    var Mde = 3;
     function nM(e, t) {
-      return Math.min(Ede, gW(e, t));
+      return Math.min(Mde, gW(e, t));
     }
     var rM = (e) => ({ focusId: e.roots[0] ?? null, expanded: {}, detent: 0 });
     function hW(e, t) {
@@ -53694,7 +53694,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       }
       return r;
     }
-    function _de(e, t) {
+    function Rde(e, t) {
       let n = t.focusId;
       if (n === null) return { s: t, limit: "max" };
       let r = t.expanded[n] ?? 0;
@@ -53702,7 +53702,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       let o = bm(e, { ...t.expanded, [n]: r + 1 }, Zl(e, n));
       return { s: { ...t, expanded: o } };
     }
-    function Mde(e, t) {
+    function Lde(e, t) {
       let n = t.focusId;
       if (n === null) return { s: t, limit: "min" };
       let r = t.expanded[n] ?? 0;
@@ -53719,7 +53719,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     function fW(e, t, n) {
       let r = { s: t };
       for (let o = 0; o < Math.abs(n); o++) {
-        let i = n > 0 ? _de(e, r.s) : Mde(e, r.s);
+        let i = n > 0 ? Rde(e, r.s) : Lde(e, r.s);
         if (i.limit) return { s: r.s, limit: i.limit };
         r = i;
       }
@@ -53732,16 +53732,16 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         r.detent === e.detent &&
         r.atLimit === e.atLimit &&
         r.base === e.base &&
-        Rde(r.expanded, e.expanded)
+        Cde(r.expanded, e.expanded)
       )
         return e;
       return r;
     }
-    var Rde = (e, t) => {
+    var Cde = (e, t) => {
         let n = Object.keys(e);
         return n.length === Object.keys(t).length && n.every((r) => e[r] === t[r]);
       },
-      Lde = (e, t) => {
+      Nde = (e, t) => {
         let n = e.parent.get(t) ?? null;
         return n === null ? e.roots : (e.children.get(n) ?? []);
       };
@@ -53777,7 +53777,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         case "key": {
           let r = t.focusId;
           if (r === null) return t;
-          let o = Lde(e, r),
+          let o = Nde(e, r),
             i = o.indexOf(r),
             a = (s) => {
               let l = fW(e, t, s);
@@ -53871,14 +53871,14 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       return kW(e, { focusId: r, expanded: o });
     }
     var en = ee(we(), 1),
-      Cde = { open: "○", doing: "◐", blocked: "!", done: "✓" },
-      Nde = {
+      Ode = { open: "○", doing: "◐", blocked: "!", done: "✓" },
+      Pde = {
         open: "oklch(0.62 0.03 260)",
         doing: "oklch(0.6 0.176 22.3)",
         blocked: "oklch(0.7 0.16 70)",
         done: "oklch(0.62 0.15 150)",
       },
-      Ode = "oklch(0.58 0.21 33)";
+      Dde = "oklch(0.58 0.21 33)";
     function AW({ node: e, hidden: t }) {
       let n = t ? Zy(e).open : 0;
       return en.jsxs(en.Fragment, {
@@ -53887,8 +53887,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             en.jsx("span", {
               "aria-hidden": true,
               className: `me-0.5 inline-block ${e.status === "doing" ? Wl : ""}`,
-              style: { color: Nde[e.status] },
-              children: Cde[e.status],
+              style: { color: Pde[e.status] },
+              children: Ode[e.status],
             }),
           en.jsx("span", {
             className: e.status === "done" ? "opacity-60" : "",
@@ -53899,7 +53899,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             en.jsx("span", {
               "aria-label": "needs you",
               className: "ms-0.5 font-bold",
-              style: { color: Ode },
+              style: { color: Dde },
               children: "(!)",
             }),
           n > 0 &&
@@ -54063,10 +54063,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         square: { w: 60, h: 60, gap: 20, r: "18px" },
       },
       RW = 20,
-      Pde = 16;
+      Ide = 16;
     function DW(e) {
       let t = Ev[e];
-      return { inset: RW, width: t.gap + t.w - RW + Pde };
+      return { inset: RW, width: t.gap + t.w - RW + Ide };
     }
     function IW(e) {
       let t = e.safeTop ?? 0,
@@ -54101,10 +54101,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     function $W(e) {
       return e.allowed && e.pref && e.open;
     }
-    var Dde = 1.05;
+    var zde = 1.05;
     function HW(e) {
       let t = e.vv;
-      if (!t || (t.scale ?? 1) > Dde || !(t.height > 0))
+      if (!t || (t.scale ?? 1) > zde || !(t.height > 0))
         return { top: 0, height: Math.round(e.innerHeight), keyboard: false };
       let n = Math.max(0, Math.round(t.offsetTop)),
         r = Math.round(Math.min(t.height, e.innerHeight - n));
@@ -54205,9 +54205,9 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         transition: t ? "none" : "transform 220ms ease-out, opacity 220ms ease-out",
       };
     }
-    var Ide = 48;
+    var $de = 48;
     function ZW(e) {
-      return e.full && e.dy <= -Ide;
+      return e.full && e.dy <= -$de;
     }
     var hM = ee(we(), 1);
     function qW(e) {
@@ -54380,12 +54380,12 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       return { op: "fullscreen", on: t.on };
     }
     var QW = 600,
-      zde = (e, t) => {
+      Hde = (e, t) => {
         let n = setTimeout(e, t);
         return () => clearTimeout(n);
       };
     function e9(e) {
-      let t = e.later ?? zde,
+      let t = e.later ?? Hde,
         n = false;
       (e.openMenu(), e.cue(true));
       let r = t(() => {
@@ -54401,7 +54401,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         outlineOffset: "-2px",
         borderRadius: "0.375rem",
       },
-      $de = [
+      Ude = [
         {
           boxShadow:
             "0 0 0 0 color-mix(in oklch, var(--lk-seal-on, oklch(0.53 0.207 22.3)) 55%, transparent)",
@@ -54413,15 +54413,15 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       ];
     function n9(e, t) {
       if ((e.scrollIntoView?.({ block: "nearest" }), !t))
-        e.animate?.($de, { duration: QW, easing: "ease-out" });
+        e.animate?.(Ude, { duration: QW, easing: "ease-out" });
     }
     var Cv = ee(we(), 1),
-      Hde = () => typeof matchMedia < "u" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+      Fde = () => typeof matchMedia < "u" && matchMedia("(prefers-reduced-motion: reduce)").matches;
     function r9({ on: e, cue: t = false, label: n, onWord: r, offWord: o, onToggle: i }) {
       let a = Lv.useRef(null);
       return (
         Lv.useEffect(() => {
-          if (t && a.current) n9(a.current, Hde());
+          if (t && a.current) n9(a.current, Fde());
         }, [t]),
         Cv.jsxs("button", {
           ref: a,
@@ -54437,7 +54437,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         })
       );
     }
-    function Ude(e) {
+    function Bde(e) {
       if (!e || typeof e !== "object") return null;
       let t = e;
       if (t.name !== "chat.open") return null;
@@ -54449,7 +54449,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     }
     function o9(e, t = window) {
       let n = (r) => {
-        let o = Ude(r.detail);
+        let o = Bde(r.detail);
         if (o) e(o);
       };
       return (
@@ -54502,7 +54502,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         },
       };
     }
-    function Fde(e, t, n) {
+    function Vde(e, t, n) {
       return t === 1 ? e * 16 : t === 2 ? e * n : e;
     }
     function l9(e, t) {
@@ -54512,7 +54512,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     function c9(e) {
       if (e.ctrlKey || !e.log || e.deltaY === 0) return 0;
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return 0;
-      let t = Fde(e.deltaY, e.deltaMode, e.log.clientHeight);
+      let t = Vde(e.deltaY, e.deltaMode, e.log.clientHeight);
       if (e.own.some((n) => l9(n, t))) return 0;
       return l9(e.log, t) ? t : 0;
     }
@@ -54678,7 +54678,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     }
     var Xl = ee(We(), 1);
     var p9 = "lk:debug-widget-src";
-    function Bde(e = globalThis) {
+    function jde(e = globalThis) {
       let t,
         n = "none";
       return {
@@ -54703,9 +54703,9 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         },
       };
     }
-    var f9 = Bde(),
-      { set: u1e, get: m9 } = f9;
-    var Vde = new Set(["localhost", "127.0.0.1", "[::1]"]);
+    var f9 = jde(),
+      { set: p1e, get: m9 } = f9;
+    var Gde = new Set(["localhost", "127.0.0.1", "[::1]"]);
     function g9(e) {
       if (!e?.trim()) return null;
       let t;
@@ -54714,13 +54714,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       } catch {
         return null;
       }
-      if (t.protocol === "https:" || (t.protocol === "http:" && Vde.has(t.hostname))) return t;
+      if (t.protocol === "https:" || (t.protocol === "http:" && Gde.has(t.hostname))) return t;
       return null;
     }
     var h9 = (e) => new URL("events", e).href;
     var b9 = "lk:tree-src",
       y9 = 524288,
-      jde = new Set(["localhost", "127.0.0.1", "[::1]"]);
+      Wde = new Set(["localhost", "127.0.0.1", "[::1]"]);
     function v9(e) {
       if (!e?.trim()) return null;
       let t;
@@ -54731,12 +54731,12 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       }
       if (t.username || t.password) return null;
       if (t.protocol === "https:" && t.hostname.endsWith(".ts.net")) return t;
-      if ((t.protocol === "https:" || t.protocol === "http:") && jde.has(t.hostname)) return t;
+      if ((t.protocol === "https:" || t.protocol === "http:") && Wde.has(t.hostname)) return t;
       return null;
     }
-    var Gde = ["details", "summary", "ul", "li", "div", "span", "p", "b", "i", "code"],
-      Wde = new Set(Gde),
-      Kde = new Set([
+    var Kde = ["details", "summary", "ul", "li", "div", "span", "p", "b", "i", "code"],
+      Yde = new Set(Kde),
+      Zde = new Set([
         "script",
         "style",
         "template",
@@ -54750,19 +54750,19 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         "title",
         "head",
       ]),
-      Yde = new Set(["br", "hr", "img", "input", "meta", "link", "wbr", "source", "area", "col"]),
-      Zde = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
-    function qde(e) {
+      qde = new Set(["br", "hr", "img", "input", "meta", "link", "wbr", "source", "area", "col"]),
+      Xde = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+    function Jde(e) {
       return e.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (t, n) => {
         if (n[0] === "#") {
           let r =
             n[1] === "x" || n[1] === "X" ? Number.parseInt(n.slice(2), 16) : Number(n.slice(1));
           return Number.isFinite(r) && r > 0 && r <= 1114111 ? String.fromCodePoint(r) : "";
         }
-        return Zde[n.toLowerCase()] ?? t;
+        return Xde[n.toLowerCase()] ?? t;
       });
     }
-    function Xde(e) {
+    function Qde(e) {
       let t = /(?:^|\s)class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(e);
       if (!t) return;
       return (
@@ -54772,14 +54772,14 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           .join(" ") || undefined
       );
     }
-    var Jde =
+    var epe =
       /<!--[\s\S]*?(?:-->|$)|<!\[CDATA\[[\s\S]*?(?:\]\]>|$)|<![^>]*>|<\?[^>]*>|<\/\s*([A-Za-z][\w-]*)\s*>|<([A-Za-z][\w-]*)((?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*)\s*(\/?)>|[^<]+|</g;
     function k9(e) {
       let t = { children: [] },
         n = [{ name: "", node: t }],
         r = () => n[n.length - 1].node,
         o = null;
-      for (let i of e.matchAll(Jde)) {
+      for (let i of e.matchAll(epe)) {
         let [a, s, l, c = "", u] = i;
         if (o) {
           if (s?.toLowerCase() === o) o = null;
@@ -54787,13 +54787,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         }
         if (l) {
           let m = l.toLowerCase();
-          if (Kde.has(m)) {
+          if (Zde.has(m)) {
             if (!u) o = m;
             continue;
           }
-          if (Yde.has(m) || u) continue;
-          if (Wde.has(m)) {
-            let g = { tag: m, cls: Xde(c), children: [] };
+          if (qde.has(m) || u) continue;
+          if (Yde.has(m)) {
+            let g = { tag: m, cls: Qde(c), children: [] };
             if (!g.cls) delete g.cls;
             (r().children.push(g), n.push({ name: m, node: g }));
           } else n.push({ name: m, node: r() });
@@ -54809,7 +54809,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           continue;
         }
         if (a.startsWith("<!") || a.startsWith("<?")) continue;
-        let f = qde(a),
+        let f = Jde(a),
           p = r().children;
         if (typeof p.at(-1) === "string") p[p.length - 1] = p.at(-1) + f;
         else p.push(f);
@@ -54914,26 +54914,26 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         { key: "doing", mark: "▶", label: "In progress" },
         { key: "next", mark: "›", label: "Next" },
       ],
-      Qde = 6,
-      epe = 64,
+      tpe = 6,
+      npe = 64,
       _9 = 500;
     function M9(e) {
       if (!e || e.type !== "agent" || !e.id) return null;
       let t = e.id.trim();
-      if (!t || t.length > epe || /[.:/\\]/.test(t)) return null;
+      if (!t || t.length > npe || /[.:/\\]/.test(t)) return null;
       return t;
     }
-    var R9 = (e) => e.slice(-Qde),
+    var R9 = (e) => e.slice(-tpe),
       L9 = (e) => (e && e > 1 ? `〔${e}〕` : "");
     function C9(e) {
       return ([...e.trim()][0] ?? "?").toLocaleUpperCase();
     }
-    function tpe(e) {
+    function rpe(e) {
       let t = 2166136261;
       for (let n of e) ((t ^= n.codePointAt(0) ?? 0), (t = Math.imul(t, 16777619) >>> 0));
       return t % 360;
     }
-    var N9 = (e) => `oklch(0.6 0.13 ${tpe(e)})`;
+    var N9 = (e) => `oklch(0.6 0.13 ${rpe(e)})`;
     function O9(e, t = {}) {
       if (!e) return;
       let n = pA(e, { locale: t.locale, live: true }).doing;
@@ -54948,7 +54948,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       };
     }
     var _t = ee(we(), 1),
-      npe = "color-mix(in oklch, var(--background) 85%, transparent)";
+      ope = "color-mix(in oklch, var(--background) 85%, transparent)";
     function P9({ a: e, render: t }) {
       let n = `${e.type === "agent" ? "Agent" : "Person"}: ${e.name}`;
       if (t)
@@ -54970,7 +54970,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         children: C9(e.name),
       });
     }
-    function rpe({ id: e }) {
+    function ipe({ id: e }) {
       let [t, n] = _s.useState(false),
         r = _s.useRef(undefined),
         o = _s.useRef(null);
@@ -55002,7 +55002,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             _t.jsx("span", {
               role: "tooltip",
               "data-testid": "debug-chat-frontier-id-full",
-              style: { background: npe },
+              style: { background: ope },
               className:
                 "absolute end-0 bottom-full mb-1 rounded-md border border-current/25 px-1.5 py-0.5 whitespace-nowrap backdrop-blur-md",
               children: e,
@@ -55103,7 +55103,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                           }),
                       ],
                     }),
-                    p && _t.jsx(rpe, { id: p }),
+                    p && _t.jsx(ipe, { id: p }),
                   ],
                 }),
                 f &&
@@ -55142,7 +55142,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         }),
       });
     }
-    var ope = [
+    var ape = [
       "joined",
       "listening",
       "listeningAll",
@@ -55153,7 +55153,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       "unmuted",
     ];
     var I9 = (e) => (e === "all" || e === "system" ? e : undefined);
-    var ipe = {
+    var spe = {
         en: {
           joined: "{name} joined (read-only)",
           listening: "{name} is now listening live",
@@ -55414,10 +55414,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           tokensNeeded: "참여하려면 토큰이 필요합니다: {names}(환경설정 → API 토큰)",
         },
       },
-      ape = (e) => typeof e === "string" && CS.includes(e),
-      z9 = (e) => ipe[ape(e) ? e : "en"],
-      spe = (e) => typeof e === "string" && ope.includes(e),
-      lpe = (e, t) => z9(t)[e.kind].replaceAll("{name}", e.name);
+      lpe = (e) => typeof e === "string" && CS.includes(e),
+      z9 = (e) => spe[lpe(e) ? e : "en"],
+      cpe = (e) => typeof e === "string" && ape.includes(e),
+      upe = (e, t) => z9(t)[e.kind].replaceAll("{name}", e.name);
     function $9(e, t) {
       let n = z9(t);
       if (e.muted === true) return n.modeMuted;
@@ -55430,16 +55430,16 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       if (e.mode === "reader") return n.modeReader;
       return null;
     }
-    function cpe(e) {
+    function dpe(e) {
       if (!e || typeof e !== "object") return null;
       let t = e;
-      if (typeof t.lane !== "string" || typeof t.name !== "string" || !spe(t.kind)) return null;
+      if (typeof t.lane !== "string" || typeof t.name !== "string" || !cpe(t.kind)) return null;
       return { lane: t.lane, name: t.name, kind: t.kind };
     }
     function H9(e, t) {
-      let n = e.laneEvent === undefined ? null : cpe(e.laneEvent);
+      let n = e.laneEvent === undefined ? null : dpe(e.laneEvent);
       if (!n) return e;
-      let r = lpe(n, t);
+      let r = upe(n, t);
       return r === e.text ? e : { ...e, text: r };
     }
     var tn = ee(We(), 1);
@@ -55472,8 +55472,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         o = n.map((i) => i.name || "agent").join(", ");
       return r ? `${o} +${r}` : o;
     }
-    var upe = "new-token",
-      V9 = `/my/preferences?${upe}=chat-agent#api-tokens`;
+    var ppe = "new-token",
+      V9 = `/my/preferences?${ppe}=chat-agent#api-tokens`;
     function j9(e = "https://lianki.com") {
       return [
         `MCP: ${e}/mcp`,
@@ -55502,13 +55502,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     }
     var xe = ee(we(), 1),
       wM = "var(--lk-primary, oklch(0.53 0.207 22.3))",
-      dpe = "var(--lk-on-primary, oklch(0.985 0.01 85))",
+      fpe = "var(--lk-on-primary, oklch(0.985 0.01 85))",
       Xn = (e) => e.preventDefault(),
-      ppe = 18,
-      fpe = 350,
-      mpe = '<svg viewBox="0 0 24 24">…</svg>',
+      mpe = 18,
+      gpe = 350,
+      hpe = '<svg viewBox="0 0 24 24">…</svg>',
       W9 = (e) => new Date(e).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-    function gpe({ p: e }) {
+    function bpe({ p: e }) {
       if (e.mode !== "listener" || e.muted) return null;
       let t = e.scope === "all" || e.scope === "system";
       return xe.jsx("span", {
@@ -55538,7 +55538,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         style: { inset: n, ...(r ? {} : { animationDuration: "2.4s" }) },
       });
     }
-    var hpe = (e) => G9({ id: e.lane ?? e.selfName ?? e.name, name: e.name }, us()),
+    var ype = (e) => G9({ id: e.lane ?? e.selfName ?? e.name, name: e.name }, us()),
       Z9 = (e, t) => Yl({ name: e.name || t, lane: e.lane, avatar: e.avatar }),
       K9 =
         "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[oklch(0.9_0.01_260)] px-1 fs-9 font-semibold text-[oklch(0.35_0.02_260)] ring-1 ring-[oklch(0.98_0.005_85)] dark:bg-[oklch(0.35_0.02_260)] dark:text-[oklch(0.92_0.01_260)] dark:ring-[oklch(0.22_0.01_260)]",
@@ -55604,7 +55604,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 return;
               }
               let x = Date.now();
-              if (x - f.current < fpe) ((f.current = 0), l(false), u(true));
+              if (x - f.current < gpe) ((f.current = 0), l(false), u(true));
               else ((f.current = x), l((w) => !w));
             },
             className: "tap-40 inline-flex min-h-5 items-center rounded px-0.5 py-0.5 leading-none",
@@ -55620,9 +55620,9 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                     className: `relative inline-flex rounded-full ring-1 ring-[oklch(0.98_0.005_85)] dark:ring-[oklch(0.22_0.01_260)] ${x ? "-ms-1.5" : ""}`,
                     style: { zIndex: h.shown.length - x },
                     children: [
-                      xe.jsx(oo, { src: Z9(v, r), name: v.name, size: ppe, hidden: true }),
+                      xe.jsx(oo, { src: Z9(v, r), name: v.name, size: mpe, hidden: true }),
                       xe.jsx(Y9, { p: v, t: n }),
-                      xe.jsx(gpe, { p: v }),
+                      xe.jsx(bpe, { p: v }),
                     ],
                   },
                   v.key,
@@ -55659,7 +55659,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               children: b,
             }),
           c &&
-            xe.jsx(bpe, {
+            xe.jsx(vpe, {
               live: g.live,
               readers: g.readers,
               t: n,
@@ -55671,9 +55671,9 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         ],
       });
     }
-    function bpe({ live: e, readers: t, t: n, mainName: r, onChange: o, onRemove: i, onClose: a }) {
+    function vpe({ live: e, readers: t, t: n, mainName: r, onChange: o, onRemove: i, onClose: a }) {
       let s = (p, m = false) =>
-          xe.jsx(vpe, { p, t: n, mainName: r, plain: m, onChange: o, onRemove: i }, p.key),
+          xe.jsx(xpe, { p, t: n, mainName: r, plain: m, onChange: o, onRemove: i }, p.key),
         [l, c] = tn.useState(false),
         [u, f] = tn.useState(false);
       return xe.jsxs("div", {
@@ -55753,13 +55753,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                     }),
                   ],
                 }),
-                l && xe.jsx(ype, { t: n }),
+                l && xe.jsx(kpe, { t: n }),
               ],
             }),
         ],
       });
     }
-    function ype({ t: e }) {
+    function kpe({ t: e }) {
       let [t, n] = tn.useState(false),
         r = j9(typeof location > "u" ? undefined : location.origin);
       return xe.jsxs("div", {
@@ -55792,7 +55792,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         ],
       });
     }
-    function vpe({ p: e, t, mainName: n, plain: r, onChange: o, onRemove: i }) {
+    function xpe({ p: e, t, mainName: n, plain: r, onChange: o, onRemove: i }) {
       let [a, s] = tn.useState(false),
         [l, c] = tn.useState(false),
         [u, f] = tn.useState(false),
@@ -55809,7 +55809,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       else R.push(t.peopleActive.replaceAll("{time}", W9(e.active)));
       if (e.since) R.push(t.peopleSince.replaceAll("{time}", W9(e.since)));
       let M = R.join(" · "),
-        j = hpe(e),
+        j = ype(e),
         U = e.name || n,
         G = !r || (S && (!!o || !!i)),
         V = !e.avatar ? "auto" : e.avatarBy === "agent" ? "own" : "pasted",
@@ -56059,7 +56059,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                                     rows: 3,
                                     "aria-label": t.peoplePaste,
                                     "aria-invalid": w || undefined,
-                                    placeholder: mpe,
+                                    placeholder: hpe,
                                     onChange: (ie) => {
                                       (x(ie.target.value), T(false));
                                     },
@@ -56114,7 +56114,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                           else m(true);
                         },
                         className: "min-h-11 rounded-full px-3 font-medium",
-                        style: { background: wM, color: dpe },
+                        style: { background: wM, color: fpe },
                         children: t.peopleRemove,
                       }),
                       xe.jsx("button", {
@@ -56223,7 +56223,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       return { bubble: e || i.trim() ? { text: e, tail: i } : null, input: "" };
     }
     var Q9 = (e) => e.replace(/\s+/g, " ").trim();
-    function kpe(e, t) {
+    function wpe(e, t) {
       let n = Q9(t.text);
       return e.some(
         (r) =>
@@ -56233,7 +56233,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       );
     }
     function Pv(e, t, n) {
-      return e.filter((r) => n - r.at < TM && !kpe(t, r));
+      return e.filter((r) => n - r.at < TM && !wpe(t, r));
     }
     function tK(e, t, n, r, o) {
       return {
@@ -56251,7 +56251,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       return [...e].length === 1;
     }
     var Jl = ee(We(), 1);
-    var xpe = {
+    var Spe = {
         tree: "Tree",
         back: "Back to the chat",
         needsMe: "Needs me",
@@ -56276,14 +56276,14 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         upNext: "Up next",
         live: "Live from the dev server",
       },
-      _m = (e) => ({ ...xpe, ...e }),
+      _m = (e) => ({ ...Spe, ...e }),
       rK = (e, t) =>
         typeof e === "string"
           ? P5(e, t)
           : Array.isArray(e)
             ? { title: "", links: [], children: e }
             : e;
-    async function wpe(e, t = {}) {
+    async function Tpe(e, t = {}) {
       let n;
       if (typeof e === "string") {
         let r = await fetch2(e, { credentials: "same-origin", cache: "no-store" });
@@ -56311,7 +56311,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             };
           }
           return (
-            wpe(e, { repo: n }).then((f) => {
+            Tpe(e, { repo: n }).then((f) => {
               if (!c) return;
               (o(f), l(false), a(null));
             }, u),
@@ -56324,29 +56324,29 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       );
     }
     var L = ee(we(), 1),
-      Spe = [],
-      Tpe = 3000,
+      Ape = [],
+      Epe = 3000,
       oK = "lk:debug-chat-open",
-      Ape = 3000,
+      _pe = 3000,
       iK = "drag: move · tap: minimize · double-tap: menu",
-      Epe = { direction: "ltr" },
+      Mpe = { direction: "ltr" },
       aK = { display: "contents", direction: "ltr" },
       EM = { left: "items-start", center: "items-center", right: "items-end" },
-      _pe = { left: "left", center: "center", right: "right" },
-      Mpe = (e, t) => ({ ...e, className: `${e.className} ${t}` }),
-      Rpe =
+      Rpe = { left: "left", center: "center", right: "right" },
+      Lpe = (e, t) => ({ ...e, className: `${e.className} ${t}` }),
+      Cpe =
         "Hold to talk: one line, sent when you let go (slide away to cancel). Tap: always listening. ↑/↓: scroll back through the chat",
-      Lpe = 10,
-      Cpe = 3,
+      Npe = 10,
+      Ope = 3,
       Dv = "lk:debug-chat-pos",
-      Npe = 1500,
+      Ppe = 1500,
       Lo = "color-mix(in oklch, var(--background) 55%, transparent)",
-      Ope = {
+      Dpe = {
         background: Lo,
         backdropFilter: "blur(12px) saturate(1.5)",
         WebkitBackdropFilter: "blur(12px) saturate(1.5)",
       };
-    function Ppe(e, t, n) {
+    function Ipe(e, t, n) {
       let [r, o] = E.useState(() => {
           try {
             let A = JSON.parse(MM(Dv) ?? "null");
@@ -56387,7 +56387,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               safeTop: Lm(),
             }),
             (M.style.willChange = "transform"),
-            $pe())
+            Upe())
           )
             R.gaps = aG();
         }
@@ -56414,7 +56414,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         g = () => requestAnimationFrame(() => dispatchEvent(new CustomEvent("lk:chat-moved"))),
         h = (A, C) => {
           if ((p.current.flush(), A.box)) A.box.style.willChange = "";
-          if (A.gaps) Hpe(A.gaps.report());
+          if (A.gaps) Fpe(A.gaps.report());
           let S = A.at;
           if (!S) return;
           if (((i.current = S), o(S), C)) Cm(Dv, JSON.stringify(S));
@@ -56493,10 +56493,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         fit: w,
       };
     }
-    var Dpe = { color: "light-dark(oklch(0.5 0.01 260), oklch(0.72 0.01 260))" },
-      Ipe = { background: pv, borderRadius: 3 },
+    var zpe = { color: "light-dark(oklch(0.5 0.01 260), oklch(0.72 0.01 260))" },
+      $pe = { background: pv, borderRadius: 3 },
       sK = "clip-path 200ms ease-out",
-      zpe = "opacity 200ms ease-out",
+      Hpe = "opacity 200ms ease-out",
       lK = () => {
         let e = (i, a) => typeof CSS < "u" && CSS.supports(i, a),
           t = e("backdrop-filter", mm) || e("-webkit-backdrop-filter", mm),
@@ -56512,21 +56512,21 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       },
       Nm = "--lk-kb-lift",
       _M = (e) => Number.parseFloat(e.style.getPropertyValue(Nm)) || 0,
-      $pe = () => {
+      Upe = () => {
         try {
           return localStorage2.getItem(sG) === "1";
         } catch {
           return false;
         }
       };
-    function Hpe(e) {
+    function Fpe(e) {
       ((globalThis.__lkDragPerf ??= []),
         globalThis.__lkDragPerf.push(e),
         console.debug(
           `[drag-perf] ${e.frames} frames, gap p95 ${e.p95.toFixed(1)} ms, max ${e.max.toFixed(1)} ms`,
         ));
     }
-    function Upe() {
+    function Bpe() {
       let e = document.createElement("div");
       ((e.style.cssText =
         "position:fixed;visibility:hidden;padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)"),
@@ -56538,7 +56538,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         };
       return (e.remove(), n);
     }
-    function Fpe() {
+    function Vpe() {
       let e = document.createElement("div");
       ((e.style.cssText =
         "position:fixed;visibility:hidden;padding-bottom:env(safe-area-inset-bottom)"),
@@ -56561,15 +56561,15 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       Cm = (e, t) => CH(e, t),
       LM = () => (typeof speechSynthesis > "u" ? null : speechSynthesis),
       RM = "lk:debug-chat-target";
-    function Bpe(e) {
+    function jpe(e) {
       if (typeof window > "u") return;
       (mK(rb(e) ?? Yn), window.dispatchEvent(new CustomEvent(RM, { detail: e })));
     }
-    var Vpe = () => (typeof window > "u" ? Yn : (window.__lkDebugChatTarget ?? Yn)),
+    var Gpe = () => (typeof window > "u" ? Yn : (window.__lkDebugChatTarget ?? Yn)),
       mK = (e) => {
         if (typeof window < "u") window.__lkDebugChatTarget = e;
       };
-    if (typeof window < "u") window.__lkDebugChat = { setTarget: Bpe };
+    if (typeof window < "u") window.__lkDebugChat = { setTarget: jpe };
     var cK = false;
     function Mm() {
       let e = LM();
@@ -56588,7 +56588,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         i = `${Ql(t.getHours())}:${Ql(t.getMinutes())}`;
       return n === o ? `${i}:${Ql(t.getSeconds())}` : `${n} ${i}`;
     }
-    var jpe = {
+    var Wpe = {
       mic: false,
       speaking: false,
       hold: false,
@@ -56610,7 +56610,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       it().unblock?.();
     }
     var Rm = 18,
-      Gpe = 128,
+      Kpe = 128,
       pK = new Set();
     function CM({
       live: e,
@@ -56627,7 +56627,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       onSend: f,
       onAnswer: p,
       onPassageEnd: m,
-      echoes: g = Spe,
+      echoes: g = Ape,
       onEchoMine: h,
       sessions: y = [],
       onEnd: b,
@@ -56810,7 +56810,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         }, [uo]));
       let [mr, Iv] = E.useState(Ru),
         [Cs, ka] = E.useState(Xi),
-        [xa, EK] = E.useState(kj);
+        [xa, MK] = E.useState(kj);
       (E.useEffect(() => qG(), []),
         E.useEffect(() => {
           let d = () => ka(Xi());
@@ -56831,7 +56831,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           }
         );
       }, []);
-      let [zM, _K] = E.useState(Nb),
+      let [zM, RK] = E.useState(Nb),
         $M = E.useRef((d) => {}),
         HM = E.useRef(() => {}),
         UM = E.useRef((d) => {}),
@@ -56839,19 +56839,19 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           offset: FM,
           handle: Hn,
           begin: BM,
-          moveTo: MK,
-          end: RK,
-          shift: LK,
-          moved: CK,
+          moveTo: LK,
+          end: CK,
+          shift: NK,
+          moved: OK,
           wasDrag: VM,
           holding: od,
           fit: jM,
-        } = Ppe(
+        } = Ipe(
           (d) => $M.current(d),
           { now: () => tt.current, leave: () => HM.current() },
           (d) => UM.current(d),
         ),
-        [GM, NK] = E.useState(false),
+        [GM, PK] = E.useState(false),
         WM = E.useRef(false),
         $m = ub(),
         KM = It($m, (d) => d.tucked),
@@ -56864,15 +56864,15 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       let YM = aM(gr),
         ad = E.useRef({ fold: id, edge: gr });
       ad.current = { fold: id, edge: gr };
-      let [OK, ZM] = E.useState(false),
+      let [DK, ZM] = E.useState(false),
         Hm = E.useRef(undefined);
       E.useEffect(() => () => clearTimeout(Hm.current), []);
       let qM = () => {
-          (clearTimeout(Hm.current), ZM(false), CK());
+          (clearTimeout(Hm.current), ZM(false), OK());
         },
         Ye = CD(o),
         hr = E.useRef(null),
-        [Io, PK] = E.useState(() => Ye.getState().panel),
+        [Io, IK] = E.useState(() => Ye.getState().panel),
         Um = E.useRef(Io);
       Um.current = Io;
       let zo = (d) => {
@@ -56880,7 +56880,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           _ = typeof d === "function" ? d(k) : d;
         if (_ === k) return;
         if (k === "voiceprint" && !Pj()) return;
-        ((Um.current = _), PK(_));
+        ((Um.current = _), IK(_));
       };
       E.useEffect(() => Ye.setState({ panel: Io === "tree" ? "tree" : "none" }), [Io]);
       let zv = Io === "menu",
@@ -56889,7 +56889,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       E.useLayoutEffect(() => {
         if (!Do && !fe) jM(hr.current, Te);
       }, [Te, kt, fe]);
-      let [Ns, DK] = E.useState({ side: "left", left: 0 }),
+      let [Ns, zK] = E.useState({ side: "left", left: 0 }),
         XM = E.useRef(null),
         ec = E.useRef(null),
         $v = E.useRef(null),
@@ -56898,7 +56898,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         let d = ec.current?.getBoundingClientRect(),
           k = XM.current?.getBoundingClientRect();
         if (!d || !k) return;
-        let { left: _, right: Y } = Upe(),
+        let { left: _, right: Y } = Bpe(),
           re = MW({
             side: OW(ad.current.edge),
             barLeft: d.left,
@@ -56909,10 +56909,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             insetRight: Y,
           }),
           ge = { side: re.side, left: re.left - k.left };
-        DK((ce) => (ce.side === ge.side && ce.left === ge.left ? ce : ge));
+        zK((ce) => (ce.side === ge.side && ce.left === ge.left ? ce : ge));
       }),
         E.useLayoutEffect(() => sd.current()));
-      let [Hv, IK] = E.useState(null);
+      let [Hv, $K] = E.useState(null);
       E.useLayoutEffect(() => {
         if (!Do) return;
         let d = () => {
@@ -56925,12 +56925,12 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             safeTop: Lm() + iM,
             safeBottom: fK("bottom") + iM,
           });
-          IK((Y) => (Y === _ ? Y : _));
+          $K((Y) => (Y === _ ? Y : _));
         };
         return (d(), addEventListener("resize", d), () => removeEventListener("resize", d));
       }, [Do]);
       let Fm = E.useRef(false),
-        zK = (d) => {
+        HK = (d) => {
           (Mm(), (Fm.current = false));
           let { clientX: k, clientY: _ } = d,
             Y = false,
@@ -56942,7 +56942,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   mi.flushSync(() => Wo({ type: "handle" }, true)),
                   BM(k, _));
               }
-              MK(hr.current, ce.clientX, ce.clientY);
+              LK(hr.current, ce.clientX, ce.clientY);
             },
             ge = () => {
               if (
@@ -56951,7 +56951,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 removeEventListener("pointercancel", ge),
                 Y)
               )
-                RK();
+                CK();
             };
           (addEventListener("pointermove", re),
             addEventListener("pointerup", ge),
@@ -57032,7 +57032,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           );
         }, []));
       let Uv = E.useRef(null),
-        $K = (d) => {
+        UK = (d) => {
           if ($v.current === d) return;
           if ((Uv.current?.disconnect(), ($v.current = d), d && typeof ResizeObserver < "u"))
             ((Uv.current = new ResizeObserver(() => sd.current())), Uv.current.observe(d));
@@ -57042,16 +57042,16 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         if (ad.current.fold !== "tucked") jM(hr.current, Te);
       };
       let Bm = E.useRef(Ye.getState().tree?.scroll ?? 0),
-        [HK, UK] = E.useState(0);
+        [FK, BK] = E.useState(0);
       E.useEffect(() => {
-        if (kt) UK((d) => d + 1);
+        if (kt) BK((d) => d + 1);
       }, [kt]);
-      let wa = AM(oe, HK, he),
-        FK = AM(Tt ? D : undefined, 0, he),
-        Fv = D ? FK.root : wa.root,
+      let wa = AM(oe, FK, he),
+        VK = AM(Tt ? D : undefined, 0, he),
+        Fv = D ? VK.root : wa.root,
         Ho = E.useMemo(() => (Tt && (D ?? oe) ? h5(Fv) : []), [Tt, D, oe, Fv]),
         [tc, QM] = E.useState(() => Date.now()),
-        [BK, Vm] = E.useState(false),
+        [jK, Vm] = E.useState(false),
         eR = E.useRef(N);
       eR.current = N;
       let Bv = E.useRef(null);
@@ -57089,7 +57089,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           });
         },
         Vv = (d, k) => (k ? `${d}, ${ze.newCount.replace("{n}", String(k))}` : d),
-        [VK, oR] = E.useState(() => new Set());
+        [GK, oR] = E.useState(() => new Set());
       E.useEffect(() => {
         let d = KH();
         return (oR(d.ids), d.subscribe(() => oR(d.ids)));
@@ -57197,11 +57197,11 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 },
               }
             : pR),
-        [jK, GK] = E.useState(false),
+        [WK, KK] = E.useState(false),
         fR = () => {
           let d = yi.current;
           if (!d) return;
-          ((Bm.current = d.scrollTop), GK(d.scrollHeight > d.clientHeight + 1 || d.scrollTop > 0));
+          ((Bm.current = d.scrollTop), KK(d.scrollHeight > d.clientHeight + 1 || d.scrollTop > 0));
           let k = Ye.getState().tree,
             _ = Math.round(d.scrollTop);
           if (k && Kv.current === null && k.scroll !== _)
@@ -57263,7 +57263,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             ...(d ? {} : { caret: null }),
           }),
         Uo = B4(be, o ?? Ie?.scope),
-        WK = V4(),
+        YK = V4(),
         hR = E.useRef(Br);
       hR.current = Br;
       let Fo = It(Ye, (d) => d.attached);
@@ -57273,7 +57273,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         Ye.setState({ attached: k });
       }, [Uo.sel, X, w, Ye]);
       let bR = It(Ye, (d) => d.expandedOthers),
-        KK = E.useMemo(() => new Set(bR), [bR]),
+        ZK = E.useMemo(() => new Set(bR), [bR]),
         yR = E.useCallback(
           (d) => {
             Ye.setState((k) => ({
@@ -57285,7 +57285,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           [Ye],
         ),
         [rc, vR] = E.useState(false),
-        YK = E.useCallback(() => vR(false), []),
+        qK = E.useCallback(() => vR(false), []),
         Bo = E.useRef(Ie);
       Bo.current = X ? Ie : undefined;
       let [pn] = E.useState(() =>
@@ -57298,7 +57298,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           }),
         ),
         Vr = I6(pn),
-        ZK = $A(Vr),
+        XK = $A(Vr),
         oc = E.useRef(false),
         [Jv, Qv] = E.useState(false),
         cd = X ? (Ie?.scope ?? null) : null,
@@ -57314,7 +57314,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           }
         );
       }, [cd, pn, X]);
-      let [qK, Ym] = E.useState(false),
+      let [JK, Ym] = E.useState(false),
         ek = E.useRef(null);
       E.useEffect(() => {
         if (!Ie || !X) return;
@@ -57343,7 +57343,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         );
       }, [Ie, X]);
       let [Zm, tk] = E.useState(false),
-        XK = (d) => {
+        QK = (d) => {
           let k = ek.current;
           if (!k) return;
           ((k.accept = d ?? ""), tk(true), k.click());
@@ -57360,11 +57360,11 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           }
         );
       }, [Zm]);
-      let [qm, JK] = E.useState(Vpe),
+      let [qm, eY] = E.useState(Gpe),
         Xm = E.useRef(qm),
         Ds = (d) => {
           let k = rb(d) ?? Yn;
-          ((Xm.current = k), mK(k), JK(k));
+          ((Xm.current = k), mK(k), eY(k));
         };
       E.useEffect(() => {
         let d = (k) => Ds(String(k.detail ?? Yn));
@@ -57372,10 +57372,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       }, []);
       let [xR, Ta] = E.useState(0),
         [Jm, Qm] = E.useState(false),
-        [QK, eY] = E.useState(0),
+        [tY, nY] = E.useState(0),
         rt = E.useRef(Ye.getState().draft),
         eg = E.useRef(false),
-        [Aa, tY] = E.useState(null),
+        [Aa, rY] = E.useState(null),
         ud = E.useRef(Aa);
       ud.current = Aa;
       let wR = E.useRef(o ?? Ie?.scope ?? null);
@@ -57386,7 +57386,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       xt.current ??= uW({
         scope: () => wR.current,
         show: (d) => {
-          ((ud.current = d), tY(d));
+          ((ud.current = d), rY(d));
         },
         send: (d) => SR.current(d),
       });
@@ -57395,7 +57395,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         zs = E.useRef(false);
       zs.current = dd;
       let [ic, nk] = E.useState([]),
-        nY = E.useRef(0),
+        oY = E.useRef(0),
         ac = E.useRef(false),
         vi = E.useRef(undefined),
         Ot = E.useRef(null),
@@ -57411,7 +57411,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         [$s, ER] = E.useState(0),
         ok = E.useRef(null),
         _R = E.useRef(null),
-        rY = (d) => {
+        iY = (d) => {
           if (_R.current === d) return;
           if ((ok.current?.disconnect(), (_R.current = d), !d)) return ER(0);
           let k = () => ER(Math.ceil(d.getBoundingClientRect().height));
@@ -57424,7 +57424,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         [NR, ik] = E.useState(pK),
         OR = E.useRef(null),
         [Hs, PR] = E.useState(false),
-        [ak, oY] = E.useState(false),
+        [ak, aY] = E.useState(false),
         ki = XV(Hs, ak),
         DR = E.useRef(0),
         og = () => {
@@ -57453,7 +57453,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         xi = (d) => {
           lk.current = BI(lk.current, Date.now(), d);
         },
-        [iY, aY] = E.useState(0),
+        [sY, lY] = E.useState(0),
         Ea = UI({
           pref: Us,
           open: Te,
@@ -57484,9 +57484,9 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           });
           if (d === null) return;
           if (d === "now") return sk(false);
-          let k = setTimeout(() => aY((_) => _ + 1), d);
+          let k = setTimeout(() => lY((_) => _ + 1), d);
           return () => clearTimeout(k);
-        }, [Us, Te, gd, ki, rk, Io, Ht, fe, iY]));
+        }, [Us, Te, gd, ki, rk, Io, Ht, fe, sY]));
       let ck = ve.at(-1);
       E.useEffect(() => {
         if (!ck || !gd) return;
@@ -57541,7 +57541,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   vh: innerHeight,
                   visibleTop: ce?.offsetTop ?? 0,
                   visibleBottom: ce ? ce.offsetTop + ce.height : innerHeight,
-                  safe: { top: ld.current, bottom: Fpe() },
+                  safe: { top: ld.current, bottom: Vpe() },
                   log: { left: _.left, width: _.width, bottom: _.bottom, height: _.height },
                   barTop: Un ? ec.current?.getBoundingClientRect().top : undefined,
                 });
@@ -57583,7 +57583,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             (xi(Sl), md((d) => (d === "on" ? "leaving" : d)));
           },
         },
-        sY = (d, k = false) => {
+        cY = (d, k = false) => {
           if (k) return { ...d, style: { ...d.style, ...VW } };
           if (Ht === "off") return d;
           let _ = gt.current.box,
@@ -57626,13 +57626,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         ),
         [],
       );
-      let lY = (d, k) => {
+      let uY = (d, k) => {
           let _ = a9(d, k, HR.current, wi());
           if (_.inside) hd.move(k);
           else hd.hold(k);
           lc.current?.set(_.speed);
         },
-        cY = {
+        dY = {
           onPointerDown: (d) => {
             if (((HR.current = yM()), !Te || TR.current)) return;
             (bd.current.down(d.clientX, d.clientY),
@@ -57643,7 +57643,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               _ = bd.current.move(d.clientX, d.clientY);
             if (!_ || _.axis !== "y") return;
             if (!k) (d.currentTarget.setPointerCapture?.(d.pointerId), hd.start("input"));
-            lY(_.dx, _.dy);
+            uY(_.dx, _.dy);
           },
           onPointerUp: () => {
             if ((lc.current?.set(0), bd.current.up() === "y")) hd.end();
@@ -57733,7 +57733,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           if (((d.style.height = ""), !d.value || d.clientWidth < 40)) return;
           d.style.height = "auto";
           let k = d.offsetHeight - d.clientHeight;
-          d.style.height = `${Math.min(d.scrollHeight + k, Gpe)}px`;
+          d.style.height = `${Math.min(d.scrollHeight + k, Kpe)}px`;
         };
       (E.useEffect(() => {
         let d = jr.current;
@@ -57808,13 +57808,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       let ag = E.useRef(f);
       ((ag.current = f),
         E.useEffect(() => (LM()?.getVoices(), () => clearTimeout(vi.current)), []));
-      let uY = MM(_4),
-        po = v ? { source: "none" } : R4(uY, x, true);
+      let pY = MM(_4),
+        po = v ? { source: "none" } : R4(pY, x, true);
       E.useEffect(() => {
         if (po.source !== "none")
           it().log({ ev: "local-stt", state: "route", source: po.source, urls: po.urls ?? "" });
       }, [po.source, po.urls]);
-      let [er, BR] = E.useState(jpe);
+      let [er, BR] = E.useState(Wpe);
       (E.useEffect(() => {
         let d = it();
         return (BR(d.state()), d.subscribe(BR));
@@ -57909,11 +57909,11 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             { context: Oa, attachments: Sg } = ge,
             Gr = nv().kept?.() ?? 0,
             Bk = Bs.current.at(-1),
-            QY = !!k || pk.current;
+            tZ = !!k || pk.current;
           if (!k) pk.current = false;
           let Tg =
               ce &&
-              !QY &&
+              !tZ &&
               Bk &&
               VR.current === Gr &&
               iH(
@@ -57947,8 +57947,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           }
           if (((oc.current = false), !k)) sg.current = null;
           if (ot && u === undefined) {
-            let Ag = tK(++nY.current, _, Bs.current, Date.now(), Tg);
-            mi.flushSync(() => nk((eZ) => [...eZ, Ag]));
+            let Ag = tK(++oY.current, _, Bs.current, Date.now(), Tg);
+            mi.flushSync(() => nk((nZ) => [...nZ, Ag]));
           }
           if (Oa) (Ye.setState({ attached: null }), Uo.clear());
           if (pn.get().length) pn.take();
@@ -57987,7 +57987,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         cc = E.useRef(rt.current.length),
         GR = E.useRef(false),
         WR = E.useRef(false),
-        [Un, dY] = E.useState(false),
+        [Un, fY] = E.useState(false),
         [lg, fk] = E.useState("unknown");
       E.useEffect(() => {
         if (x || !Un || lg !== "unknown" || po.source !== "none") return;
@@ -58028,7 +58028,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       let Vs = bk ? j_(ZR, NR) : [],
         yk = Vs.length > 0 && !rc && !Jv && Io === "none",
         qR = WG(Z?.askJump ? K.askJump : Ze.askJump, Vs.length),
-        pY = () => {
+        mY = () => {
           let d = Ot.current,
             k = GG(j_(V_(ve, Date.now()), NR)),
             _ = k && d && Av(d, k);
@@ -58052,7 +58052,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         let d = cg.current,
           k = Ot.current;
         if (!d || !k) return;
-        if (Date.now() - d.at > Npe) {
+        if (Date.now() - d.at > Ppe) {
           cg.current = null;
           return;
         }
@@ -58133,7 +58133,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               },
               chat: () => hr.current,
               busy: () => YR.current,
-              onHeld: oY,
+              onHeld: aY,
               onReady: (d) => {
                 OR.current = d;
               },
@@ -58144,15 +58144,15 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           if (kt) fR();
         }, [kt, Te, Hs, Un]));
       let dg = E.useRef(0),
-        [fY, mY] = E.useState(false);
-      E.useEffect(() => mY(!be && sv()), [be]);
-      let [Gs, gY] = E.useState(""),
+        [gY, hY] = E.useState(false);
+      E.useEffect(() => hY(!be && sv()), [be]);
+      let [Gs, bY] = E.useState(""),
         Si = eK({ draft: yr, pureDictation: tr.current, interim: Gs, inInput: dd });
       ((TR.current = Si.input),
         E.useEffect(() => {
           if (!yr && dd) tg(false);
         }, [yr, dd]));
-      let hY = Pv(ic, ve, Date.now());
+      let yY = Pv(ic, ve, Date.now());
       E.useEffect(() => {
         if (!ic.length) return;
         let d = Date.now(),
@@ -58175,7 +58175,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         _a = [
           ...(
             u ??
-            hY.map((d) => ({
+            yY.map((d) => ({
               id: `${Em}-${d.key}`,
               text: d.text,
               rejected: undefined,
@@ -58225,7 +58225,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             ...Ve,
           },
         ),
-        bY = () => {
+        vY = () => {
           if (!Te) fg(true);
           if (pg()) requestAnimationFrame(() => jr.current?.focus());
         };
@@ -58242,7 +58242,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             "data-live": d.state,
             "aria-busy": !d.reason || undefined,
             title: d.reason ?? _,
-            onClick: d.key === Em && d.state !== "sending" ? bY : undefined,
+            onClick: d.key === Em && d.state !== "sending" ? vY : undefined,
             style: k === "float" ? { textShadow: nd } : undefined,
             className: `pointer-events-auto flex items-start gap-1.5 rounded-md border border-dashed border-current/30 px-1 leading-snug opacity-80 ${d.state === "sending" ? "" : "cursor-text"} ${k === "float" ? "py-0.5" : ""}`,
             children: [
@@ -58292,7 +58292,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         if ((!X && !ue) || w || (!Vr.length && !Fo)) return null;
         return L.jsxs(d === "compact" ? "div" : "li", {
           "data-testid": "debug-chat-pending",
-          "data-state": ZK.state,
+          "data-state": XK.state,
           "aria-busy": Vr.some((_) => _.state === "uploading") || undefined,
           className:
             "pointer-events-auto flex min-w-0 max-w-full items-start gap-1.5 rounded-md border border-dashed border-current/30 px-1 py-0.5 leading-snug opacity-80",
@@ -58427,7 +58427,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             }
           );
         }, []));
-      let yY = (d) => {
+      let kY = (d) => {
           if (J$(d) && !ty(d, ry())) {
             (it().log({ ev: "stt-blip", chars: d.length }), fo.current?.idle(), Ma.current?.idle());
             return;
@@ -58450,7 +58450,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           }
           Ra();
         },
-        vY = () => {
+        xY = () => {
           if (rt.current.trim() && sb(rt.current, tr.current)) Vo();
           pk.current = true;
         },
@@ -58470,7 +58470,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             Lp(rt.current)?.complete === false
           )
             return Ta(0);
-          (Ta((d) => d + 1), (vi.current = setTimeout(Vo, Tpe)));
+          (Ta((d) => d + 1), (vi.current = setTimeout(Vo, Epe)));
         },
         Go = E.useRef(Ra);
       Go.current = Ra;
@@ -58555,7 +58555,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           let _ = ad.current,
             Y = LW(_, d);
           if (Y.fold === _.fold && Y.edge === _.edge) return;
-          LK(
+          NK(
             PW({
               from: _.edge,
               to: Y.edge,
@@ -58577,7 +58577,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           )
             fg(Y.fold === "open");
         },
-        [kY, xY] = E.useState(false),
+        [wY, SY] = E.useState(false),
         uL = E.useRef(() => {});
       uL.current = (d) => {
         if (!Oo) return;
@@ -58587,7 +58587,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               if (d && !gg.current) Wo({ type: "restore" });
               $o(true);
             },
-            cue: xY,
+            cue: SY,
             apply: () => {
               (js(d), bl().setState({ full: d }));
             },
@@ -58619,7 +58619,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               }),
             _ = WW(WM.current, k);
           if (!_) return;
-          if (((WM.current = k), NK(k), _ === "enter")) navigator2.vibrate?.(KW);
+          if (((WM.current = k), PK(k), _ === "enter")) navigator2.vibrate?.(KW);
         }),
         ($M.current = (d) => {
           let k = innerWidth;
@@ -58668,9 +58668,9 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         }));
       let [uc, dc] = E.useState([]),
         Ak = E.useRef(new Map()),
-        [wY, SY] = E.useState(() => new Set()),
-        TY = (d) =>
-          SY((k) => {
+        [TY, AY] = E.useState(() => new Set()),
+        EY = (d) =>
+          AY((k) => {
             let _ = new Set(k);
             if (!_.delete(d)) _.add(d);
             return _;
@@ -58678,7 +58678,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         yd = (d) => {
           if ((!d.edited && !d.summary && !d.passage) || d.raw === undefined)
             return { text: d.text, mark: null };
-          let k = Boolean(d.summary) && wY.has(d.id);
+          let k = Boolean(d.summary) && TY.has(d.id);
           return {
             text: k
               ? L.jsx("span", {
@@ -58701,15 +58701,15 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   : ie,
                 label: d.summary ? Ze.summaryTip : Z?.polished ? K.polished : Ze.polished,
                 showRaw: k,
-                onToggle: () => TY(d.id),
+                onToggle: () => EY(d.id),
                 rawText: d.summary ? undefined : d.raw,
               }),
             }),
           };
         },
-        [AY, dL] = E.useState(0),
-        [EY, _Y] = E.useState(false),
-        [MY, hfe] = E.useState(false),
+        [_Y, dL] = E.useState(0),
+        [MY, RY] = E.useState(false),
+        [LY, yfe] = E.useState(false),
         hg = E.useRef(0),
         vd = E.useRef(null);
       vd.current ??= R_();
@@ -58717,7 +58717,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       E.useEffect(() => {
         let d = Date.now(),
           { fresh: k, history: _ } = (vd.current ??= R_()).see(ve, d);
-        if (Te || _) eY(vd.current.seq());
+        if (Te || _) nY(vd.current.seq());
         let Y = pL.current && !Te;
         if (((pL.current = Te), Te)) {
           ((hg.current = 0), dc([]));
@@ -58731,27 +58731,27 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         if (_ || !k.length) return;
         dc((re) => [...re.filter((ge) => !k.some((ce) => ce.id === ge.id)), ...k].slice(-cG));
       }, [ve, Te]);
-      let RY = (d) =>
+      let CY = (d) =>
           dc((k) => {
             let _ = k.filter((Y) => Y.id !== d);
             if (!_.length) hg.current = 0;
             return _;
           }),
-        [LY, fL] = E.useState(false),
+        [NY, fL] = E.useState(false),
         Ek = E.useRef(undefined),
-        CY = () => {
+        OY = () => {
           (fL(true), clearTimeout(Ek.current), (Ek.current = setTimeout(() => fL(false), Q_)));
         };
       E.useEffect(() => () => clearTimeout(Ek.current), []);
-      let NY = (d) => {
+      let PY = (d) => {
           hg.current = d;
           let k = ve.length - d;
-          (dc(ve.slice(Math.max(0, k - Cpe), k)), dL((_) => _ + 1));
+          (dc(ve.slice(Math.max(0, k - Ope), k)), dL((_) => _ + 1));
         },
         kd = E.useRef(M_()),
         _k = E.useRef(__()),
         Mk = E.useRef({ x: 0, y: 0 }),
-        [OY, PY] = E.useState({ state: "idle", since: 0 }),
+        [DY, IY] = E.useState({ state: "idle", since: 0 }),
         La = E.useRef(null),
         pc = E.useRef(null),
         Rk = E.useRef(0),
@@ -58796,7 +58796,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           (clearTimeout(vi.current),
             fo.current?.speechStart(),
             Ma.current?.speechStart(),
-            navigator2.vibrate?.(Lpe));
+            navigator2.vibrate?.(Npe));
         },
         release: (d) => {
           let k = La.current,
@@ -58847,7 +58847,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             Go.current();
         },
         state: (d) =>
-          PY((k) => ({
+          IY((k) => ({
             state: d,
             since: d === "held" && k.state !== "away" ? Rk.current : k.since,
           })),
@@ -58867,9 +58867,9 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           ),
           [o, cd],
         ));
-      let DY = {
-          description: Rpe,
-          ptt: OY,
+      let zY = {
+          description: Cpe,
+          ptt: DY,
           onPointerDown: (d) => {
             if (xt.current?.busy()) {
               if (((bg.current = true), xt.current.retry())) Go.current();
@@ -58909,15 +58909,15 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 0,
                 Math.min(Math.max(0, ve.length - 1), k + (d.key === "ArrowUp" ? 1 : -1)),
               );
-            (NY(_), CY());
+            (PY(_), OY());
           },
           wasDrag: () => _k.current.wasDrag() || bg.current,
         },
-        IY = ((d, k) => `${d} ${k}${d === 1 ? "" : "s"}`)(
+        $Y = ((d, k) => `${d} ${k}${d === 1 ? "" : "s"}`)(
           M.length + y.filter((d) => d.scope !== "chat").length,
           "connection",
         ),
-        zY = () => {
+        HY = () => {
           let d = !mr;
           if ((Iv(d), Cm(A1, d ? "1" : "0"), Zi(), !d)) it().unvoice?.();
           if (!d) it().stop();
@@ -58933,17 +58933,17 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         vL = (d) => !!d.pages && !!j && !d.pages.includes(j),
         kL = (d) =>
           d.pages ? ` · ${d.pages.length === 1 ? "1 page" : `${d.pages.length} pages`} only` : "",
-        $Y = (d, k) => {
+        UY = (d, k) => {
           if ((clearTimeout(Xv.current), Zv === d)) return (qv(null), k());
-          (qv(d), (Xv.current = setTimeout(() => qv(null), Ape)));
+          (qv(d), (Xv.current = setTimeout(() => qv(null), _pe)));
         },
-        HY = y.filter((d) => d.scope !== "chat"),
+        FY = y.filter((d) => d.scope !== "chat"),
         xL = S ? "pe-6" : "pe-2",
-        wd = dG(ve, (d) => vd.current?.seqOf(d), QK),
+        wd = dG(ve, (d) => vd.current?.seqOf(d), tY),
         Dk = e && t > 0,
-        UY = Dk ? "oklch(0.68 0.16 150)" : e ? "oklch(0.75 0.13 75)" : "oklch(0.62 0.02 70)",
-        FY = ve.findLastIndex((d) => d.from === "agent"),
-        BY = pW(ve),
+        BY = Dk ? "oklch(0.68 0.16 150)" : e ? "oklch(0.75 0.13 75)" : "oklch(0.62 0.02 70)",
+        VY = ve.findLastIndex((d) => d.from === "agent"),
+        jY = pW(ve),
         wL = w
           ? "chat unavailable"
           : Jm
@@ -58953,7 +58953,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               : t
                 ? K.listening.replace("{n}", String(t))
                 : K.statusOffline,
-        VY = L.jsxs(L.Fragment, {
+        GY = L.jsxs(L.Fragment, {
           children: [
             L.jsxs("button", {
               type: "button",
@@ -58996,11 +58996,11 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               "data-lk-tap": true,
               className: "tap-40 relative flex shrink-0 items-center justify-center rounded-full",
               children: [
-                L.jsx(Wpe, {}),
+                L.jsx(Ype, {}),
                 L.jsx("span", {
                   "aria-hidden": true,
                   className: "absolute end-1.5 top-1 size-1.5 rounded-full",
-                  style: { background: UY },
+                  style: { background: BY },
                 }),
               ],
             }),
@@ -59019,15 +59019,15 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               }),
           ],
         }),
-        jY = L.jsx(L.Fragment, {
+        WY = L.jsx(L.Fragment, {
           children:
-            fY &&
+            gY &&
             !w &&
             L.jsx(wj, {
-              onText: yY,
-              onBreak: vY,
+              onText: kY,
+              onBreak: xY,
               onPending: (d, k) => {
-                if (((dg.current = d), gY(k), (Ye.getState().interim?.text ?? "") !== k))
+                if (((dg.current = d), bY(k), (Ye.getState().interim?.text ?? "") !== k))
                   Ye.setState({
                     interim: k.trim() ? { text: k, page: performance.timeOrigin } : null,
                   });
@@ -59036,16 +59036,16 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               },
               onActive: (d) => {
                 if (((WR.current = d), !d)) fo.current?.flush();
-                (dY(d), Ra());
+                (fY(d), Ra());
               },
               clipSink: v ? undefined : f$(Co),
               localStt: mk,
               label: M.find((d) => d.id === j)?.label ?? location.pathname,
-              gesture: DY,
+              gesture: zY,
               noteLift: $s,
             }),
         }),
-        GY =
+        KY =
           P?.() ??
           (oe
             ? L.jsx(_W, {
@@ -59107,13 +59107,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 },
                 "data-testid": "debug-chat-tree-body",
                 onScroll: fR,
-                ...Mpe(
-                  Y_({ expanded: !d || ki || Un, fade: jK, touch: !d && gk }),
+                ...Lpe(
+                  Y_({ expanded: !d || ki || Un, fade: WK, touch: !d && gk }),
                   `min-w-0 flex-1 ${!d ? "h-[30vh]" : ""}`,
                 ),
                 children: [
                   Tt && L.jsx(k6, { tasks: Ho, now: tc, strings: K, onExpand: () => Vm(true) }),
-                  GY,
+                  KY,
                 ],
               }),
             ],
@@ -59122,7 +59122,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           let _ = ve.find((re) => re.id === d.id) ?? d,
             Y = yd(_);
           return L.jsx(
-            Kpe,
+            Zpe,
             {
               details: nc.forMessage,
               m: _,
@@ -59166,37 +59166,37 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 ],
               }),
               flash: gi(_),
-              epoch: AY,
+              epoch: _Y,
               aboveLeft: () => (k ? (Ak.current.get(k)?.remaining() ?? 0) : 0),
               onLife: (re) => (re ? Ak.current.set(_.id, re) : Ak.current.delete(_.id)),
-              paused: EY || MY,
-              onHover: _Y,
-              onGone: () => RY(_.id),
+              paused: MY || LY,
+              onHover: RY,
+              onGone: () => CY(_.id),
             },
             _.id,
           );
         },
-        WY =
+        YY =
           uc.length > 0 &&
           L.jsx("ol", {
             "data-testid": "debug-chat-floats",
-            ...(LY ? { [gm]: true } : {}),
+            ...(NY ? { [gm]: true } : {}),
             "aria-live": "polite",
             className: `flex flex-col gap-0.5 ${EM[Ns.side]}`,
             children: uc.map((d, k) => TL(d, uc[k - 1]?.id)),
           }),
-        KY =
+        ZY =
           id === "pill" &&
           (uc.length > 0 || _a.length > 0 || Vr.length > 0 || !!Fo || !!Wv || kt) &&
           L.jsxs("div", {
-            ref: $K,
+            ref: UK,
             "data-testid": "debug-chat-float-box",
             "data-side": Ns.side,
-            style: { left: Ns.left, textAlign: _pe[Ns.side] },
+            style: { left: Ns.left, textAlign: Rpe[Ns.side] },
             className: `pointer-events-none absolute bottom-full mb-1 flex w-max max-w-[min(20rem,calc(100vw-16px))] flex-col gap-1 ${EM[Ns.side]}`,
             children: [
               kt && SL(true),
-              WY,
+              YY,
               (_a.length > 0 || Vr.length > 0 || !!Fo) &&
                 L.jsxs("ol", {
                   "data-testid": "debug-chat-live-floats",
@@ -59206,7 +59206,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               Wv && L.jsx(D9, { frontier: Wv, renderAvatar: te, align: Ns.side }),
             ],
           }),
-        YY = () =>
+        qY = () =>
           $j({
             url: po.urls ?? "",
             device: cm(),
@@ -59262,7 +59262,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                       : mr && er.voiced
                         ? ze.speakVoicedTitle
                         : ze.speakTypingTitle,
-                onClick: zY,
+                onClick: HY,
                 className: "flex items-center gap-2 px-3 py-1.5 text-start",
                 children: [
                   L.jsx(wn, { name: "speakerHigh", weight: mr ? "fill" : "regular" }),
@@ -59345,7 +59345,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 !Do &&
                 L.jsx(r9, {
                   on: fe,
-                  cue: kY,
+                  cue: wY,
                   label: K.fullScreen,
                   onWord: ze.menuSwitchOn,
                   offWord: ze.menuSwitchOff,
@@ -59369,7 +59369,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                         "aria-checked": zM === d,
                         "data-rate": d,
                         onClick: () => {
-                          (WI(d), _K(d));
+                          (WI(d), RK(d));
                         },
                         className: `tap-40 rounded px-1.5 py-0.5 tabular-nums ${zM === d ? "font-semibold underline underline-offset-2" : "opacity-70"}`,
                         children: [d, "×"],
@@ -59386,7 +59386,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 "aria-checked": xa,
                 title: Ze.wakeWordHint,
                 onClick: () => {
-                  (xj(!xa), EK(!xa));
+                  (xj(!xa), MK(!xa));
                 },
                 className: "flex items-center gap-2 px-3 py-1.5 text-start",
                 children: [
@@ -59663,7 +59663,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                           type: "button",
                           "data-testid": "debug-menu-page-end",
                           onClick: (ot) => {
-                            if ((ot.stopPropagation(), k)) $Y(_, () => U?.(d.id));
+                            if ((ot.stopPropagation(), k)) UY(_, () => U?.(d.id));
                             else U?.(d.id);
                           },
                           className: "fs-10 underline opacity-70",
@@ -59862,7 +59862,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   "span",
                   {
                     "data-read": ce,
-                    style: ce === "spoken" ? Dpe : ce === "speaking" ? Ipe : undefined,
+                    style: ce === "spoken" ? zpe : ce === "speaking" ? $pe : undefined,
                     children: ge,
                   },
                   re,
@@ -59871,7 +59871,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             },
           });
         };
-      function ZY(d, k) {
+      function XY(d, k) {
         return Bt && !be
           ? L.jsx(HP, {
               text: k,
@@ -59909,7 +59909,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             ...Ve,
           }),
         ),
-        qY = o4(
+        JY = o4(
           ve,
           ve.map((d, k) => ({
             seed: `${Uk[k].seed}|${Uk[k].mine ? "me" : ""}`,
@@ -59917,7 +59917,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             at: d.at,
           })),
         ),
-        PL = n4(qY),
+        PL = n4(JY),
         DL = pD(
           PL.map((d) => ve[d[0]].at),
           g,
@@ -60007,7 +60007,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             d.id,
           );
         },
-        XY = (() => {
+        QY = (() => {
           let { asks: d, last: k } = VI(ve, Date.now());
           return L.jsxs("div", {
             "data-testid": "debug-chat-compact",
@@ -60025,7 +60025,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             ],
           });
         })(),
-        JY =
+        eZ =
           Do &&
           Hv !== null &&
           (() => {
@@ -60045,7 +60045,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   "data-edge": gr,
                   "aria-label": Vv(Ze.untuckChat, wd),
                   title: Ze.untuckChat,
-                  onPointerDown: zK,
+                  onPointerDown: HK,
                   onClick: () => {
                     if (Fm.current) return void (Fm.current = false);
                     Wo({ type: "handle" });
@@ -60162,7 +60162,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             },
             style: {
               transform: Do ? `${FM.transform} translateX(${YM ? "-" : ""}100vw)` : FM.transform,
-              transition: OK && !od ? "opacity 150ms, transform 220ms ease-out" : undefined,
+              transition: DK && !od ? "opacity 150ms, transform 220ms ease-out" : undefined,
               ...(fe ? (An ? FW : mM) : {}),
             },
             className: `fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${VV({ typing: ki, plusMenu: zL, micActive: Un, fullLog: Ht !== "off" || fe }) ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} ${fe ? "pointer-events-auto" : "pointer-events-none"} lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`,
@@ -60183,7 +60183,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 typeof document < "u" &&
                 mi.createPortal(L.jsx(m4, { strings: K }), I ?? document.body),
               Tt &&
-                BK &&
+                jK &&
                 typeof document < "u" &&
                 mi.createPortal(
                   L.jsx(N6, { tasks: Ho, now: tc, strings: K, onClose: () => Vm(false) }),
@@ -60283,7 +60283,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   og();
                 },
                 "data-full": Ht === "off" ? undefined : Ht,
-                ...sY(Y_({ expanded: ki || Un || (Us && gd), fade: LR, touch: gk || fe }), fe),
+                ...cY(Y_({ expanded: ki || Un || (Us && gd), fade: LR, touch: gk || fe }), fe),
                 children: L.jsxs("ol", {
                   "data-testid": "debug-chat-log",
                   className: "m-0 list-none space-y-0.5 p-0",
@@ -60388,7 +60388,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                                             ? " "
                                             : "",
                                         Oa = R1(Pe);
-                                      if (i4(Pe, KK, Pe.id, de))
+                                      if (i4(Pe, ZK, Pe.id, de))
                                         return L.jsxs(
                                           "span",
                                           {
@@ -60468,7 +60468,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                                                       !Pe.attachments?.length
                                                     ? null
                                                     : OL(Pe, Ti),
-                                                ZY(Pe, Pe.text),
+                                                XY(Pe, Pe.text),
                                                 Pe.ask &&
                                                   L.jsx(kM, {
                                                     ask: Pe.ask,
@@ -60486,7 +60486,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                                                   }),
                                                 !ot && jm(Pe, ce.name),
                                                 Pe.from === "agent" &&
-                                                  VK.has(Pe.id) &&
+                                                  GK.has(Pe.id) &&
                                                   L.jsx("span", {
                                                     "data-testid": "debug-chat-unheard",
                                                     className: "ms-1 fs-10 text-gray-500",
@@ -60497,8 +60497,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                                                     i: _n,
                                                     from: Pe.from,
                                                     agentOnline: Dk,
-                                                    lastAgent: FY,
-                                                    lastPending: BY,
+                                                    lastAgent: VY,
+                                                    lastPending: jY,
                                                   });
                                                   if (!Gr) return null;
                                                   return Gr === "label"
@@ -60565,7 +60565,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   ],
                 }),
               }),
-              Ea && XY,
+              Ea && QY,
               Te &&
                 A &&
                 L.jsxs("div", {
@@ -60632,7 +60632,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   ],
                 }),
               Te &&
-                qK &&
+                JK &&
                 !w &&
                 L.jsx("div", {
                   "data-testid": "debug-chat-drop",
@@ -60655,7 +60655,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 }),
               (Fk || $L) &&
                 L.jsx("div", {
-                  ref: rY,
+                  ref: iY,
                   "data-testid": "debug-chat-eta-slot",
                   "data-strip": Ys || undefined,
                   className: "flow-root",
@@ -60727,7 +60727,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                         "pointer-events-none absolute inset-x-0 bottom-0 -z-10 border border-current/25",
                       style: {
                         ...B1(),
-                        ...Ope,
+                        ...Dpe,
                         top: -$s,
                         borderTopLeftRadius: Uy($s),
                         borderTopRightRadius: Uy($s),
@@ -60807,10 +60807,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                           t: K,
                           attach: X && !w,
                           sel: Uo.sel,
-                          items: WK,
+                          items: YK,
                           tree: kt,
-                          sessions: HY.length,
-                          sessionsLabel: IY,
+                          sessions: FY.length,
+                          sessionsLabel: $Y,
                           onTree: () => zo((d) => (d === "tree" ? "none" : "tree")),
                           onAttachSelection: () => {
                             let d = Uo.sel;
@@ -60819,7 +60819,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                             Ye.setState({ attached: _ });
                           },
                           upload: !!Bo.current,
-                          onPickFiles: XK,
+                          onPickFiles: QK,
                           onInbox: Bo.current?.list && !w ? () => Qv(true) : undefined,
                           onHistory: w ? undefined : Vn,
                           share:
@@ -60829,7 +60829,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                                   onPage: () => void lL("page"),
                                 }
                               : undefined,
-                          onClose: YK,
+                          onClose: qK,
                         }),
                       Te &&
                         Jv &&
@@ -60860,7 +60860,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                             onPointerDown: (d) => d.preventDefault(),
                             "aria-label": qR,
                             title: qR,
-                            onClick: pY,
+                            onClick: mY,
                             style: {
                               color: "var(--foreground)",
                               border: "1px solid var(--glass-line)",
@@ -60936,7 +60936,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                       opacity: KR ? 0 : undefined,
                       ...(KR ? { backdropFilter: "none", WebkitBackdropFilter: "none" } : {}),
                       ...KV((Ks && !fe) || Ys),
-                      transition: wi() ? undefined : `${zpe}, ${YV}`,
+                      transition: wi() ? undefined : `${Hpe}, ${YV}`,
                     },
                     "data-in-glass": (Ks && !fe) || undefined,
                     className:
@@ -60955,7 +60955,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                       L.jsx("style", { children: lW }),
                       L.jsx("style", { children: EG }),
                       L.jsx("style", { children: jj }),
-                      VY,
+                      GY,
                       Te &&
                         L.jsx(j4, {
                           buttonRef: JR,
@@ -60966,10 +60966,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                           selectable: !!Uo.sel,
                           onToggle: () => vR((d) => !d),
                         }),
-                      jY,
+                      WY,
                       L.jsx("div", {
                         "data-testid": "debug-chat-input-slot",
-                        style: { ...Epe, ...$4 },
+                        style: { ...Mpe, ...$4 },
                         inert: !Te,
                         "aria-hidden": !Te || undefined,
                         className: `relative flex w-0 min-w-0 flex-1 transition-opacity duration-[180ms] ease-out motion-reduce:transition-none ${Te ? "opacity-100" : "max-h-8 overflow-hidden opacity-0"}`,
@@ -61107,7 +61107,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                                       return;
                                     (d.preventDefault(), Vo());
                                   },
-                                  ...cY,
+                                  ...dY,
                                   className: `block h-[2.125rem] max-h-32 min-h-[2.125rem] min-w-0 flex-1 resize-none self-end overflow-y-auto overscroll-contain ${Si.input ? "touch-pan-y" : "touch-none"} border border-transparent bg-transparent px-2 py-1 text-base outline-none placeholder:text-gray-400 ${xL}`,
                                 }),
                                 od &&
@@ -61168,12 +61168,12 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   L.jsxs("div", {
                     style: aK,
                     children: [
-                      KY,
+                      ZY,
                       Ik && Yv ? mi.createPortal(Ik, I ?? document.body) : Ik,
                       Io === "voiceprint" &&
                         L.jsx("div", {
                           className: "pointer-events-auto absolute inset-x-0 bottom-full mb-1",
-                          children: L.jsx(Hj, { t: K, deps: YY, onClose: () => zo("none") }),
+                          children: L.jsx(Hj, { t: K, deps: qY, onClose: () => zo("none") }),
                         }),
                     ],
                   }),
@@ -61181,7 +61181,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               }),
             ],
           }),
-          JY,
+          eZ,
           Oo &&
             L.jsx("div", {
               "aria-hidden": true,
@@ -61192,7 +61192,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         ],
       });
     }
-    function Wpe() {
+    function Ype() {
       return L.jsx("svg", {
         "data-testid": "debug-chat-grip",
         viewBox: "0 0 18 18",
@@ -61205,7 +61205,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         ),
       });
     }
-    function Kpe({
+    function Zpe({
       details: e,
       m: t,
       who: n,
@@ -61302,7 +61302,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     function hK(e, t, n) {
       return t[e].replaceAll("{name}", n);
     }
-    function Ype(e, t = 16) {
+    function qpe(e, t = 16) {
       let n = (r) =>
         r.replace(/(^|[^\w.\\])(-?(?:\d+\.?\d*|\.\d+))rem\b/g, (o, i, a) => {
           let s = Number(a) * t;
@@ -61313,13 +61313,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         (r, o, i, a, s) => `${o}${i}${a}${n(s)}`,
       );
     }
-    function Zpe(e) {
+    function Xpe(e) {
       return e
         .replace(/:root\b/g, ":host")
         .replace(/(^|[},]\s*)(html|body)(\s*[{,])/g, "$1:host$3")
         .replace(/:host\s*,\s*:host\b/g, ":host");
     }
-    function qpe(e) {
+    function Jpe(e) {
       let t = e.replace(/@import[^;]*;/g, "");
       for (let n of ["@font-face", "@property"]) {
         let r = t.indexOf(n);
@@ -61335,10 +61335,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       }
       return t;
     }
-    function Xpe(e) {
-      return Ype(Zpe(qpe(e)));
+    function Qpe(e) {
+      return qpe(Xpe(Jpe(e)));
     }
-    function Jpe() {
+    function efe() {
       return [
         "@layer theme, base, components, utilities;",
         ":host{all:initial!important;display:block!important;position:fixed!important;inset:auto 0 0 auto!important;width:0!important;height:0!important;overflow:visible!important;z-index:2147483647!important;contain:none!important}",
@@ -61352,7 +61352,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       ].join(`
 `);
     }
-    var Qpe = [
+    var tfe = [
       ["all", "initial"],
       ["display", "block"],
       ["position", "fixed"],
@@ -61371,10 +61371,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       ["opacity", "1"],
       ["pointer-events", "none"],
     ];
-    function efe(e) {
-      for (let [t, n] of Qpe) e.style.setProperty(t, n, "important");
+    function nfe(e) {
+      for (let [t, n] of tfe) e.style.setProperty(t, n, "important");
     }
-    function tfe(e, t) {
+    function rfe(e, t) {
       let n = e.ownerDocument,
         r = n.defaultView?.CSSStyleSheet ?? globalThis.CSSStyleSheet;
       try {
@@ -61395,7 +61395,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       return o.length && o.every((i) => i.sheet) ? "style" : "blocked";
     }
     var bK = ["keydown", "keyup", "keypress"];
-    function nfe(e) {
+    function ofe(e) {
       let t = (n) => n.stopPropagation();
       for (let n of bK) e.addEventListener(n, t);
       return () => {
@@ -61404,12 +61404,12 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     }
     function NM(e, t) {
       let n = e.createElement("div");
-      (efe(n), n.setAttribute("data-lk-chat-host", ""));
+      (nfe(n), n.setAttribute("data-lk-chat-host", ""));
       let r = n.attachShadow({ mode: "closed" }),
-        o = tfe(r, [Jpe(), ...t.map(Xpe)]),
+        o = rfe(r, [efe(), ...t.map(Qpe)]),
         i = e.createElement("div");
       ((i.className = "lk-partner-root"), r.append(i));
-      let a = nfe(r);
+      let a = ofe(r);
       return (
         (e.documentElement ?? e.body).append(n),
         {
@@ -61423,10 +61423,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         }
       );
     }
-    var rfe = "lianki-partner",
-      ofe = 30000,
+    var ife = "lianki-partner",
+      afe = 30000,
       yK = 200,
-      ife = 4000;
+      sfe = 4000;
     var vK = (e) => (e.length > yK ? e.slice(e.length - yK) : e);
     function kK(e) {
       let t = { live: false, listeners: 0, messages: [], busy: null },
@@ -61489,7 +61489,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           try {
             b = e.open(
               `${e.url}?label=${encodeURIComponent(y)}${e.query ?? ""}`,
-              e.cookie ? [] : [rfe, h],
+              e.cookie ? [] : [ife, h],
             );
           } catch {
             return g("connect");
@@ -61503,7 +61503,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             (b.onerror = () => {}),
             (b.onclose = (x) => {
               if (o !== b) return;
-              if (((o = null), r({ live: false, busy: null }), v && x.code < ife && c())) f();
+              if (((o = null), r({ live: false, busy: null }), v && x.code < sfe && c())) f();
             }));
         },
         p = () => {
@@ -61516,7 +61516,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         },
         m = () => {
           if ((clearTimeout(s), c())) f();
-          else if (o) s = setTimeout(p, ofe);
+          else if (o) s = setTimeout(p, afe);
         },
         g = (h) => {
           if (t.blocked) return;
@@ -61572,8 +61572,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       return `${e.host}${e.pathname} ${t}`.slice(0, 300);
     }
     var wK = 200,
-      afe = new Set(["account-changed", "signed-out", "off"]);
-    function sfe(e, t) {
+      lfe = new Set(["account-changed", "signed-out", "off"]);
+    function cfe(e, t) {
       let n = new Map();
       for (let o of e) if ((o.seq ?? 0) > t.prunedThroughSeq || o.seq === undefined) n.set(o.id, o);
       for (let o of t.messages) n.set(o.id, o);
@@ -61581,7 +61581,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       let r = [...n.values()].sort((o, i) => o.at - i.at || o.id.localeCompare(i.id));
       return r.length > wK ? r.slice(r.length - wK) : r;
     }
-    function lfe(e, t) {
+    function ufe(e, t) {
       return (
         !!e || t?.context != null || (Array.isArray(t?.attachments) && t.attachments.length > 0)
       );
@@ -61598,7 +61598,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         a,
         s,
         l = (h) => {
-          if (!afe.has(h)) return false;
+          if (!lfe.has(h)) return false;
           return (f(), e.onInvalidAccount(), true);
         },
         c = async (h) => {
@@ -61625,7 +61625,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               return;
             }
             a = y.range.throughSeq;
-            let b = sfe(t.messages, y.range);
+            let b = cfe(t.messages, y.range);
             if (s !== undefined && b.some((x) => x.from === "agent" && (x.seq ?? 0) > s))
               s = undefined;
             let v = s !== undefined && !y.pending;
@@ -61707,7 +61707,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         },
         send(h, y, b) {
           if (o) return false;
-          if (lfe(y, b)) return (r({ problem: "advanced" }), false);
+          if (ufe(y, b)) return (r({ problem: "advanced" }), false);
           let v = h.trim();
           if (!v) return false;
           let x = { id: Zu().replace(/-/g, "_"), text: v };
@@ -61725,10 +61725,46 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         },
       };
     }
+    var TK = (e) => [e.x, e.y, e.width, e.height].map((t) => Math.round(t)).join(",");
+    function AK(e, t, n) {
+      let r = t.documentElement,
+        o = () => {
+          let c = e.querySelector('[data-testid="debug-chat-grip"]'),
+            u = e.querySelector("[data-debug-chat]");
+          if (c) r.setAttribute("data-lk-portable-grip", TK(c.getBoundingClientRect()));
+          else r.removeAttribute("data-lk-portable-grip");
+          if (u) r.setAttribute("data-lk-portable-rect", TK(u.getBoundingClientRect()));
+          else r.removeAttribute("data-lk-portable-rect");
+        },
+        i = 0,
+        a = () => {
+          if (i) return;
+          i = n.requestAnimationFrame(() => {
+            ((i = 0), o());
+          });
+        },
+        l = new (t.defaultView?.MutationObserver ?? MutationObserver)(a);
+      return (
+        l.observe(e, { childList: true, subtree: true, attributes: true }),
+        e.addEventListener("pointerup", a, true),
+        n.addEventListener("resize", a),
+        o(),
+        () => {
+          if (
+            (l.disconnect(),
+            e.removeEventListener("pointerup", a, true),
+            n.removeEventListener("resize", a),
+            i)
+          )
+            n.cancelAnimationFrame(i);
+          (r.removeAttribute("data-lk-portable-grip"), r.removeAttribute("data-lk-portable-rect"));
+        }
+      );
+    }
     var Fr = ee(we(), 1),
-      cfe = "oklch(0.97 0.01 82 / 0.9)",
-      TK = "oklch(0.25 0.02 65)";
-    function ufe({ text: e, appOrigin: t, onHide: n, hideLabel: r, openLabel: o }) {
+      dfe = "oklch(0.97 0.01 82 / 0.9)",
+      EK = "oklch(0.25 0.02 65)";
+    function pfe({ text: e, appOrigin: t, onHide: n, hideLabel: r, openLabel: o }) {
       return Fr.jsxs("div", {
         role: "status",
         "data-testid": "partner-note",
@@ -61739,8 +61775,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           maxWidth: "min(320px, calc(100vw - 16px))",
           padding: "10px 12px",
           borderRadius: "12px",
-          background: cfe,
-          color: TK,
+          background: dfe,
+          color: EK,
           border: "1px solid oklch(0.25 0.02 65 / 0.15)",
           backdropFilter: "blur(12px) saturate(1.4)",
           WebkitBackdropFilter: "blur(12px) saturate(1.4)",
@@ -61782,7 +61818,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               margin: "-10px -8px -10px 0",
               border: "0",
               background: "transparent",
-              color: TK,
+              color: EK,
               fontSize: "18px",
               lineHeight: "40px",
               cursor: "pointer",
@@ -61792,13 +61828,13 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         ],
       });
     }
-    function AK({ client: e, o: t, portal: n }) {
+    function _K({ client: e, o: t, portal: n }) {
       let r = OM.useSyncExternalStore(e.subscribe, e.get, e.get),
         o = im(),
         i = om[o],
         a = hV[o];
       if (r.blocked)
-        return Fr.jsx(ufe, {
+        return Fr.jsx(pfe, {
           text: hK(r.blocked, a, i),
           appOrigin: t.appOrigin,
           onHide: t.hide,
@@ -61822,7 +61858,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           : {}),
       });
     }
-    function dfe(e, t) {
+    function ffe(e, t) {
       let n = () => {
           for (let o of e.querySelectorAll(
             '[data-testid="debug-chat-grip"], [data-testid="debug-menu-minimize"]',
@@ -61838,7 +61874,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         r = new MutationObserver(n);
       return (r.observe(e, { childList: true, subtree: true }), n(), () => r.disconnect());
     }
-    function pfe({ client: e, o: t, portal: n }) {
+    function mfe({ client: e, o: t, portal: n }) {
       let r = OM.useSyncExternalStore(e.subscribe, e.get, e.get),
         o =
           r.problem === "advanced"
@@ -61866,7 +61902,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         menuItems: [{ id: "exclude", label: t.strings.excludeHere, onSelect: t.onExclude }],
       });
     }
-    function ffe(e) {
+    function gfe(e) {
       if (typeof e.draftScope !== "string" || !e.draftScope.startsWith("portable~"))
         throw Error("portable chat needs an account and site draft scope");
       let t = NM(e.doc, e.css);
@@ -61880,19 +61916,21 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           onInvalidAccount: e.onInvalidAccount,
         }),
         r = PM.createRoot(t.container, {
-          onUncaughtError: (i) => e.report?.("portable-render", String(i?.message ?? i)),
+          onUncaughtError: (s) => e.report?.("portable-render", String(s?.message ?? s)),
         });
-      r.render(Fr.jsx(pfe, { client: n, o: e, portal: t.container }));
-      let o = dfe(t.root, e.strings.collapse ?? e.strings.name);
+      r.render(Fr.jsx(mfe, { client: n, o: e, portal: t.container }));
+      let o = ffe(t.root, e.strings.collapse ?? e.strings.name),
+        i = e.doc.defaultView ?? window,
+        a = AK(t.root, e.doc, i);
       return {
         portable: n,
         root: t.root,
         destroy() {
-          (o(), n.stop(), r.unmount(), t.destroy());
+          (o(), a(), n.stop(), r.unmount(), t.destroy());
         },
       };
     }
-    function mfe(e) {
+    function hfe(e) {
       let t = NM(e.doc, e.css),
         n = e.doc.defaultView ?? window,
         o = {
@@ -61917,11 +61955,11 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         onUncaughtError: (l) => {
           (e.report?.("partner-render", String(l?.message ?? l)),
             i.block("load"),
-            queueMicrotask(() => s.render(Fr.jsx(AK, { client: i, o: e, portal: t.container }))));
+            queueMicrotask(() => s.render(Fr.jsx(_K, { client: i, o: e, portal: t.container }))));
         },
       });
       return (
-        s.render(Fr.jsx(AK, { client: i, o: e, portal: t.container })),
+        s.render(Fr.jsx(_K, { client: i, o: e, portal: t.container })),
         {
           client: i,
           root: t.root,
@@ -64176,7 +64214,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
   transform: translateY(-50%);
 }`,
       ],
-      rev: "3vrujpy0",
+      rev: "1loymfcz",
     };
   }
   var portableChatStrings = {

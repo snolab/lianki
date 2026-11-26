@@ -264,6 +264,16 @@ try {
             end.y + end.h <= end.vh + 1,
           `${tag} and it stays on screen`,
         );
+        // The read-only geometry hint on <html> follows the drag (for native QA tools).
+        const hint = await p.evaluate(() => ({
+          grip: document.documentElement.getAttribute("data-lk-portable-grip"),
+          rect: document.documentElement.getAttribute("data-lk-portable-rect"),
+        }));
+        const hx = Number(hint.rect?.split(",")[0]);
+        check(
+          hint.grip && hint.rect && end && Math.abs(hx - end.x) <= 1,
+          `${tag} <html> geometry hint follows the drag (rect ${hint.rect}, grip ${hint.grip})`,
+        );
         if (SHOTS)
           await p.screenshot({
             path: `${SHOTS}/portable-li-${site}-${scheme}${DESKTOP ? "-desktop" : ""}-dragged.png`,

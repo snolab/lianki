@@ -465,7 +465,7 @@ so revoking permission or excluding a site cannot leave a second chat window.
   User cancellation aborts the request; a message already accepted durably
   is not unsent. No microphone, playback or device access is part of this UI.
 
-### The chat window is the main site's DebugChat (2.24.57)
+### The chat window is the main site's DebugChat (2.24.58)
 
 Owner, 2026-11-26: 随身Li reuses the Li chat component, no second wheel, and
 looks exactly like the chat window on lianki.com, everywhere (his sites
@@ -513,7 +513,11 @@ zhihu.com and github.com refuse frames). So there is one chat UI,
   are kept in GM storage; fold, dock and compact are memory for the page, so
   no lianki.com position or minimized state carries over. Its grip (tap:
   minimize / restore, drag: move) and its menu's Minimize carry
-  `data-lk-portable-toggle` (`grip` / `minimize`).
+  `data-lk-portable-toggle` (`grip` / `minimize`). For real-browser QA,
+  which cannot reach into the closed root, <html> carries read-only geometry:
+  `data-lk-portable-grip` and `data-lk-portable-rect` ("x,y,w,h", viewport CSS
+  px, rounded), kept current on mount, drag end, resize, minimize and restore
+  (`embed/portable-geometry.ts`). Nothing else: no text, no window API.
 - **No other chat UI.** The hand-built plain panel is gone; `portable-li-panel.ts`
   keeps only the consent prompt's styles.
 - **Drafts per account and site.** `draftScope` =
