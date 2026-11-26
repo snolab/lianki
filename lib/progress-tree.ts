@@ -28,7 +28,9 @@ import {
   type ProgressView,
   applyProgressMessage,
   isPathId,
+  type ProgressHistory,
   openTodoRefs,
+  parseHistoryMessage,
   parseProgressMessage,
   waitsOnOwner,
 } from "./progress";
@@ -253,7 +255,13 @@ export type LiveTreeSource = TreeSource & {
    * {type:"eta", id} when this page's ETA timer went off (eta.ts). False with
    * none open; the hub's alarm pings anyway.
    */
-  send(msg: { type: "eta"; id: string }): boolean;
+  send(msg: { type: "eta"; id: string } | { type: "history"; limit: number }): boolean;
+  /**
+   * Asks for the done history ({type:"history", limit}) on an open socket;
+   * the answer, sent to that socket only, goes to `onItems` (the latest
+   * caller's: the full-screen Gantt's finished bars). False with none open.
+   */
+  history(limit: number, onItems: (items: ProgressHistory[]) => void): boolean;
 };
 
 /** The outline with live progress laid over it, pushed on every hub message. */
@@ -264,15 +272,22 @@ export function liveTreeSource(deps: LiveDeps): LiveTreeSource {
   const later = deps.setTimeout ?? ((fn, ms) => setTimeout(fn, ms));
   const cancel = deps.clearTimeout ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
   const wake = deps.onWake ?? browserWake;
+  /** Who gets the next history answer. */
+  let onHistory: ((items: ProgressHistory[]) => void) | null = null;
+  const send = (msg: { type: string; [k: string]: unknown }) => {
+    for (const s of openSocks)
+      try {
+        if (s.readyState !== undefined && s.readyState !== 1) continue;
+        s.send?.(JSON.stringify(msg));
+        return true;
+      } catch {}
+    return false;
+  };
   return {
-    send(msg) {
-      for (const s of openSocks)
-        try {
-          if (s.readyState !== undefined && s.readyState !== 1) continue;
-          s.send?.(JSON.stringify(msg));
-          return true;
-        } catch {}
-      return false;
+    send,
+    history(limit: number, onItems: (items: ProgressHistory[]) => void) {
+      onHistory = onItems;
+      return send({ type: "history", limit });
     },
     subscribe(onUpdate, onError) {
       let base: TreeNode | null = null;
@@ -341,6 +356,8 @@ export function liveTreeSource(deps: LiveDeps): LiveTreeSource {
           loadBase();
         };
         sock.onmessage = (ev) => {
+          const h = parseHistoryMessage(ev.data);
+          if (h) return onHistory?.(h.items);
           const msg = parseProgressMessage(ev.data);
           if (!msg) return;
           view = applyProgressMessage(view, msg);

@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, type ReactNode, useEffect, useState } from "react";
+import type { DoneRecord } from "./gantt-view";
 import {
   type Assignee,
   type Frontier,
@@ -106,6 +107,12 @@ export type TreeSource =
         onUpdate: (v: string | TreeNode[] | TreeNode, meta?: { live?: boolean }) => void,
         onError?: (e: unknown) => void,
       ) => () => void;
+      /**
+       * Asks the hub for its done history (the newest `limit`) on an open
+       * socket; `onItems` gets each answer. False: no socket open yet.
+       * Optional: a live progress source has it (lib/progress-tree.ts).
+       */
+      history?: (limit: number, onItems: (items: DoneRecord[]) => void) => boolean;
     };
 
 const toRoot = (v: string | TreeNode[] | TreeNode, opts: ParseOptions): TreeNode =>

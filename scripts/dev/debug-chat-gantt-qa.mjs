@@ -191,6 +191,8 @@ try {
       });
       await ctx.addInitScript((src) => {
         localStorage.setItem("lk:debug-widget-src", src);
+        // Done rows are hidden by default (gantt-settings.ts); these checks need them.
+        localStorage.setItem("lk:gantt-hide-done", "false");
         if (navigator.mediaDevices)
           navigator.mediaDevices.getUserMedia = async () => {
             throw new DOMException("refused in QA", "NotAllowedError");
@@ -392,6 +394,37 @@ try {
           early.ghost.right > early.now,
         `${tag}: a task done early ends at its finish, the estimate a ghost (bar ${Math.round(early.bar?.right)}, ghost ${Math.round(early.ghost?.right)}, now ${Math.round(early.now)})`,
       );
+      // Each finished task: its estimate vs what it took, after "done" in its time.
+      const eva = await page.evaluate(() =>
+        ["/done/recent", "/done/early"].map((id) => {
+          const row = document.querySelector(
+            `[data-testid="debug-chat-gantt-row"][data-id="${id}"]`,
+          );
+          const time = row?.querySelector('[data-testid="debug-chat-gantt-time"]');
+          const label = time?.querySelector('[data-testid="debug-chat-gantt-estimate-vs-actual"]');
+          const lr = label?.getBoundingClientRect();
+          const rr = row?.getBoundingClientRect();
+          return {
+            id,
+            text: label?.textContent?.replace(/^\s*·\s*/, "") ?? null,
+            over: label?.getAttribute("data-over") === "true",
+            clear: !!label && !!time && time.textContent.indexOf(label.textContent) > 0,
+            inRow: !!lr && !!rr && lr.top >= rr.top - 1 && lr.bottom <= rr.bottom + 1,
+          };
+        }),
+      );
+      check(
+        /^1\.\dH→1\.\dH$/.test(eva[0].text ?? "") &&
+          !eva[0].over &&
+          eva[1].text === "9H→15M" &&
+          !eva[1].over,
+        `${tag}: finished bars show estimate→actual (${eva.map((e) => `${e.id} ${e.text}`).join(", ")})`,
+      );
+      check(
+        eva.every((e) => e.clear && e.inRow),
+        `${tag}: the estimate-vs-actual label follows "done" in the row's time, inside the row`,
+      );
+      await shot("estimate-vs-actual");
       const states = await rows.evaluateAll((els) => els.map((e) => e.dataset.state));
       check(
         states.includes("queued") && states.includes("reached") && states.includes("done"),
