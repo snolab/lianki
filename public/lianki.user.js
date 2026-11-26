@@ -14,7 +14,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.52
+// @version     2.24.53
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -28896,12 +28896,10 @@ ${e}`;
             Q = u.get(Me);
           if (!Q) {
             if (
-              ((Q = pe
-                .arrayBuffer()
-                .then(async (X) => ({
-                  buffer: await B.decodeAudioData(X),
-                  decodeMs: Math.max(0, o() - he),
-                }))),
+              ((Q = pe.arrayBuffer().then(async (X) => ({
+                buffer: await B.decodeAudioData(X),
+                decodeMs: Math.max(0, o() - he),
+              }))),
               u.set(Me, Q),
               Q.catch(() => u.delete(Me)),
               u.size > p1)
@@ -31335,22 +31333,20 @@ ${q}`;
                 }),
               ],
             })
-          : p
-              .slice(0, 1)
-              .map((y) =>
-                dr.jsx(
-                  "button",
-                  {
-                    type: "button",
-                    "data-testid": "clips-continue",
-                    title: y.label,
-                    onClick: () => bf({ type: "clips-adopt", sid: y.sid }),
-                    className: "min-h-10 rounded-full px-3 font-semibold",
-                    children: e.clipsContinue,
-                  },
-                  y.sid,
-                ),
+          : p.slice(0, 1).map((y) =>
+              dr.jsx(
+                "button",
+                {
+                  type: "button",
+                  "data-testid": "clips-continue",
+                  title: y.label,
+                  onClick: () => bf({ type: "clips-adopt", sid: y.sid }),
+                  className: "min-h-10 rounded-full px-3 font-semibold",
+                  children: e.clipsContinue,
+                },
+                y.sid,
               ),
+            ),
       });
     }
     var D1 = "rtc:lianki";

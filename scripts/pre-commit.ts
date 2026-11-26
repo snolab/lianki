@@ -51,6 +51,10 @@ if (plan.buildUserscript) {
   // bunx, not bare `oxfmt`: the binary lives in node_modules/.bin and is not on
   // PATH inside the git hook's shell, so a bare call fails with status 127 and
   // blocks every commit that touches the userscript.
+  // Twice: on the bundled chat window's code (minified, then re-printed by the
+  // bundler) one oxfmt pass is not yet a fixed point, and `bun run lint`
+  // (oxfmt --check) in pre-push would then fail on the committed file.
+  execSync("bunx oxfmt public/lianki.user.js", { stdio: "inherit" });
   execSync("bunx oxfmt public/lianki.user.js", { stdio: "inherit" });
   run(`git add ${USERSCRIPT_OUT}`);
 }
