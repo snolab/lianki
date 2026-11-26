@@ -46,34 +46,98 @@ export function meaningLang(text: string, uiLocale: string): string {
   return "en";
 }
 
+const LATIN_LANGS = new Set([
+  "en",
+  "fr",
+  "de",
+  "es",
+  "pt",
+  "it",
+  "id",
+  "sw",
+  "vi",
+  "nl",
+  "pl",
+  "tr",
+]);
+
+function charLang(ch: string, lang: string, uiLocale: string): string | null {
+  const baseLang = lang.toLowerCase().split(/[-_]/)[0];
+  if (/[぀-ヿ]/.test(ch)) return "ja";
+  if (/[가-힯ᄀ-ᇿ]/.test(ch)) return "ko";
+  if (/[Ѐ-ӿ]/.test(ch)) return "ru";
+  if (/[一-鿿㐀-䶿]/.test(ch)) return baseLang === "ja" ? "ja" : meaningLang(ch, uiLocale);
+  if (/[A-Za-zÀ-ÖØ-öø-ÿ]/.test(ch)) return LATIN_LANGS.has(baseLang) ? lang : "en";
+  return null;
+}
+
 /**
- * Split an example sentence by script/language so a parenthesized or trailing
- * translation (e.g. `"I like it. (我喜欢它。)"`) is voiced in its own language
- * rather than read by the word's TTS voice.
+ * Split an example sentence at every script/language switch, attaching
+ * adjacent punctuation to its neighboring part, so mixed-language examples
+ * (e.g. `"Use 中文 then continue in English."` or `"I like it. (我喜欢它。)"`)
+ * have each segment voiced in its own language.
  */
 export function exampleParts(ex: string, lang: string, uiLocale: string): SayPart[] {
-  const baseLang = lang.toLowerCase().split(/[-_]/)[0];
-  const isLatinTarget = !["zh", "ja", "ko", "ru", "ar", "hi", "bn", "ur", "mr"].includes(baseLang);
-  if (!isLatinTarget) return [{ kind: "example", text: ex, lang }];
-
-  const parts: SayPart[] = [];
-  // Match parenthesized foreign-script glosses or bare foreign-script runs.
-  const re =
-    /[(（]([^()（）]*[぀-ヿ가-힯ᄀ-ᇿ一-鿿㐀-䶿Ѐ-ӿ][^()（）]*)[)）]|([぀-ヿ가-힯ᄀ-ᇿ一-鿿㐀-䶿Ѐ-ӿ][぀-ヿ가-힯ᄀ-ᇿ一-鿿㐀-䶿Ѐ-ӿ\s、，。！？；：…—·0-9a-zA-Z]*[぀-ヿ가-힯ᄀ-ᇿ一-鿿㐀-䶿Ѐ-ӿ。！？]?)/g;
-  let last = 0;
-  for (const m of ex.matchAll(re)) {
-    const idx = m.index ?? 0;
-    const before = ex.slice(last, idx).trim();
-    if (before) parts.push({ kind: "example", text: before, lang });
-    const inner = (m[1] ?? m[2] ?? "").trim();
-    if (inner) {
-      parts.push({ kind: "example", text: inner, lang: meaningLang(inner, uiLocale) });
-    }
-    last = idx + m[0].length;
+  const tokens: { text: string; lang: string | null }[] = [];
+  for (const ch of ex) {
+    const l = charLang(ch, lang, uiLocale);
+    const prev = tokens[tokens.length - 1];
+    if (prev && prev.lang === l) prev.text += ch;
+    else tokens.push({ text: ch, lang: l });
   }
-  const tail = ex.slice(last).trim();
-  if (tail) parts.push({ kind: "example", text: tail, lang });
-  return parts.length ? parts : [{ kind: "example", text: ex, lang }];
+
+  // Merge punctuation/whitespace into adjacent script runs.
+  const runs: { text: string; lang: string }[] = [];
+  let pendingLead = "";
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i]!;
+    if (tok.lang === null) {
+      const prevRun = runs[runs.length - 1];
+      const nextTok = tokens[i + 1];
+      if (!prevRun) {
+        pendingLead += tok.text;
+        continue;
+      }
+      // Split neutral gap at whitespace or opening bracket so trailing punctuation
+      // stays with the previous part and opening brackets/quotes stay with the next.
+      const splitIdx = tok.text.search(/\s|[(（[「『"“']/);
+      if (splitIdx < 0) {
+        prevRun.text += tok.text;
+      } else {
+        const toPrev = tok.text.slice(0, splitIdx);
+        const rest = tok.text.slice(splitIdx).trimStart();
+        if (toPrev) prevRun.text += toPrev;
+        if (nextTok && rest) pendingLead += rest;
+        else if (rest.trim()) prevRun.text += " " + rest.trim();
+      }
+      continue;
+    }
+
+    // If a standalone parenthesized gloss like "(我们记录每个事件。)" starts with "("
+    // and ends with ")", strip the outer parens so TTS reads the inner text cleanly.
+    const nextTok = tokens[i + 1];
+    let text = pendingLead + tok.text;
+    if (
+      /^\s*[(（]$/.test(pendingLead) &&
+      nextTok?.lang === null &&
+      /^[。！？!?,，、\s]*[)）]\s*$/.test(nextTok.text)
+    ) {
+      text = tok.text;
+      nextTok.text = nextTok.text.replace(/[)）](\s*)$/, "$1");
+    }
+    pendingLead = "";
+    const prevRun = runs[runs.length - 1];
+    if (prevRun && prevRun.lang === tok.lang) {
+      prevRun.text = `${prevRun.text} ${text}`.trim();
+    } else {
+      runs.push({ text: text.trim(), lang: tok.lang });
+    }
+  }
+
+  const cleaned = runs
+    .map((r) => ({ kind: "example" as const, text: r.text.trim(), lang: r.lang }))
+    .filter((r) => r.text);
+  return cleaned.length ? cleaned : [{ kind: "example", text: ex, lang }];
 }
 
 /**

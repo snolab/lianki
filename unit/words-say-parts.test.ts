@@ -29,7 +29,7 @@ describe("sayParts", () => {
     ]);
   });
 
-  test("mixed-language example splits parenthesized translation into its own language", () => {
+  test("mixed-language example splits runs at every script switch with adjacent punctuation", () => {
     expect(
       sayParts(
         { term: "islog", back: "记录日志", ex: "We log each event. (我们记录每个事件。)" },
@@ -42,6 +42,38 @@ describe("sayParts", () => {
       { kind: "example", text: "We log each event.", lang: "en" },
       { kind: "example", text: "我们记录每个事件。", lang: "zh" },
       { kind: "meaning", text: "记录日志", lang: "zh" },
+    ]);
+
+    expect(
+      sayParts(
+        { term: "t", back: "", ex: "Use 中文 then continue in English." },
+        "en",
+        false,
+        "zh",
+      ).filter((p) => p.kind === "example"),
+    ).toEqual([
+      { kind: "example", text: "Use", lang: "en" },
+      { kind: "example", text: "中文", lang: "zh" },
+      { kind: "example", text: "then continue in English.", lang: "en" },
+    ]);
+
+    expect(
+      sayParts({ term: "t", back: "", ex: "我喜欢它。 I like it." }, "zh", false, "zh").filter(
+        (p) => p.kind === "example",
+      ),
+    ).toEqual([
+      { kind: "example", text: "我喜欢它。", lang: "zh" },
+      { kind: "example", text: "I like it.", lang: "en" },
+    ]);
+
+    expect(
+      sayParts({ term: "t", back: "", ex: "Say (hello 世界) now." }, "en", false, "zh").filter(
+        (p) => p.kind === "example",
+      ),
+    ).toEqual([
+      { kind: "example", text: "Say (hello", lang: "en" },
+      { kind: "example", text: "世界)", lang: "zh" },
+      { kind: "example", text: "now.", lang: "en" },
     ]);
   });
 
