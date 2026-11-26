@@ -465,7 +465,7 @@ so revoking permission or excluding a site cannot leave a second chat window.
   User cancellation aborts the request; a message already accepted durably
   is not unsent. No microphone, playback or device access is part of this UI.
 
-### The chat window is the main site's DebugChat (2.24.52)
+### The chat window is the main site's DebugChat (2.24.53)
 
 Owner, 2026-11-26: 随身Li reuses the Li chat component, no second wheel, and
 looks exactly like the chat window on lianki.com, everywhere (his sites
