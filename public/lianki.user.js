@@ -14,7 +14,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.43
+// @version     2.24.44
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -4356,8 +4356,13 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
     "https://preview.lianki.com",
   ]);
   function startPortableLi(d) {
-    const store = globalChatStore(d.gm),
-      host = siteKey(new URL(d.hostOrigin).hostname);
+    const store = globalChatStore(d.gm);
+    let host = null;
+    try {
+      const url = new URL(d.hostOrigin);
+      if ((url.protocol === "https:" || url.protocol === "http:") && url.origin === d.hostOrigin)
+        host = siteKey(url.hostname);
+    } catch {}
     let panel,
       promptClose,
       destroyed = false,
@@ -4594,6 +4599,7 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
       excluded: () => !host || chatSiteExcluded(store.read(), host),
       active: () =>
         d.top &&
+        !!host &&
         (flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null)) || store.read().consent !== "unknown"),
       open: async () => {
         if (panel) {

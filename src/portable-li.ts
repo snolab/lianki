@@ -41,8 +41,14 @@ export function startPortableLi(d: {
   watch?: PortableWatch;
   signal?: AbortSignal;
 }) {
-  const store = globalChatStore(d.gm),
-    host = siteKey(new URL(d.hostOrigin).hostname);
+  const store = globalChatStore(d.gm);
+  // Unsupported/non-web documents must disable only portable chat, never abort LiCards startup.
+  let host: string | null = null;
+  try {
+    const url = new URL(d.hostOrigin);
+    if ((url.protocol === "https:" || url.protocol === "http:") && url.origin === d.hostOrigin)
+      host = siteKey(url.hostname);
+  } catch {}
   let panel: ReturnType<typeof portableLiPanel> | undefined,
     promptClose: (() => void) | undefined,
     destroyed = false,
@@ -276,6 +282,7 @@ export function startPortableLi(d: {
     excluded: () => !host || chatSiteExcluded(store.read(), host),
     active: () =>
       d.top &&
+      !!host &&
       (flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null)) || store.read().consent !== "unknown"),
     open: async () => {
       if (panel) {

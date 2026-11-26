@@ -396,3 +396,18 @@ test("the actual pill wiring hands chat to the portable controller without auto-
     await win.happyDOM.abort();
   }
 });
+
+test("non-web documents disable only portable chat without aborting legacy card initialization", async () => {
+  const f = fixture("about:blank");
+  try {
+    f.win.document.body.innerHTML = '<button id="legacy-card">Card</button>';
+    await turn();
+    expect(f.controller.active()).toBe(false);
+    expect(f.controller.excluded()).toBe(true);
+    expect(f.callCount()).toBe(0);
+    expect(f.win.document.querySelector("lianki-portable-consent")).toBeNull();
+    expect(f.win.document.getElementById("legacy-card")).not.toBeNull();
+  } finally {
+    f.finish();
+  }
+});

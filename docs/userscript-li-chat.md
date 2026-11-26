@@ -406,7 +406,7 @@ rejection, controller isolation and exclusion of learning data. The extended
 isolated-world browser fixtures; it is not evidence of a real manager install.
 Actual ScriptCat/Tampermonkey-to-site chat remains a separate post-deploy check.
 
-## 随身Li: global consent and bundled CSP-independent chat (2.24.43, pending delivery)
+## 随身Li: global consent and bundled CSP-independent chat (2.24.44, pending delivery)
 
 The automatic chat path uses a statically bundled shadow-DOM panel and
 `GM_xmlhttpRequest`, rather than relying on an iframe or the website's
