@@ -133,6 +133,31 @@ export const CONFIG = {
     audience: "public",
     description: "单词原音载入、定位或播放停滞时等待多久再回退到合成音（毫秒）。",
   }),
+  "review.nextPreview": {
+    default: true as boolean,
+    schema: z.boolean(),
+    group: "review",
+    audience: "public",
+    description:
+      "复习网页卡片时，仅预载下一张网页的受限预览；关闭后不请求预览检查或加载预览网页。省流量模式下也不预载。",
+  },
+  "review.previewHeadTimeoutMs": int({
+    default: 5000,
+    min: 500,
+    max: 15000,
+    unit: "ms",
+    group: "review",
+    audience: "server",
+    description: "下一张网页预览的请求头和公开地址检查总等待时间；超时只显示标题链接。",
+  }),
+  "review.previewChecksPerMinute": int({
+    default: 30,
+    min: 1,
+    max: 120,
+    group: "review",
+    audience: "server",
+    description: "每个账号每分钟最多检查多少张下一页预览；超出后照常复习，只显示标题链接。",
+  }),
   "words.speak.skipForeignParens": {
     default: true as boolean,
     schema: z.boolean(),
