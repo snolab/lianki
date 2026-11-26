@@ -41,23 +41,36 @@ export function zoneStyle(t: SnapTarget, d: { hot: boolean; shown: boolean; ms: 
   };
 }
 
-/** Where a zone's label sits: its middle, clear of the safe areas (the home indicator, a notch). */
-export function labelAt(t: SnapTarget, vp: SnapViewport): { x: number; y: number } {
+/** Labels sit over the chat (they name what is under it), still never taking a touch. */
+export const LABEL_Z = "calc(var(--lk-z-chat, 80) + 1)";
+
+/**
+ * Where a zone's label sits, clear of the safe areas (the home indicator, a
+ * notch) and never off-screen: the strips' labels in their middle; the
+ * corner's label right-aligned just above the corner square (it is wider
+ * than the corner). `end`: the point is the label's bottom-right corner.
+ */
+export function labelAt(t: SnapTarget, vp: SnapViewport): { x: number; y: number; end?: boolean } {
   const z = t.zone;
   const s = vp.safe;
   if (t.id === "fullscreen") return { x: z.x + z.w / 2, y: z.y + (z.h - s.bottom) / 2 };
   if (t.id === "dock-right") return { x: z.x + (z.w - s.right) / 2, y: z.y + z.h / 2 };
-  return { x: z.x + (z.w - s.right) / 2, y: z.y + (z.h - s.bottom) / 2 };
+  return { x: z.x + z.w - s.right - 6, y: z.y - 6, end: true };
 }
 
-export function labelStyle(at: { x: number; y: number }, d: { hot: boolean; vertical: boolean; ms: number; reduce: boolean }): Style {
+export function labelStyle(
+  at: { x: number; y: number; end?: boolean },
+  d: { hot: boolean; vertical: boolean; ms: number; reduce: boolean },
+): Style {
+  const shift = at.end ? "translate(-100%, -100%)" : "translate(-50%, -50%)";
   return {
     position: "fixed",
     left: `${at.x}px`,
     top: `${at.y}px`,
-    transform: `translate(-50%, -50%) scale(${d.hot ? 1.06 : 1})`,
+    transformOrigin: at.end ? "100% 100%" : "50% 50%",
+    transform: `${shift} scale(${d.hot ? 1.06 : 1})`,
     pointerEvents: "none",
-    zIndex: OVERLAY_Z,
+    zIndex: LABEL_Z,
     display: "flex",
     flexDirection: d.vertical ? "column" : "row",
     alignItems: "center",

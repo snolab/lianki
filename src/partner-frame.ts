@@ -278,8 +278,9 @@ export function frameShell(d: FrameShellDeps): FrameShell {
   };
   const stop = () => {
     if (drag) caf(drag.frame);
+    const drew = !!drag?.targets;
     drag = null;
-    overlay.replaceChildren();
+    if (drew) overlay.replaceChildren();
     view?.removeEventListener("keydown", onKey, true);
     view?.removeEventListener("resize", cancelDrag);
   };
@@ -317,7 +318,7 @@ export function frameShell(d: FrameShellDeps): FrameShell {
     }
   };
   grip.addEventListener("pointerdown", (e: PointerEvent) => {
-    if (e.button !== 0) return;
+    if ((e.button ?? 0) !== 0) return;
     drag = {
       x: e.clientX,
       y: e.clientY,

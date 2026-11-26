@@ -70,9 +70,13 @@ describe("the Full screen row's markup", () => {
     expect(item).toContain("setFull(!full, true)");
     expect(item).toContain("onWord={ux.menuSwitchOn}");
     expect(src).not.toContain('data-testid="debug-menu-fullscreen"');
-    // setFull writes the device's choice (ui-store.ts chatPrefs `full`).
+    // setFull writes the device's choice (ui-store.ts chatPrefs `full`, and how it is drawn, `fullMode`).
     const set = src.slice(src.indexOf("const setFull = "), src.indexOf("leaveFull.current ="));
-    expect(set).toContain("chatPrefs().setState({ full: on })");
+    expect(set).toContain(
+      "chatPrefs().setState(on ? { full: true, fullMode: mode } : { full: false })",
+    );
+    // The menu row keeps today's look: `auto` (a sidebar when wide).
+    expect(set).toContain('mode: FullMode = "auto"');
   });
 });
 

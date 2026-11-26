@@ -195,14 +195,19 @@ describe("the overlay mounted in DebugChat", () => {
 
 describe("overlay looks (snap-overlay.ts)", () => {
   const t = snapTargets(desktop, opts()).find((t) => t.id === "fullscreen")!;
-  it("never takes a touch, sits under the chat, oklch only", () => {
+  it("never takes a touch; zones and preview under the chat, labels over it; oklch only", () => {
+    const label = labelStyle(
+      { x: 1, y: 2 },
+      { hot: false, vertical: false, ms: 160, reduce: false },
+    );
+    expect(String(label.zIndex)).toContain("+ 1");
     for (const s of [
       zoneStyle(t, { hot: true, shown: true, ms: 160, reduce: false }),
-      labelStyle({ x: 1, y: 2 }, { hot: false, vertical: false, ms: 160, reduce: false }),
+      label,
       previewStyle(t.result, { alpha: 0.7 }),
     ]) {
       expect(s.pointerEvents).toBe("none");
-      expect(String(s.zIndex)).toContain("- 1");
+      if (s !== label) expect(String(s.zIndex)).toContain("- 1");
       expect(JSON.stringify(s)).not.toMatch(/#[0-9a-f]{3,6}\b|rgba?\(|hsl\(/i);
     }
   });
@@ -220,6 +225,14 @@ describe("overlay looks (snap-overlay.ts)", () => {
     )!;
     const at = labelAt(pt, phone);
     expect(at.y).toBeLessThan(844 - 34);
+    // The corner's label is right-aligned inside the screen, above the corner square.
+    const corner = snapTargets(phone, opts({ home: { right: 382, bottom: 802 } })).find(
+      (x) => x.id === "minimize",
+    )!;
+    const c = labelAt(corner, phone);
+    expect(c.end).toBe(true);
+    expect(c.x).toBeLessThanOrEqual(390);
+    expect(c.y).toBeLessThan(corner.zone.y);
   });
   it("the preview grows from the window's rect (FLIP)", () => {
     expect(growFrom(null, t.result)).toBe("none");
