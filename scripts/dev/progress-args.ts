@@ -24,7 +24,7 @@ import { ownerStamp } from "./owner-time";
 export const PROGRESS_USAGE = `usage:
   bun scripts/dev/progress.ts --agent <name> --task "<name>: <description>" --status <${PROGRESS_STATUSES.join("|")}>
       [--path /words/prefetch | --id <slug> [--parent <id>]] [--done] [--pct 40]
-      [--eta 15m | --eta 12m-63m [--late "why"] | --confirm] [--change-id <id>]
+      [--eta auto[:<kind>] | --eta 15m | --eta 12m-63m [--late "why"] | --confirm] [--change-id <id>]
       [--pr 299] [--note "..."] [--needs "approve PR #299"] [--who owner|<lane>|<agent>@<lane>] [--kind <${PROGRESS_KINDS.join("|")}>]
       [--done [--verified "<evidence>" | --unverified]]
       [--ref <id>] [--action "<command or URL>"] [--link https://…] [--rev N] [--human]
@@ -45,6 +45,9 @@ bar shows only the name; the full list shows both. A new or renamed name over 20
 from the P95) or an ISO time (2026-11-07T21:00+09:00). It sets the node's etaAt: the owner's chat
 shows a bar running to it, and when it passes the owning lane gets one automatic line "ETA reached
 for <task> (<id>)…".
+--eta auto (or auto:ui-fix, auto:review, …) asks the estimate skill (scripts/dev/estimate.ts) for
+the P5-P95 from similar done tasks and logs it for calibration; never guess an ETA by hand. Not in
+batch items: run estimate.ts --eta-only for those.
 --confirm re-confirms the estimate unchanged (before it runs out): the hub logs it, and "show"
 gives the node's etaConfirmedAt and "etaConfirmedAgo", so a stale estimate stands out.
 One action across several nodes shares a change id and one time, so the Gantt's ticks line up:
@@ -307,6 +310,33 @@ export function parseProgressArgs(argv: string[]): ProgressCommand | Error {
       ? `${title.message} — the hub refuses it unless this node already has that name`
       : title.warning;
   return { cmd: "report", report, ...(warning ? { warning } : {}), ...token };
+}
+
+/**
+ * `--eta auto` or `--eta auto:<kind>` (also `--eta=auto…`) in a report's argv:
+ * where its value is and the kind asked for. null when the --eta is not auto.
+ * progress.ts swaps the value for the estimate skill's P5-P95 range.
+ */
+export function findAutoEta(argv: readonly string[]): { index: number; kind?: string } | null {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    const value = a === "--eta" ? argv[i + 1] : a.startsWith("--eta=") ? a.slice(6) : undefined;
+    const index = a === "--eta" ? i + 1 : i;
+    const m = value === undefined ? null : /^auto(?::([a-z-]+))?$/.exec(value.trim());
+    if (m) return { index, ...(m[1] ? { kind: m[1] } : {}) };
+  }
+  return null;
+}
+
+/** argv with the auto --eta found by findAutoEta set to `eta`. */
+export function replaceAutoEta(
+  argv: readonly string[],
+  at: { index: number },
+  eta: string,
+): string[] {
+  const out = [...argv];
+  out[at.index] = out[at.index]!.startsWith("--eta=") ? `--eta=${eta}` : eta;
+  return out;
 }
 
 /**
