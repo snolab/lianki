@@ -21,6 +21,7 @@ import {
 import { threadHashKey } from "../lib/li-thread";
 import type { LiTicketDeps } from "../lib/li-ticket-route";
 import { pageChatFetch, type ChatGmRequest } from "../src/page-chat-fetch";
+import { consentedFrameTicket } from "../src/pill-chat";
 import { portableSource, portableChatPath } from "../lib/portable-chat-url";
 import push from "../workers/push/src/index";
 import { buildMessages, parsePartnerRequest } from "../lib/partner-ai";
@@ -175,6 +176,48 @@ describe("portable Li page-realm issuer and signed scope", () => {
     expect(seen[0]!.get(EMBED_HEADER)).toBeTruthy();
     expect(seen[0]!.get(SUB_THREAD_HEADER)).toBe(payload(t).th);
     expect(seen[0]!.get(SUB_ORIGIN_HEADER)).toBe(HOST);
+  });
+});
+
+describe("page ticket authenticated identity echo", () => {
+  it("the 随身Li frame takes a real issuer ticket for the consented account, refuses cookie B for consent A", async () => {
+    const s = await setup();
+    const brokered = () =>
+      pageChatFetch("https://lianki.com", HOST, (r) => {
+        void mint(new Request(r.url, { method: r.method, headers: r.headers }), s.deps).then(
+          async (response) => {
+            r.onload({ status: response.status, responseText: await response.text() });
+          },
+        );
+      });
+    let changed = 0;
+    const ask = () =>
+      consentedFrameTicket({
+        fetch: brokered(),
+        origin: "https://lianki.com",
+        principal: "account_1",
+        onAccountMismatch: () => void changed++,
+        report: () => {},
+      });
+    s.deps.sessionUser = async () => ({ id: "account_1", email: "viewer@example.test" });
+    const ticket = await ask();
+    expect(typeof ticket).toBe("string");
+    expect(payload(ticket!).sub).toBe("account_1");
+    expect(changed).toBe(0);
+    s.deps.sessionUser = async () => ({ id: "account_2", email: "viewer@example.test" });
+    expect(await ask()).toBeNull();
+    expect(changed).toBe(1);
+  });
+  it("echoes the authenticated cookie account, never a caller-chosen principal", async () => {
+    const s = await setup();
+    for (const id of ["account_1", "account_2"]) {
+      s.deps.sessionUser = async () => ({ id, email: "viewer@example.test" });
+      const r = await mint(s.request({ "x-lianki-chat-principal": "account_1" }), s.deps);
+      const body = (await r.json()) as { ticket: string; principal: string };
+      expect(r.status).toBe(200);
+      expect(body.principal).toBe(id);
+      expect(payload(body.ticket).sub).toBe(body.principal);
+    }
   });
 });
 
