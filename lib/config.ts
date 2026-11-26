@@ -67,7 +67,12 @@ import {
   type ChatLaneDef,
 } from "@lianki/debug-chat/voices";
 import { LANES_CONFIG_DEFAULTS, type LaneAgentDef, laneAgentSchema } from "./lanes-config";
-import { PHONETIC_MAX_NEAR_DEFAULT, PHONETIC_MAX_NEAR_MAX } from "@lianki/debug-chat/lane-phonetic";
+import {
+  PHONETIC_MAX_NEAR_DEFAULT,
+  PHONETIC_MAX_NEAR_MAX,
+  PHONETIC_OWN_SYLLABLES_DEFAULT,
+  PHONETIC_OWN_SYLLABLES_MAX,
+} from "@lianki/debug-chat/lane-phonetic";
 import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mic";
 import { ETA_BAR_CYCLE, ETA_TICKER_KEEP, ETA_TICKER_SEC } from "@lianki/debug-chat/eta-ticker";
 import { MERGE_REOPEN_DEFAULT_SEC, MERGE_REOPEN_MAX_SEC } from "@lianki/debug-chat/voice-tune";
@@ -1848,6 +1853,16 @@ export const CONFIG = {
     audience: "public",
     description:
       "点名按读音认名字时，一个名字里最多几个字可以「读音相近」（j/q/x、zh/z、n/l、in/ing、an/ang、ie/i 这类混淆；声调不算）。例：1 时「切咪」「杰民」都算叫杰咪；0 = 拼音完全一样才算（「解密」「杰米」照样算）。Mac 上的监听读环境变量 LIANKI_LANES_PHONETIC_MAX_NEAR。",
+  }),
+  // Same readers; the Mac's listeners read env LIANKI_LANES_PHONETIC_OWN_SYLLABLES.
+  "lanes.phoneticOwnSyllables": int({
+    default: PHONETIC_OWN_SYLLABLES_DEFAULT,
+    min: 0,
+    max: PHONETIC_OWN_SYLLABLES_MAX,
+    group: "lanes",
+    audience: "public",
+    description:
+      "语音识别写错的名字（heard 里的写法，或读音像名字）至少几个汉字时，后面不用跟标点也算点名。例：3 时「海吉米来看一下」「哈吉米你看一下」都叫哈基米；两个字的（解密、节目）照样要跟标点才算。0 = 关（都要跟标点）。Mac 上的监听读环境变量 LIANKI_LANES_PHONETIC_OWN_SYLLABLES。",
   }),
   // The lanes manager on the Mac (scripts/dev/lanes-manager.ts): it runs there,
   // not in the Worker, so its live value is the env var named in lib/lanes-config.ts.

@@ -42,6 +42,14 @@ lane answers it. Every listener uses it, so a line gets exactly one answer
   spellings). A sound match counts as a heard spelling, so a mark must follow
   it: 节目 / 街面 / 小鸡 never match, and 小河 (xiao he, like 小贺) only with a
   mark after it. A name said twice ("建明建明在吗") is an address without a mark.
+- Long heard spellings need no mark (owner, 2026-11-27: "海吉米来 extend 一下",
+  "哈吉米你看一下" went to the chat lane): a heard Han spelling or a sound
+  match of at least `lanes.phoneticOwnSyllables` syllables (default 3; 0 =
+  off; the Mac's listeners read env `LIANKI_LANES_PHONETIC_OWN_SYLLABLES`)
+  counts as an own name, so Chinese text may follow it. Two-syllable ones
+  (解密, 切咪) still need the mark, and `…的` is still talk about the lane.
+  The cost: a line that starts with a three-character heard spelling as a
+  word ("反重力很有意思", "杰米尼发布了") now addresses agy.
   It lives in `nameAt`, so the hand-off marks, the avatar flash and the
   @mention rewrite all get it.
 - New spellings go in `LANE_NAMES` with a test in `unit/lane-route.test.ts`;
@@ -54,7 +62,10 @@ lane answers it. Every listener uses it, so a line gets exactly one answer
 - Project and branch names (`lianki`, `liagent`, `agent-yes`, `otoji`) default
   to routing under the `chat` lane.
 - All unique names in the table can be extracted via `laneHotwords(table?)`
-  and fed to STT models (e.g. Whisper `initial_prompt`) to improve recognition.
+  for STT models (e.g. Whisper `initial_prompt`). Not wired yet (2026-11-27):
+  nothing calls it. The cloud route's prompt (`lib/workers-ai.ts`
+  `sttPrompt(opts.hint)`) carries only the account's own `stt.hotwords`
+  glossary, and the Mac's server (SenseVoice by default) takes no prompt.
 - The matcher itself lives in `packages/debug-chat/src/lane-route.ts`
   (`lib/lane-route.ts` re-exports it), so the chat uses the same rule: a name
   heard in his live speech, or in a line he sends, flashes that lane's avatar

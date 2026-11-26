@@ -53,6 +53,33 @@ export function setPhoneticMaxNear(n: unknown): number {
 }
 export const phoneticMaxNear = () => maxNear;
 
+/**
+ * Default of config `lanes.phoneticOwnSyllables`: a heard spelling or a sound
+ * match of at least this many Han syllables counts as the lane's own name, so
+ * no punctuation mark has to follow it (owner, 2026-11-27: "海吉米来 extend 一下",
+ * "哈吉米你看一下" went unaddressed). Two-syllable sounds (解密, 节目) still need
+ * the mark: they are common words; three in a row are rare enough to be a call.
+ * 0 = off (every heard spelling or sound match needs the mark).
+ */
+export const PHONETIC_OWN_SYLLABLES_DEFAULT = 3;
+/** The setting's range (lib/config.ts bounds). */
+export const PHONETIC_OWN_SYLLABLES_MAX = 8;
+
+let ownSyllables = PHONETIC_OWN_SYLLABLES_DEFAULT;
+/** Put config `lanes.phoneticOwnSyllables` in force (a bad value keeps the current one). */
+export function setPhoneticOwnSyllables(n: unknown): number {
+  if (typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= PHONETIC_OWN_SYLLABLES_MAX)
+    ownSyllables = n;
+  return ownSyllables;
+}
+export const phoneticOwnSyllables = () => ownSyllables;
+
+/** Whether a Han name of `syllables` syllables (null: not all Han) is long enough to count as an own name. */
+export const longEnoughForOwn = (
+  syllables: number | null | undefined,
+  min: number = ownSyllables,
+): boolean => min > 0 && typeof syllables === "number" && syllables >= min;
+
 /** Pinyin initials, longest first (y and w as initials, like wake-tokens.ts). */
 const INITIALS = ["zh", "ch", "sh", "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "j", "q", "x", "r", "z", "c", "s", "y", "w"];
 

@@ -12,7 +12,7 @@
  * Pure, tested in unit/lane-route.test.ts.
  */
 
-import { nameSyllables, phoneticPrefix } from "./lane-phonetic";
+import { longEnoughForOwn, nameSyllables, phoneticPrefix } from "./lane-phonetic";
 import { type LaneId, laneTable, setLaneTable } from "./voices";
 import { pinyinOf } from "./wake-tokens";
 
@@ -269,7 +269,10 @@ function nameAt(s: string): Hit | null {
             if (!/^[a-z0-9]/i.test(s.slice(i))) end = i;
           }
         } else if (s.slice(0, name.length).toLowerCase() === name.toLowerCase()) end = name.length;
-        if (end > 0 && (!best || end > best.end)) best = { lane, end, exact: kind === "exact" };
+        // A heard Han spelling of enough syllables is said as the name is: no mark needed
+        // (lane-phonetic.ts longEnoughForOwn, config lanes.phoneticOwnSyllables).
+        if (end > 0 && (!best || end > best.end))
+          best = { lane, end, exact: kind === "exact" || longEnoughForOwn(sylsOf(name)?.length) };
       }
     }
   }
@@ -287,7 +290,8 @@ function sylsOf(name: string): string[] | null {
  * The fallback when no spelling matched: a lane name by sound (lane-phonetic.ts,
  * owner 2026-11-15: "从语音层面来"). Every Han name and heard spelling of every
  * lane is a pronunciation; the longest one `s` starts with wins. A sound match
- * counts as a heard spelling: a punctuation mark must follow it.
+ * counts as a heard spelling (a punctuation mark must follow it), unless it is
+ * long enough to count as an own name (longEnoughForOwn: 3 syllables by default).
  */
 function phoneticAt(s: string): Hit | null {
   let best: Hit | null = null;
@@ -297,7 +301,8 @@ function phoneticAt(s: string): Hit | null {
       const syls = sylsOf(name);
       if (!syls) continue;
       const end = phoneticPrefix(s, syls, pinyinOf);
-      if (end > 0 && (!best || end > best.end)) best = { lane, end, exact: false };
+      if (end > 0 && (!best || end > best.end))
+        best = { lane, end, exact: longEnoughForOwn(syls.length) };
     }
   }
   return best;
