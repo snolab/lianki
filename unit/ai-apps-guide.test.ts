@@ -11,7 +11,6 @@ import tokensDict from "@/app/components/api-tokens.content";
 import agentDict from "@/lib/agent-guide.content";
 import {
   AI_APPS,
-  AI_APPS_CHECKED_ON,
   AI_APPS_GUIDE_PATH,
   AI_APPS_GUIDE_URL,
   checkedOn,
@@ -75,8 +74,31 @@ describe("ai-apps guide", () => {
     }
     expect(fillGuide("a {x} {y}", { x: 1 })).toBe("a 1 {y}");
     expect(checkedOn("en")).toContain("2026");
-    // A locale Intl refuses falls back to the ISO date.
-    expect(checkedOn("not a locale!")).toBe(AI_APPS_CHECKED_ON);
+    // An invalid locale tag falls back to the ISO date instead of throwing.
+    expect(checkedOn("not a locale!")).toBe("2026-11-27");
+  });
+
+  it("each app links its maker's own official help page", () => {
+    const hosts = AI_APPS.map((a) => new URL(a.help).host);
+    expect(hosts).toEqual(["help.openai.com", "support.claude.com", "support.google.com"]);
+    const g = guideDict.content as unknown as Record<string, Tr>;
+    for (const k of ["availChatgpt", "availClaude", "availGemini", "availText", "claudeAuth"])
+      expect(g[k], k).toBeDefined();
+    expect(g.claudeAuth.translation.en).toContain("No sign in");
+    // ChatGPT: install, then a Work chat with @ (OpenAI's plugin quickstart).
+    expect(g.chatgptInstall.translation.en).toContain("install");
+    expect(g.chatgptTry.translation.en).toMatch(/“Work”.*@/);
+    // Gemini custom apps are English-only (Google's help page), said in every locale.
+    for (const loc of LOCALES) expect(g.geminiNote.translation[loc]).toBeTruthy();
+    expect(g.geminiNote.translation.en).toContain("only in English");
+    // ...and in Gemini's "Who can use it" line, every locale (Google's help page).
+    expect(g.availGemini.translation.en).toContain("only in English");
+    for (const loc of LOCALES)
+      expect(g.availGemini.translation[loc].length, loc).toBeGreaterThan(
+        g.availGemini.translation[loc].indexOf("Gemini") + 60,
+      );
+    // No unconditional "about three minutes" promise in the intro.
+    expect(g.intro.translation.en).not.toMatch(/minute/);
   });
 
   it("no token secret or prefix is shown on the page", () => {
