@@ -85,13 +85,17 @@ Authorization, the expected principal header compared on every call,
 | { ok: true; kind: "history"; range: ChatReplayRange & {
       dictation?: { routeId: string; gen: number; throughSeq: number;
                     items: { seq: number; finalId: string; text: string; at: number }[] } } }
-| { ok: false; error: "no-grant" | "invalid" | "account-changed" | "signed-out" | "off" | /* existing */ string }
+// One error shape for every op (route, read, send, hello):
+| { ok: false; error: "no-grant" | "invalid" | "stale" | "off" | "account-changed"
+                    | "signed-out" | "rate-limited" | "busy" | "unavailable"; gen?: number }
 ```
 
 Field rules: `bid` `[A-Za-z0-9_-]{16,64}`, `routeId` `[A-Za-z0-9_-]{8,64}`,
 `gen` / `seq` / `afterSeq` safe non-negative integers, `finalId`
 `[A-Za-z0-9_-]{8,64}`, unknown keys refused (as `parsePageChatHttpInput`
-does today). **ACK upper bound:** `dictation.afterSeq` must be ≤ the highest
+does today). `stale` = the `gen` (or routeId) is no longer the target's;
+`gen` in an error, when present, is the current one for this window (or
+absent when it holds none). **ACK upper bound:** `dictation.afterSeq` must be ≤ the highest
 `seq` already delivered to that routeId + gen; anything higher is refused
 `invalid` and changes nothing, so an arbitrary cursor cannot erase items that
 were never delivered.
@@ -215,13 +219,25 @@ were never delivered.
 ## Delivery and ACK (no word is ever lost, none appears twice)
 
 - **The source holds the copy.** The lianki.com tab that heard a final keeps
-  it in a local outbox `{finalId, routeId, gen, sgen, text, at}` (in its tab's
-  session storage) from the moment it sends `chat-dictation` until the hub
-  settles it.
+  it in a local outbox `{finalId, routeId, gen, sgen, text, at}` from the
+  moment it sends `chat-dictation` until the hub settles it. The outbox is
+  isolated per **account + bid + source tab** (a random tab id, `stid`): it
+  lives in that tab's `sessionStorage` under `lk:dictation-outbox:<account>:<bid>:<stid>`,
+  and that tab restores only its own entries, only while the same account is
+  signed in. A different account or tab never sees or restores them.
+- **Persistence, honestly:** `sessionStorage` survives a reload of that tab
+  but **not closing it**. A closed source tab loses its unsettled local copy;
+  anything the hub had not delivered is then gone too (the hub drops it on
+  the source's disconnect, below). This is the chosen trade-off (no
+  cross-tab store of dictated text); the "N lines may not have arrived" note
+  says so.
 - **Hub states per final:** `queued` (accepted for the target, never yet in a
   `read` answer) → `delivered` (sent in at least one `read` answer) → `acked`
   (a later `read` from that bid + routeId + gen names `afterSeq ≥ seq`).
   **Queued is not delivered:** only a `read` answer moves an item on.
+- **Source disconnect:** when the source's socket closes, the hub drops its
+  queued (never delivered) items for that `sgen`; delivered ones still reach
+  the page as usual.
 - **Re-delivery is idempotent by `finalId`:** the hub re-sends every
   delivered-but-unacked item on each `read` of the same bid + routeId + gen
   (a lost response loses nothing); the page appends each `finalId` at most
@@ -233,12 +249,13 @@ were never delivered.
     expires (10 min), the queue is full (50) or the final is rejected →
     `dictation-returned`: the page cannot have it, so the source puts its own
     copy into **its own** draft, marked "delivery not confirmed" (未确认送达),
-    in order.
+    in order. (Hub-side rejections use these messages; broker calls use the
+    one error shape above.)
   - Delivered but not acked when the target ends (the ACK may be lost: the
     page may already have appended it) → `dictation-unconfirmed`: the source
     does **not** put it into its draft by itself; it keeps the copy and shows
     "N lines may not have arrived — restore" with one tap that restores them
-    into its draft. So a lost ACK never both appends to the target and
+    into its draft (until that tab closes). So a lost ACK never both appends to the target and
     returns to the source, and no word is lost.
   - The source returns or restores only on these explicit hub messages, never
     on a timeout of its own.
@@ -290,6 +307,9 @@ were never delivered.
 
 ## Tests (planned)
 
+- Outbox isolation: another account or another tab never restores the
+  entries; a reload keeps them, closing the tab drops them.
+- Every op's refusal has the one error shape `{ok:false, error, gen?}`.
 - Synthetic delivery scenarios (no audio): (a) accepted → the target ends
   (change / revoke / disconnect) → returned to the source; (b) queue full →
   `full` returned; (c) 10-minute expiry → returned; (d) a lost ACK: the page
