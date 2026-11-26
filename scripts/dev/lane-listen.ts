@@ -33,7 +33,10 @@
 import { join } from "node:path";
 import { type RouteLane, isRouteLane } from "../../lib/lane-route";
 import { setLaneTable } from "../../packages/debug-chat/src/voices";
-import { setPhoneticMaxNear } from "../../packages/debug-chat/src/lane-phonetic";
+import {
+  setPhoneticMaxNear,
+  setPhoneticOwnSyllables,
+} from "../../packages/debug-chat/src/lane-phonetic";
 import {
   listenerTakes,
   routeKey,
@@ -126,6 +129,9 @@ function parse(argv: string[]): Opts | Error {
   // How near a name may sound (config lanes.phoneticMaxNear; lane-phonetic.ts).
   if (process.env.LIANKI_LANES_PHONETIC_MAX_NEAR)
     setPhoneticMaxNear(Number(process.env.LIANKI_LANES_PHONETIC_MAX_NEAR));
+  // How long a heard spelling must be to need no mark (config lanes.phoneticOwnSyllables).
+  if (process.env.LIANKI_LANES_PHONETIC_OWN_SYLLABLES)
+    setPhoneticOwnSyllables(Number(process.env.LIANKI_LANES_PHONETIC_OWN_SYLLABLES));
   // 小克's token "claude" listens too (as the route "chat"); "chat" itself is eval.ts's.
   if (!o.lane || o.lane === "chat" || !isRouteLane(routeKey(o.lane)))
     return new Error(

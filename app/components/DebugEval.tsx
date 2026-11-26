@@ -62,7 +62,7 @@ import {
 import { markWithdrawn } from "@lianki/debug-chat/speak-rules";
 import { setLexicon } from "@lianki/debug-chat/lexicon";
 import { setLaneTable } from "@lianki/debug-chat/voices";
-import { setPhoneticMaxNear } from "@lianki/debug-chat/lane-phonetic";
+import { setPhoneticMaxNear, setPhoneticOwnSyllables } from "@lianki/debug-chat/lane-phonetic";
 import { setOtherAvatar, setOtherAvatarBelow } from "@lianki/debug-chat/avatar-rules";
 import { setSpeakerAvatars } from "@lianki/debug-chat/cluster-avatar";
 import { waitText } from "@/lib/wait-text";
@@ -322,6 +322,8 @@ export function DebugEval({
   setLaneTable(publicCfg("chat.lanes"));
   // How near a lane name may sound and still be that name (lane-phonetic.ts): live, no deploy.
   setPhoneticMaxNear(publicCfg("lanes.phoneticMaxNear"));
+  // How long a heard spelling must be to need no mark after it (lane-phonetic.ts): live, no deploy.
+  setPhoneticOwnSyllables(publicCfg("lanes.phoneticOwnSyllables"));
   // Undecided voice lines well under his print get another voice's avatar (avatar-rules.ts).
   setOtherAvatarBelow(publicCfg("voice.otherAvatarBelow"));
   setOtherAvatar(publicCfg("voice.otherAvatar"), publicCfg("voice.otherAvatarName"));

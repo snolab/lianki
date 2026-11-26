@@ -3,7 +3,9 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import {
   PHONETIC_MAX_NEAR_DEFAULT,
+  PHONETIC_OWN_SYLLABLES_DEFAULT,
   setPhoneticMaxNear,
+  setPhoneticOwnSyllables,
 } from "../packages/debug-chat/src/lane-phonetic";
 import {
   DEFAULT_LANE,
@@ -271,11 +273,44 @@ describe("routeLine: names by sound (lane-phonetic.ts, 2026-11-15)", () => {
   });
 });
 
+describe("routeLine: long heard spellings need no mark (lanes.phoneticOwnSyllables, 2026-11-27)", () => {
+  afterEach(() => setPhoneticOwnSyllables(PHONETIC_OWN_SYLLABLES_DEFAULT));
+  it.each([
+    // His lines from 2026-11-27 02:1x JST that went to the chat lane.
+    ["海吉米来extend一下我的想法。", "来extend一下我的想法。"],
+    ["哈吉米来看一下", "来看一下"],
+    ["哈吉米你看一下", "你看一下"],
+    ["海吉米你看一下", "你看一下"],
+    // By sound, never listed: ha ji mi.
+    ["哈积米你看一下", "你看一下"],
+  ])("%s → agy", (line, text) => {
+    expect(routeLine(line)).toEqual({ lanes: ["agy"], addressed: true, text });
+  });
+  it("still not an address: two syllables, 的 after the name, a name further in", () => {
+    expect(routeLine("解密一下这个文件").addressed).toBe(false);
+    expect(routeLine("切咪在吗").addressed).toBe(false);
+    expect(routeLine("哈吉米的设计不错").addressed).toBe(false);
+    expect(routeLine("你快给哈吉米修一下").addressed).toBe(false);
+  });
+  it("0 = off: a heard spelling needs its mark again", () => {
+    setPhoneticOwnSyllables(0);
+    expect(routeLine("哈吉米你看一下").addressed).toBe(false);
+    expect(routeLine("哈吉米，你看一下").lanes).toEqual(["agy"]);
+  });
+  it("a bad value keeps the current one", () => {
+    expect(setPhoneticOwnSyllables(-1)).toBe(PHONETIC_OWN_SYLLABLES_DEFAULT);
+    expect(setPhoneticOwnSyllables("4")).toBe(PHONETIC_OWN_SYLLABLES_DEFAULT);
+    expect(setPhoneticOwnSyllables(4)).toBe(4);
+    expect(routeLine("哈吉米你看一下").addressed).toBe(false);
+  });
+});
+
 describe("namesLane: any lane name in a line keeps Li quiet (2026-11-16)", () => {
   it("heard spellings of 哈基米 from his thread route to agy with a mark", () => {
     for (const n of ["韩吉敏", "韩今明", "韩吉明", "韩金明"])
       expect(routeLine(`${n}，回答。`).lanes).toEqual(["agy"]);
-    expect(routeLine("韩吉敏回答。").addressed).toBe(false);
+    // Three syllables: as an own name, no mark needed (lanes.phoneticOwnSyllables, 2026-11-27).
+    expect(routeLine("韩吉敏回答。")).toMatchObject({ lanes: ["agy"], addressed: true });
   });
   it("names a lane: an address, a heard spelling without a mark, a name further in", () => {
     expect(namesLane("agy，看一下")).toBe(true);
@@ -283,8 +318,8 @@ describe("namesLane: any lane name in a line keeps Li quiet (2026-11-16)", () =>
     expect(namesLane("韩吉敏回答。")).toBe(true);
     expect(namesLane("这个你问一下哈基米吧")).toBe(true);
     expect(namesLane("let coco check it")).toBe(true);
-    // By sound at the start, no mark (ha ji mi, written as no list has it).
-    expect(routeLine("哈机米去看看").addressed).toBe(false);
+    // By sound at the start, no mark (ha ji mi, written as no list has it): three syllables address.
+    expect(routeLine("哈机米去看看")).toMatchObject({ lanes: ["agy"], addressed: true });
     expect(namesLane("哈机米去看看")).toBe(true);
   });
   it("Latin names only as whole words; plain lines name nobody", () => {
