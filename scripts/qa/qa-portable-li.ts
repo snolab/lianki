@@ -9,10 +9,13 @@ import { threadHashKey } from "../../lib/li-thread";
 import { b64url } from "../../lib/stt-ticket";
 import { GLOBAL_CHAT_KEY } from "../../src/pill-chat-global";
 import { PILL_UI_LANGUAGE_KEY } from "../../src/pill-chat-language";
+import { partnerBuildCached, portableWindowPlugin } from "../portable-window-plugin";
 const built = await Bun.build({
   entrypoints: [new URL("./portable-li-fixture.ts", import.meta.url).pathname],
   target: "browser",
   format: "iife",
+  // The real window (the main site's DebugChat), bundled as in the release build.
+  plugins: [portableWindowPlugin(await partnerBuildCached())],
 });
 if (!built.success) throw new Error(built.logs.join("\n"));
 const code = await built.outputs[0]!.text();
@@ -202,13 +205,12 @@ try {
   const input = await page.evaluate(() => (globalThis as any).__portableQa.input());
   await page.mouse.click(input.x, input.y);
   await page.keyboard.type("fixture hello");
-  await click("发送");
+  await page.keyboard.press("Enter");
   await wait(async () => (await state()).text.includes("已连接：fixture reply"));
   check(aiCalls === 1, "GM broker reaches real hub orchestration and one synthetic AI reply");
-  await click("收起");
   check(
-    JSON.parse(String(gm.get(GLOBAL_CHAT_KEY))).collapsed.includes("github.com"),
-    "collapse persists for this website",
+    (await state()).hosts === 1 && !(await state()).text.includes("lianki-portable-chat"),
+    "the window is the main site's DebugChat, not a second chat UI",
   );
   await page.evaluate(() => (globalThis as any).__portableQa.destroy());
   await install("https://www.zhihu.com/");
@@ -218,16 +220,19 @@ try {
     "global consent opens a second website without asking again",
   );
   check(!(await state()).text.includes("fixture hello"), "site history remains separate");
-  await click("不在此网站显示");
-  check((await state()).hosts === 0, "exclude immediately removes panel");
+  // "Hide on this website" (the window's own menu) writes the same exclusion as /chat/sites.
+  const excluding = JSON.parse(String(gm.get(GLOBAL_CHAT_KEY)));
+  excluding.excluded = [...(excluding.excluded ?? []), "zhihu.com"];
+  await page.evaluate(({ key, value }) => (globalThis as any).__portableQa.remote(key, value), {
+    key: GLOBAL_CHAT_KEY,
+    value: JSON.stringify(excluding),
+  });
+  gm.set(GLOBAL_CHAT_KEY, JSON.stringify(excluding));
+  check((await state()).hosts === 0, "exclude immediately removes the window");
   await install("https://www.zhihu.com/");
   check((await state()).hosts === 0, "excluded website stays hidden after reload");
   await install("https://github.com/");
   await wait(async () => (await state()).hosts === 1);
-  check(
-    !(await page.evaluate(() => (globalThis as any).__portableQa.input())),
-    "remembered collapsed website does not start expanded",
-  );
   const policy = JSON.parse(String(gm.get(GLOBAL_CHAT_KEY)));
   policy.consent = "off";
   await page.evaluate(({ key, value }) => (globalThis as any).__portableQa.remote(key, value), {

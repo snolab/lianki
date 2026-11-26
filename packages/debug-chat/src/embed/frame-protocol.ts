@@ -34,8 +34,15 @@ export const READY_MS = 800;
 /** And at most this long overall, if the frame never loads (ms). */
 export const LOAD_CAP_MS = 10_000;
 
+/**
+ * What a frame can do, said in its "ready" (`caps`). 随身Li opens in the frame
+ * only when it says PORTABLE_CAP: an older /embed/partner (a standing notice,
+ * no per-account drafts) is not used for it; the bundled window draws instead.
+ */
+export const PORTABLE_CAP = "portable-v1";
+
 export type PortMsg =
-  | { type: "ready" }
+  | { type: "ready"; caps?: string[] }
   | { type: "need-ticket" }
   | { type: "ticket"; ticket: string | null }
   /** The chat's box, px from the frame's bottom-right: the shell sizes the iframe to it. */
@@ -52,7 +59,9 @@ export const MAX_W = 480;
 export const MAX_H = 720;
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(n)));
 
-export const frameUrl = (origin: string) => `${origin}${FRAME_PATH}`;
+/** The frame's address; `locale` (one of the app's locales) sets its UI language. */
+export const frameUrl = (origin: string, locale?: string) =>
+  `${origin}${FRAME_PATH}${locale && /^[a-z]{2}$/.test(locale) ? `?lang=${locale}` : ""}`;
 
 type MsgEvent = { source?: unknown; origin?: string; data?: unknown; ports?: readonly unknown[] };
 
@@ -86,7 +95,13 @@ export function helloFrom(
 /** A port message, checked. */
 export function portMsg(data: unknown): PortMsg | null {
   const d = rec(data);
-  if (d?.type === "ready" || d?.type === "need-ticket") return { type: d.type };
+  if (d?.type === "ready") {
+    const caps = Array.isArray(d.caps)
+      ? d.caps.filter((c): c is string => typeof c === "string" && c.length <= 32).slice(0, 8)
+      : [];
+    return caps.length ? { type: "ready", caps } : { type: "ready" };
+  }
+  if (d?.type === "need-ticket") return { type: d.type };
   if (d?.type === "size" && Number.isFinite(d.w) && Number.isFinite(d.h))
     return {
       type: "size",

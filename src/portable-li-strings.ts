@@ -21,6 +21,8 @@ export const PORTABLE_LI_CONTEXT = {
   disabled: "Global auto-chat is off for this browser; can be enabled with explicit consent.",
   exclude: "Label and action to exclude a domain in first-party Chat sites settings.",
   removeExclusion: "Remove a website exclusion without deleting its conversation history.",
+  advancedHint:
+    "Shown only after the user tries an advanced action (addressing a task node, attaching page content) in the portable Li chat on another website; followed by a link to lianki.com's chat for this website. Never a standing notice. Keep lianki.com unchanged.",
 } as const;
 export type PortableLiStrings = Record<keyof typeof PORTABLE_LI_CONTEXT, string>;
 export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
@@ -41,6 +43,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "Portable Li is off in this browser.",
     exclude: "Exclude a website",
     removeExclusion: "Remove exclusion",
+    advancedHint: "Open it for this website on lianki.com",
   },
   zh: {
     title: "随身Li",
@@ -59,6 +62,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "此浏览器已关闭随身Li。",
     exclude: "排除网站",
     removeExclusion: "取消排除",
+    advancedHint: "去 lianki.com 为这个网站单独打开",
   },
   hi: {
     title: "साथ में Li",
@@ -77,6 +81,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "इस ब्राउज़र में साथ में Li बंद है।",
     exclude: "वेबसाइट बाहर रखें",
     removeExclusion: "बहिष्करण हटाएँ",
+    advancedHint: "इस वेबसाइट के लिए lianki.com पर अलग से खोलें",
   },
   es: {
     title: "Li contigo",
@@ -95,6 +100,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "Li contigo está desactivado en este navegador.",
     exclude: "Excluir un sitio",
     removeExclusion: "Quitar exclusión",
+    advancedHint: "Ábrelo para este sitio web en lianki.com",
   },
   fr: {
     title: "Li partout",
@@ -113,6 +119,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "Li partout est désactivé dans ce navigateur.",
     exclude: "Exclure un site",
     removeExclusion: "Retirer l’exclusion",
+    advancedHint: "Ouvrez-le pour ce site sur lianki.com",
   },
   ar: {
     title: "Li معك",
@@ -131,6 +138,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "Li معك متوقف في هذا المتصفح.",
     exclude: "استثناء موقع",
     removeExclusion: "إزالة الاستثناء",
+    advancedHint: "افتحه لهذا الموقع على lianki.com",
   },
   bn: {
     title: "সঙ্গে Li",
@@ -149,6 +157,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "এই ব্রাউজারে সঙ্গে Li বন্ধ আছে।",
     exclude: "ওয়েবসাইট বাদ দিন",
     removeExclusion: "বাদ দেওয়া সরান",
+    advancedHint: "এই ওয়েবসাইটের জন্য lianki.com-এ আলাদাভাবে খুলুন",
   },
   pt: {
     title: "Li com você",
@@ -167,6 +176,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "Li com você está desativado neste navegador.",
     exclude: "Excluir um site",
     removeExclusion: "Remover exclusão",
+    advancedHint: "Abra para este site no lianki.com",
   },
   ru: {
     title: "Li с собой",
@@ -185,6 +195,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "В этом браузере Li с собой выключен.",
     exclude: "Исключить сайт",
     removeExclusion: "Отменить исключение",
+    advancedHint: "Откройте для этого сайта на lianki.com",
   },
   ur: {
     title: "ساتھ Li",
@@ -203,6 +214,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "اس براؤزر میں ساتھ Li بند ہے۔",
     exclude: "ویب سائٹ خارج کریں",
     removeExclusion: "اخراج ہٹائیں",
+    advancedHint: "اس ویب سائٹ کے لیے lianki.com پر الگ سے کھولیں",
   },
   id: {
     title: "Li di mana saja",
@@ -221,6 +233,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "Li di mana saja mati di browser ini.",
     exclude: "Kecualikan situs",
     removeExclusion: "Hapus pengecualian",
+    advancedHint: "Buka untuk situs ini di lianki.com",
   },
   de: {
     title: "Li für unterwegs",
@@ -239,6 +252,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "Li für unterwegs ist in diesem Browser ausgeschaltet.",
     exclude: "Website ausschließen",
     removeExclusion: "Ausschluss entfernen",
+    advancedHint: "Für diese Website auf lianki.com öffnen",
   },
   ja: {
     title: "どこでもLi",
@@ -257,6 +271,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "このブラウザーでは、どこでもLi はオフです。",
     exclude: "サイトを除外",
     removeExclusion: "除外を解除",
+    advancedHint: "lianki.com でこのサイト用に開く",
   },
   sw: {
     title: "Li popote",
@@ -275,6 +290,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "Li popote imezimwa katika kivinjari hiki.",
     exclude: "Tenga tovuti",
     removeExclusion: "Ondoa utengaji",
+    advancedHint: "Fungua kwa tovuti hii kwenye lianki.com",
   },
   mr: {
     title: "सोबत Li",
@@ -293,6 +309,7 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "या ब्राउझरमध्ये सोबत Li बंद आहे.",
     exclude: "वेबसाइट वगळा",
     removeExclusion: "वगळणे रद्द करा",
+    advancedHint: "या वेबसाइटसाठी lianki.com वर स्वतंत्रपणे उघडा",
   },
   ko: {
     title: "어디서나 Li",
@@ -311,5 +328,6 @@ export const PORTABLE_LI_STRINGS: Record<PillChatLocale, PortableLiStrings> = {
     disabled: "이 브라우저에서는 어디서나 Li가 꺼져 있습니다.",
     exclude: "웹사이트 제외",
     removeExclusion: "제외 해제",
+    advancedHint: "lianki.com에서 이 웹사이트용으로 따로 열기",
   },
 };

@@ -48,5 +48,6 @@ export async function pageChatTicket(req: Request, deps: LiTicketDeps): Promise<
     ...site,
     now: deps.now?.(),
   });
-  return json({ ticket, exp }, 200);
+  // Echo only the authenticated identity, so an old consent cannot adopt a new cookie account.
+  return json({ ticket, exp, principal: access.user.id }, 200);
 }

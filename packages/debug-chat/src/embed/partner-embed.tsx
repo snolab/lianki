@@ -14,10 +14,12 @@ import { useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { DebugChat } from "../DebugChat";
 import { EMBED_NAME, EMBED_STRINGS, embedLang } from "../ui-strings";
-import { CHAT_STRINGS_EN } from "../wire";
+import { CHAT_STRINGS_EN, type ChatStrings } from "../wire";
 import { type Blocker, blockerText, cspBlocker } from "./guard";
 import { createShadowHost } from "./isolation";
 import { type PartnerClient, type PartnerDeps, createPartnerClient, pageLabel } from "./partner-client";
+import { type PortableCall, type PortableClient, createPortableClient } from "./portable-client";
+import { publishGeometry } from "./portable-geometry";
 
 export type MountOptions = {
   doc: Document;
@@ -151,6 +153,139 @@ function Partner({ client, o, portal }: { client: PartnerClient; o: MountOptions
         : {})}
     />
   );
+}
+
+export type PortableMountOptions = {
+  doc: Document;
+  /** The widget's CSS, as for the partner (isolated on the way in). */
+  css: string[];
+  appOrigin: string;
+  /** The userscript's chat-only broker (read / send), never a ticket or token. */
+  call: PortableCall;
+  /** The account the broker bound at consent (x-lianki-chat-principal). */
+  principal: string;
+  /**
+   * Where the composer's draft is kept: one per account and site (the
+   * userscript passes `portable~<principal>~<origin>`), so a draft typed on
+   * one site or as one account never shows on another. Required.
+   */
+  draftScope: string;
+  /** From the userscript's tables (src/portable-li-strings.ts, intlayer `portable-li`). */
+  strings: {
+    name: string;
+    connecting: string;
+    failed: string;
+    advancedHint: string;
+    excludeHere: string;
+    /** The grip's label: minimize / restore (intlayer portable-li `collapse`). */
+    collapse?: string;
+    expand?: string;
+  };
+  /** The chat's own strings in his Lianki language (intlayer `learning-partner`), bundled by the userscript. */
+  chatStrings?: Record<string, string>;
+  /** lianki.com's chat for this website (lib/portable-chat-url.ts), shown with the advanced hint. */
+  advancedHref: string;
+  onExclude: () => void;
+  onInvalidAccount: () => void;
+  report?: (what: string, detail: string) => void;
+};
+
+/**
+ * Codex's locatable controls: DebugChat's own grip (tap: minimize / restore,
+ * drag: move anywhere on the screen) and its menu's Minimize carry
+ * `data-lk-portable-toggle`, with a label when they have none.
+ */
+function tagToggles(root: ShadowRoot, label: string) {
+  const tag = () => {
+    for (const el of root.querySelectorAll<HTMLElement>(
+      '[data-testid="debug-chat-grip"], [data-testid="debug-menu-minimize"]',
+    )) {
+      if (!el.hasAttribute("data-lk-portable-toggle"))
+        el.setAttribute("data-lk-portable-toggle", el.dataset.testid === "debug-chat-grip" ? "grip" : "minimize");
+      if (!el.getAttribute("aria-label")) el.setAttribute("aria-label", label);
+    }
+  };
+  const mo = new MutationObserver(tag);
+  mo.observe(root, { childList: true, subtree: true });
+  tag();
+  return () => mo.disconnect();
+}
+
+function Portable({ client, o, portal }: { client: PortableClient; o: PortableMountOptions; portal: Element }) {
+  const s = useSyncExternalStore(client.subscribe, client.get, client.get);
+  // Errors carry their own glyph and words, never the brand red alone.
+  const warning =
+    s.problem === "advanced" ? o.strings.advancedHint : s.problem === "failed" ? `⚠ ${o.strings.failed}` : undefined;
+  return (
+    <DebugChat
+      embedded
+      attach={false}
+      draftScope={o.draftScope}
+      portalRoot={portal}
+      live={s.live}
+      // Li answers through the hub's AI reply whenever the broker reads: present while connected.
+      listeners={s.live ? 1 : 0}
+      messages={s.messages}
+      outgoing={s.outgoing}
+      onSend={(text, to, opts) => client.send(text, to, opts)}
+      busy={s.busy}
+      warning={warning}
+      {...(s.problem === "advanced"
+        ? { warningHref: { href: o.advancedHref, label: "lianki.com ↗", newTab: true as const } }
+        : {})}
+      agentAvatar={`${o.appOrigin}/icon-192.png`}
+      strings={{ ...(o.chatStrings as Partial<ChatStrings> | undefined), name: o.strings.name }}
+      menuItems={[{ id: "exclude", label: o.strings.excludeHere, onSelect: o.onExclude }]}
+    />
+  );
+}
+
+/**
+ * 随身Li (portable Li): the main site's chat window, DebugChat itself, in a
+ * closed shadow root on a site, fed only by the userscript's chat-only broker.
+ */
+export function mountPortable(o: PortableMountOptions): {
+  portable: PortableClient;
+  /** For the tests and QA only: the userscript never hands it to the page. */
+  root: ShadowRoot;
+  destroy(): void;
+} {
+  // No scope = the shared, unscoped draft store: another account or site would see it.
+  if (typeof o.draftScope !== "string" || !o.draftScope.startsWith("portable~"))
+    throw new Error("portable chat needs an account and site draft scope");
+  // The same look as lianki.com (and as 2.24.55): no portable-only styles.
+  const shadow = createShadowHost(o.doc, o.css);
+  if (shadow.styles === "blocked") {
+    shadow.destroy();
+    throw new Error("styles blocked");
+  }
+  const client = createPortableClient({
+    call: o.call,
+    principal: o.principal,
+    doc: o.doc,
+    busyLabel: o.strings.name,
+    failedLabel: o.strings.failed,
+    onInvalidAccount: o.onInvalidAccount,
+  });
+  const root = createRoot(shadow.container, {
+    onUncaughtError: (err) => o.report?.("portable-render", String((err as Error)?.message ?? err)),
+  });
+  // The main site's floating DebugChat itself: drag anywhere, bottom-right by default.
+  root.render(<Portable client={client} o={o} portal={shadow.container} />);
+  const untag = tagToggles(shadow.root, o.strings.collapse ?? o.strings.name);
+  const win = o.doc.defaultView ?? window;
+  const unpublish = publishGeometry(shadow.root, o.doc, win);
+  return {
+    portable: client,
+    root: shadow.root,
+    destroy() {
+      untag();
+      unpublish();
+      client.stop();
+      root.unmount();
+      shadow.destroy();
+    },
+  };
 }
 
 /** Mount the partner (or its note) in a closed shadow root on its own host element. */

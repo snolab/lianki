@@ -465,6 +465,92 @@ so revoking permission or excluding a site cannot leave a second chat window.
   User cancellation aborts the request; a message already accepted durably
   is not unsent. No microphone, playback or device access is part of this UI.
 
+### The chat window is the main site's DebugChat (2.24.58)
+
+Owner, 2026-11-26: 随身Li reuses the Li chat component, no second wheel, and
+looks exactly like the chat window on lianki.com, everywhere (his sites
+zhihu.com and github.com refuse frames). So there is one chat UI,
+`packages/debug-chat`'s `DebugChat`, reached two ways (`src/portable-li.ts`
+`show`):
+
+1. **The lianki.com frame first** (`/embed/partner`, `src/pill-chat.ts`
+   `portableFrame`): what he types stays in lianki.com's origin. Its
+   chat-only ticket (60 s, single use, `lianki-page-chat`) comes only from
+   the fixed cookie-only broker `POST /api/chat/page-ticket` (no
+   Authorization, no `lk:token`, in every realm, ScriptCat raw included), is
+   fetched only when the frame asks on its MessagePort and goes only into
+   that port (contract: the backend lane's frame contract). It is bound to the
+   consented account (`consentedFrameTicket`): the answer's `principal`
+   must be the consented one; a valid different one closes the window,
+   invalidates consent and asks again; a missing or malformed one gives no
+   ticket ("can't connect", fail closed). An abort only drops the result
+   locally; GM_xmlhttpRequest is not physically cancelled.
+2. **Where the site's CSP refuses the frame** (`frame:blocked`): the same
+   DebugChat **bundled into the userscript** (`src/portable-window.ts`,
+   filled at build time by `scripts/portable-window-plugin.ts` from the
+   partner build) in a closed shadow root at a fixed size (rem → px), fed
+   only through the chat-only HTTP broker (`read` / `send`). No fetch, no
+   eval, no remote code: the window's code is one function inside the
+   script, run only when chat opens.
+
+- **The frame counts only after the full handshake** (2.24.55, after the
+  zhihu check drew the old prod embed as a 120 px box in French): it must say
+  `portable-v1` in its "ready" (frame-protocol.ts `PORTABLE_CAP`; the embed
+  deployed before this change does not) and take a ticket for the consented
+  account within 6 s (`gatedFrameResult`). Otherwise it is torn down and the
+  bundled window draws: `bundled frame:incompatible | frame:timeout |
+  frame:no-ticket | frame:blocked`. So a dev build never shows an old embed.
+  The frame has the bundled window's fixed size (`PORTABLE_FRAME_SIZE`,
+  min(420 px, 100vw−16) × min(560 px, 100vh−24)), and its URL carries
+  `?lang=` = his Lianki language (middleware reads it). The bundled window
+  gets the chat's strings for that language from the same `learning-partner`
+  dictionary, built in by the plugin (`portableChatStrings`).
+- **Floating like lianki.com** (2.24.57; the opaque 2.24.56 panel was
+  reverted at the owner's word: the 2.24.55 glass look is the one he wants).
+  DebugChat floats over the page exactly as on the main site and drags across
+  the whole viewport. It starts open at the bottom right: only the scoped
+  drafts and a position he dragged it to (per site, `lianki_portable_ls:<origin>:lk:debug-chat-pos`)
+  are kept in GM storage; fold, dock and compact are memory for the page, so
+  no lianki.com position or minimized state carries over. Its grip (tap:
+  minimize / restore, drag: move) and its menu's Minimize carry
+  `data-lk-portable-toggle` (`grip` / `minimize`). For real-browser QA,
+  which cannot reach into the closed root, <html> carries read-only geometry:
+  `data-lk-portable-grip` and `data-lk-portable-rect` ("x,y,w,h", viewport CSS
+  px, rounded), kept current on mount, drag end, resize, minimize and restore
+  (`embed/portable-geometry.ts`). Nothing else: no text, no window API.
+- **No other chat UI.** The hand-built plain panel is gone; `portable-li-panel.ts`
+  keeps only the consent prompt's styles.
+- **Drafts per account and site.** `draftScope` =
+  `portable~<principal>~<origin>` in the bundled window (required by
+  `mountPortable`), and `portable~<viewer>~<origin>` with `key` = scope in
+  the frame (`lib/partner-frame-chat.ts`). A draft never follows another
+  account or site.
+- **Sends are cancellable.** Every send carries an AbortSignal; stopping the
+  window aborts sends in flight and a late answer adds nothing.
+- **No standing notice.** Only an advanced action (an `@/…` address, page
+  context, files) shows 「去 lianki.com 为这个网站单独打开」 with a link to
+  `/chat?from=<origin>`; nothing is sent for it. The frame no longer shows the
+  chat-only line either.
+- **Why this window.** `data-lk-portable` on `<html>` and one debug line say
+  which window drew or why none did, as reason codes only: `frame`,
+  `bundled frame:blocked`, `none frame:account-mismatch`,
+  `none … bundle:absent`, `none … mount:error <Error: words>`.
+- **Build.** `bun run build:userscript` is `scripts/build-userscript.ts`
+  (the `userbuild` output plus the plugin). The dev servers use the same
+  plugin. A build without it (unit tests, other tools) keeps
+  `portable-window.ts` = null: frame only.
+- **Cost.** `lianki.user.js` 364 KB → 2.6 MB (gzip 98 KB → 646 KB; the
+  release build is formatted, so the bundled window is readable too). On a
+  plain page with chat closed (muted headless Chromium, median of 11):
+  compile 2.8 → 18.3 ms, run 5.1 → 4.8 ms, i.e. the window's code is parsed
+  but not run (`scripts/qa/userscript-load-cost.ts`).
+
+QA: `bun scripts/qa/qa-portable-li-sites.ts --shots <dir>` (the built
+userscript in the page's world as ScriptCat raw runs it, on github.com,
+www.zhihu.com and example.com, light and dark, synthetic broker, lianki.com
+routed away); `qa-portable-li-window.ts` (strict-CSP fixture);
+`qa-portable-li.ts` (consent, real route and hub, synthetic AI reply).
+
 ### Extension alternative — assessment only, not implemented
 
 Chrome's [`declarativeNetRequest` API](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest)

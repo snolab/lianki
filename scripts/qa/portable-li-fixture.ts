@@ -3,6 +3,8 @@ import { startPortableLi } from "../../src/portable-li";
 import { pageChatHttpClient } from "../../src/page-chat-http-client";
 import { PILLCHAT_ON_KEY } from "../../src/pill-chat-trust";
 import type { ChatGmRequest } from "../../src/page-chat-fetch";
+import { portableUiBundled } from "../../src/portable-ui-loader";
+import portableWindow from "../../src/portable-window";
 declare const __portableQaSeed: Record<string, unknown>;
 declare function __portableQaStore(key: string, value: unknown): Promise<void>;
 declare function __portableQaCall(
@@ -60,6 +62,14 @@ const controller = startPortableLi({
   hostOrigin: location.origin,
   top: true,
   call: pageChatHttpClient("https://lianki.com", location.origin, request),
+  // The real window: the main site's DebugChat bundled in (qa-portable-li.ts builds with the plugin).
+  ui: portableUiBundled({
+    factory: portableWindow,
+    getValue: gm.getValue,
+    setValue: gm.setValue,
+    deleteValue: (key) => values.delete(key),
+    report: () => {},
+  }),
   watch: (key, changed) => {
     const set = watchers.get(key) ?? new Set();
     set.add(changed);
@@ -92,7 +102,7 @@ Object.assign(globalThis, {
     },
     input() {
       for (const root of roots) {
-        const input = root.querySelector("textarea");
+        const input = root.querySelector('[data-testid="debug-chat-input"]');
         if (input?.isConnected && input.getClientRects().length) {
           const r = input.getBoundingClientRect();
           return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
@@ -106,7 +116,7 @@ Object.assign(globalThis, {
           .filter((r) => r.host.isConnected)
           .map((r) => r.textContent)
           .join("\n"),
-        hosts: document.querySelectorAll("lianki-portable-chat").length,
+        hosts: document.querySelectorAll("[data-lk-chat-host]").length,
         consents: document.querySelectorAll("lianki-portable-consent").length,
         focused: (document.activeElement as HTMLElement)?.id,
         iframes: document.querySelectorAll("iframe").length,
@@ -114,7 +124,7 @@ Object.assign(globalThis, {
           .filter((r) => r.host.isConnected)
           .map((r) => ({
             width: r.host.getBoundingClientRect().width,
-            section: r.querySelector("section")?.getBoundingClientRect().toJSON(),
+            section: r.querySelector("[data-debug-chat]")?.getBoundingClientRect().toJSON(),
             position: getComputedStyle(r.host).position,
           })),
       };

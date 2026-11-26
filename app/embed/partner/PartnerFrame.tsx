@@ -5,29 +5,27 @@ import { portableChatPath } from "@/lib/portable-chat-url";
 import { DebugChat } from "@lianki/debug-chat/DebugChat";
 import { CHAT_STRINGS_EN, type ChatStrings } from "@lianki/debug-chat/wire";
 import { type Guest, startFrameGuest } from "@lianki/debug-chat/embed/frame-guest";
-import {
-  type PartnerClient,
-  createPartnerClient,
-  partnerWarning,
-} from "@lianki/debug-chat/embed/partner-client";
+import { PORTABLE_CAP } from "@lianki/debug-chat/embed/frame-protocol";
+import { type PartnerClient, createPartnerClient } from "@lianki/debug-chat/embed/partner-client";
+import { frameDraftScope, frameWarning, isAdvancedSend } from "@/lib/partner-frame-chat";
 
 /**
  * The Learning Partner inside a lianki.com frame on another site
- * (docs/dev-debug-widget.md, "On every site", "The frame"). The frame is
- * cross-origin to the host page, so what he types here never reaches the
- * page's key listeners. It holds no session (third-party: no cookie): it
- * connects only with a ticket the userscript's shell hands over its port,
- * chat only, as the shadow widget did.
+ * (docs/dev-debug-widget.md, "On every site", "The frame"), also 随身Li's
+ * window wherever the site lets the frame load (docs/userscript-li-chat.md,
+ * "The chat window"). The frame is cross-origin to the host page, so what he
+ * types here never reaches the page's key listeners. It holds no session
+ * (third-party: no cookie): it connects only with a ticket the userscript's
+ * shell hands over its port, chat only.
  */
 export function PartnerFrame({
   strings,
   shareChars,
-  chatOnlyText,
-  advancedText,
+  advancedHint,
 }: {
   strings?: Partial<ChatStrings>;
-  chatOnlyText: string;
-  advancedText: string;
+  /** 「去 lianki.com 为这个网站单独打开」: only after an advanced action was tried. */
+  advancedHint: string;
   /** Config chat.pillShareChars: most characters a shared selection keeps. */
   shareChars?: number;
 }) {
@@ -37,21 +35,27 @@ export function PartnerFrame({
   useEffect(() => {
     document.documentElement.dataset.partnerFrame = "";
     let c: PartnerClient | null = null;
-    const stop = startFrameGuest(window, (g) => {
-      guest.current = g;
-      c = createPartnerClient({
-        url: `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug`,
-        ticket: g.ticket,
-        open: (u, p) => new WebSocket(u, p) as never,
-        label: () => g.label || "embedded",
-        // The parent origin the browser stamped on the hello: a per-site ticket
-        // opens only where it was minted for (lib/li-thread.ts, auth.ts ticketSite).
-        ...(g.origin ? { query: `&ho=${encodeURIComponent(g.origin)}` } : {}),
-        doc: document,
-      });
-      setShell(g);
-      setClient(c);
-    });
+    const stop = startFrameGuest(
+      window,
+      (g) => {
+        guest.current = g;
+        c = createPartnerClient({
+          url: `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug`,
+          ticket: g.ticket,
+          open: (u, p) => new WebSocket(u, p) as never,
+          label: () => g.label || "embedded",
+          // The parent origin the browser stamped on the hello: a per-site ticket
+          // opens only where it was minted for (lib/li-thread.ts, auth.ts ticketSite).
+          ...(g.origin ? { query: `&ho=${encodeURIComponent(g.origin)}` } : {}),
+          doc: document,
+        });
+        setShell(g);
+        setClient(c);
+        // This frame is 随身Li-ready: no standing notice, drafts per account and site.
+      },
+      undefined,
+      [PORTABLE_CAP],
+    );
     return () => {
       stop();
       c?.stop();
@@ -85,8 +89,7 @@ export function PartnerFrame({
       guest={shell}
       strings={strings}
       shareChars={shareChars}
-      chatOnlyText={chatOnlyText}
-      advancedText={advancedText}
+      advancedHint={advancedHint}
     />
   );
 }
@@ -96,21 +99,25 @@ function Chat({
   guest,
   strings,
   shareChars,
-  chatOnlyText,
-  advancedText,
+  advancedHint,
 }: {
   client: PartnerClient;
   guest: Guest;
-  chatOnlyText: string;
-  advancedText: string;
+  advancedHint: string;
   strings?: Partial<ChatStrings>;
   shareChars?: number;
 }) {
   const s = useSyncExternalStore(client.subscribe, client.get, client.get);
   /** "Nothing to share" after a Share press that found nothing (docs/userscript-li-chat.md, M3). */
   const [note, setNote] = useState<string>();
+  const [advanced, setAdvanced] = useState(false);
+  // One draft per account and site; until the hub says who he is, a holding scope.
+  const scope = frameDraftScope(s.viewer?.id, guest.origin);
   return (
     <DebugChat
+      // A new scope is a new composer: nothing typed under one account or site carries over.
+      key={scope}
+      draftScope={scope}
       embedded
       // No page selection or uploads here: the frame cannot see the host page.
       // Its + menu shares from the page instead, through the userscript (M3).
@@ -136,22 +143,29 @@ function Chat({
       messages={s.messages}
       onSend={(text, to, opts) => {
         setNote(undefined);
+        // Chat only: an address or page context is an advanced action, refused here.
+        if (s.chatOnly && isAdvancedSend(to, opts)) {
+          setAdvanced(true);
+          return false;
+        }
+        setAdvanced(false);
         return client.send(text, to, opts?.context);
       }}
       busy={s.busy}
-      warningHref={
-        s.chatOnly
-          ? { href: portableChatPath(guest.origin), label: advancedText, newTab: true }
-          : undefined
-      }
-      warning={partnerWarning(
-        s,
-        {
-          sendFailed: strings?.sendFailed ?? CHAT_STRINGS_EN.sendFailed,
-          chatOnly: chatOnlyText,
-        },
+      {...(advanced
+        ? {
+            warningHref: {
+              href: portableChatPath(guest.origin),
+              label: "lianki.com ↗",
+              newTab: true as const,
+            },
+          }
+        : {})}
+      warning={frameWarning(s, {
+        sendFailed: strings?.sendFailed ?? CHAT_STRINGS_EN.sendFailed,
+        advanced: advanced ? advancedHint : undefined,
         note,
-      )}
+      })}
       viewer={s.viewer}
       agentAvatar="/icon-192.png"
       strings={strings}

@@ -1,4 +1,4 @@
-import { startPortableLi, type PortableWatch } from "./portable-li";
+import { startPortableLi, type PortableUi, type PortableWatch } from "./portable-li";
 import { pageChatHttpClient } from "./page-chat-http-client";
 import type { ChatGmRequest } from "./page-chat-fetch";
 /**
@@ -31,6 +31,8 @@ import { isolatedWorld } from "../packages/debug-chat/src/embed/guard";
 import { EMBED_STRINGS, embedLang } from "../packages/debug-chat/src/ui-strings";
 import { readShare } from "../packages/debug-chat/src/embed/share";
 import { frameShell } from "./partner-frame";
+import { PORTABLE_CAP } from "../packages/debug-chat/src/embed/frame-protocol";
+import { readPortableUiLanguage } from "./pill-chat-language";
 import { PARTNER_POS_KEY, pageRealmNote } from "./partner";
 import { pillChatStrings, type PillChatStrings } from "./pill-chat-strings";
 import {
@@ -46,6 +48,83 @@ import {
 } from "./pill-chat-trust";
 import { blockedNote, sitesDialog, trustDialog } from "./pill-chat-ui";
 
+/**
+ * One chat-only ticket for 随身Li's frame, for the consented account only
+ * (contract: the page-ticket answer carries `principal`, the session-verified
+ * account = the signed sub). A valid but different `principal`, or a refusal
+ * as another account, gives no ticket and calls `onAccountMismatch` (the
+ * caller closes the window and asks consent again). A missing or malformed
+ * one gives no ticket only (fail closed: the window just cannot connect).
+ * To be swapped for the backend lane's `portableFrameTicket(origin, pageFetch,
+ * { principal, onAccountChanged })` when it lands; same inputs, same outcome.
+ */
+export async function consentedFrameTicket(o: {
+  fetch: GmFetch;
+  origin: string;
+  principal: string;
+  onAccountMismatch: () => void;
+  report: (what: string, detail: string) => void;
+}): Promise<string | null> {
+  try {
+    const r = await o.fetch(`${o.origin}/api/chat/page-ticket`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const body = await r.json().catch(() => null);
+    if (!r.ok) {
+      if (body?.error === "account-changed" || body?.error === "signed-out") o.onAccountMismatch();
+      return null;
+    }
+    if (typeof body?.ticket !== "string") return null;
+    const said = body.principal;
+    // Missing or malformed (an older issuer): refused, fail closed, just "can't connect".
+    if (typeof said !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(said)) return null;
+    // A valid, different account: the cookie changed under this window. Close, ask again.
+    if (said !== o.principal) {
+      o.report("portable-frame", "ticket principal mismatch");
+      o.onAccountMismatch();
+      return null;
+    }
+    return body.ticket;
+  } catch {
+    return null;
+  }
+}
+
+/** 随身Li's frame size: the bundled window's, fixed (CSS lengths). */
+export const PORTABLE_FRAME_SIZE = {
+  w: "min(420px, calc(100vw - 16px))",
+  h: "min(560px, calc(100vh - 24px))",
+};
+/** How long a ready frame has to take its first ticket before the bundled window draws instead. */
+export const FRAME_TICKET_MS = 6000;
+
+export type GatedFrameResult = "ready" | "blocked" | "incompatible" | "no-ticket" | "timeout";
+
+/**
+ * The frame counts as 随身Li's window only after the whole handshake: it said
+ * ready on its port WITH the portable capability (an older /embed/partner,
+ * like the one deployed before this change, does not), and then took a ticket
+ * for the consented account. Anything else (refused, old, no ticket, no answer
+ * in FRAME_TICKET_MS) → the caller tears it down and draws the bundled window.
+ */
+export async function gatedFrameResult(o: {
+  result: Promise<"ready" | "blocked">;
+  caps: () => string[];
+  firstTicket: Promise<boolean>;
+  ms?: number;
+  later?: (fn: () => void, ms: number) => void;
+}): Promise<GatedFrameResult> {
+  if ((await o.result) !== "ready") return "blocked";
+  if (!o.caps().includes(PORTABLE_CAP)) return "incompatible";
+  const later = o.later ?? ((fn, ms) => void setTimeout(fn, ms));
+  const timedOut = new Promise<"timeout">((r) =>
+    later(() => r("timeout"), o.ms ?? FRAME_TICKET_MS),
+  );
+  const got = await Promise.race([o.firstTicket, timedOut]);
+  return got === "timeout" ? "timeout" : got ? "ready" : "no-ticket";
+}
+
 /** lib/li-thread.ts HOST_ORIGIN_HEADER (unit/li-thread.test.ts keeps the two the same). */
 export const HOST_ORIGIN_HEADER = "x-lianki-host-origin";
 
@@ -57,6 +136,8 @@ type GmFetch = (
 export type PillChatDeps = {
   origin: string;
   chatRequest?: ChatGmRequest;
+  /** 随身Li's chat window, the main site's DebugChat (src/portable-ui-loader.ts). */
+  portableUi?: () => Promise<PortableUi | null>;
   watch?: PortableWatch;
   signal?: AbortSignal;
   gmFetch: GmFetch;
@@ -212,6 +293,64 @@ export function pillChat(d: PillChatDeps) {
   const isolated = isolatedWorld(d.info as Parameters<typeof isolatedWorld>[0]);
   const report = d.report ?? (() => {});
   const limitedFetch = d.pageFetch;
+  /**
+   * 随身Li in the lianki.com frame (docs/userscript-li-chat.md, "The chat
+   * window"; contract: chat-only page ticket). The ticket comes only from the
+   * fixed cookie-only broker (`POST /api/chat/page-ticket`, never Authorization
+   * or lk:token, in every realm), is fetched only when the frame asks on its
+   * MessagePort, and goes only into that port.
+   *
+   * Bound to the consented account: the answer's `principal` must be it. If
+   * the lianki.com cookie now belongs to someone else, or `principal` is
+   * missing or different, no ticket goes in and the window closes for
+   * re-consent: B's chat never renders in A's window.
+   */
+  function portableFrame(o: { principal: string; onAccountMismatch: () => void }) {
+    // The first ticket handed in settles whether the frame can really chat.
+    let handed: (ok: boolean) => void = () => {};
+    const firstTicket = new Promise<boolean>((r) => (handed = r));
+    const pageTicket = async () => {
+      const t = await consentedFrameTicket({
+        fetch: limitedFetch!,
+        origin: d.origin,
+        report,
+        ...o,
+      });
+      handed(t !== null);
+      return t;
+    };
+    const shell = (d.frame ?? frameShell)({
+      doc,
+      win,
+      origin: d.origin,
+      label: `${host}${d.path ?? location.pathname}`.slice(0, 300),
+      ticket: pageTicket,
+      gripLabel: EMBED_STRINGS[embedLang()].grip,
+      // His Lianki language (mirrored from lianki.com), else the browser's.
+      locale: readPortableUiLanguage(d, win.navigator?.language),
+      // As big as the bundled window: never content-sized or clipped.
+      fixedSize: PORTABLE_FRAME_SIZE,
+      pos: {
+        get: () => {
+          const p = d.getValue(PARTNER_POS_KEY, null);
+          return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null;
+        },
+        set: (p) => d.setValue(PARTNER_POS_KEY, { x: Math.round(p.x), y: Math.round(p.y) }),
+      },
+    });
+    // A second load means the page navigated our iframe: whatever loaded is not ours.
+    let loads = 0;
+    shell.iframe.addEventListener("load", () => {
+      if (++loads > 1) {
+        report("portable-frame-navigated", host ?? "");
+        shell.destroy();
+      }
+    });
+    return {
+      result: gatedFrameResult({ result: shell.result, caps: () => shell.caps(), firstTicket }),
+      destroy: () => shell.destroy(),
+    };
+  }
   const portable = d.chatRequest
     ? startPortableLi({
         gm: d,
@@ -223,6 +362,10 @@ export function pillChat(d: PillChatDeps) {
         call: pageChatHttpClient(d.origin, d.hostOrigin ?? location.origin, d.chatRequest),
         watch: d.watch,
         signal: d.signal,
+        report,
+        ...(limitedFetch ? { frame: portableFrame } : {}),
+        // Bundled with the script (no eval, no remote code): fine in any realm.
+        ...(d.portableUi ? { ui: d.portableUi } : {}),
       })
     : undefined;
   let open: { destroy(): void } | null = null;

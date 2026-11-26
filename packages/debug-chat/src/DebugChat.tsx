@@ -1080,6 +1080,11 @@ export type DebugChatProps = {
    * entry when full screen ends any other way. Absent: Escape and the button only.
    */
   backToClose?: (onBack: () => void) => () => void;
+  /**
+   * The host's own rows in the pill's menu, above Minimize (portable Li on
+   * another site: "Hide on this website"). Each closes the menu when chosen.
+   */
+  menuItems?: readonly { id: string; label: string; onSelect: () => void }[];
 };
 
 /** The voice session before the page has one (server render, first paint). */
@@ -1193,6 +1198,7 @@ export function DebugChat({
   pttMaxCaptureMs,
   mergeReopenSec,
   backToClose,
+  menuItems,
 }: DebugChatProps) {
   const t = chatStrings(strings);
   // Li's player (li-player.ts): one per page; made only with the flag on.
@@ -4745,6 +4751,24 @@ export function DebugChat({
           </button>
         </>
       )}
+      {menuItems?.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          role="menuitem"
+          data-testid={`debug-menu-host-${item.id}`}
+          onClick={() => {
+            setMenu(false);
+            item.onSelect();
+          }}
+          className="flex items-center gap-2 px-3 py-1.5 text-start"
+        >
+          <span aria-hidden className="w-[1em] text-center">
+            ⊘
+          </span>
+          {item.label}
+        </button>
+      ))}
       <button
         type="button"
         role="menuitem"
