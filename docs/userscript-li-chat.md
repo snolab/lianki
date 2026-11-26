@@ -406,7 +406,9 @@ rejection, controller isolation and exclusion of learning data. The extended
 isolated-world browser fixtures; it is not evidence of a real manager install.
 Actual ScriptCat/Tampermonkey-to-site chat remains a separate post-deploy check.
 
-## 随身Li: global consent and bundled CSP-independent chat (2.24.45, pending delivery)
+## 随身Li: global consent and bundled CSP-independent chat (2.24.46, pending delivery)
+
+No permanent chat-only/advanced-action banner is shown. The legacy page-realm startup also draws no status card; a real advanced capability denial can show a dismissible localized explanation and first-party link on demand.
 
 The automatic chat path uses a statically bundled shadow-DOM panel and
 `GM_xmlhttpRequest`, rather than relying on an iframe or the website's
