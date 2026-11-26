@@ -171,6 +171,31 @@ Authorization, the expected principal header compared on every call,
   account switch or a late arrival is rejected before consume and before
   attaching; nothing is attached on any failure.
 
+## Delivery and ACK (no word is ever lost)
+
+- **The source holds the copy.** The lianki.com tab that heard a final keeps
+  it in a local outbox `{finalId, routeId, gen, sgen, text, at}` from the
+  moment it sends `chat-dictation` until it learns the page has it.
+- **Hub states per final:** `queued` (accepted for the target) → `delivered`
+  (in a `read` answer) → `acked` (a later `read` from that routeId + gen names
+  `afterSeq ≥ seq`). On `acked` the hub tells the source
+  `{ type: "dictation-acked", finalIds }`, and only then does the source drop
+  its copy.
+- **Re-delivery is idempotent by `finalId`:** the hub re-sends unacked items
+  on every `read` of the same routeId + gen (a lost response loses nothing);
+  the page appends each `finalId` at most once (it keeps the ids it appended
+  for this lease) and ACKs by `seq`. A source that resends after a reconnect
+  uses the same `finalId`; the hub dedups it.
+- **Target change, revoke, expiry, disconnect:** the hub drops that target's
+  queue and tells the source `{ type: "dictation-returned", finalIds, why }`
+  for everything not acked (`why`: `target-changed` | `revoked` | `expired` |
+  `gone`). The source moves those finals (from its own copy, not from the hub)
+  into **its own** draft, marked "not delivered", in order. If the source
+  itself is gone by then, its outbox persists in its tab's session storage
+  and is returned to its draft when that tab comes back.
+- **Page side:** a stale, refused or timed-out delivery never clears or
+  rewrites the page's existing draft; items for another `gen` are ignored.
+
 ## The active tab rule
 
 - **Who is the target:** in this browser, the 随身Li window whose mic button
