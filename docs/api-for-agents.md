@@ -85,7 +85,11 @@ common problems, and other tools.
   ("Plugins" → "+" → "Add custom MCP server", older "Workspace settings" → "Apps"
   → "Create"); Claude, every plan, Free one connector, the
   "Customize" → "Connectors" path, and "No sign in" as the Authentication choice
-  while `mcp.oauth` is off; Gemini, 18+, US, personal account, History on. It also
+  while `mcp.oauth` is off ("+ Add" → "Add custom connector" → "Continue" twice →
+  "No sign in" → "Add"); Gemini, 18+, US, personal account, History on, English
+  only. ChatGPT steps follow OpenAI's plugin quickstart
+  (developers.openai.com/plugins/quickstart): create the plugin, install it with
+  "+", then a Work chat and @Lianki. The caveat sits right under the intro. It also
   says the app reaches Lianki only in a typed chat and never wakes itself, and that
   the help pages don't cover voice modes.
 - Text steps only. The drafts' screenshots and videos came from the owner's

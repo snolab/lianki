@@ -40,11 +40,11 @@ export default async function AiAppsGuidePage() {
 
   const steps: Record<(typeof AI_APPS)[number]["id"], { items: unknown[]; note?: unknown }> = {
     chatgpt: {
-      items: [g.chatgpt1, g.chatgpt2, g.chatgpt3, g.chatgpt4, g.chatgptTry],
+      items: [g.chatgpt1, g.chatgpt2, g.chatgpt3, g.chatgpt4, g.chatgptInstall, g.chatgptTry],
       note: g.chatgptWork,
     },
     claude: {
-      items: [g.claude1, g.claude2, g.claudeAuth, g.claude3, g.claudeTry],
+      items: [g.claude1, g.claude2, g.claudeAuth, g.claudeTry],
       note: g.claudeNote,
     },
     gemini: { items: [g.gemini1, g.gemini2, g.gemini3, g.geminiTry], note: g.geminiNote },
@@ -66,6 +66,12 @@ export default async function AiAppsGuidePage() {
       <header className="flex flex-col gap-2">
         <h1 className="text-2xl sm:text-3xl font-bold">{g.title}</h1>
         <p>{g.intro}</p>
+        <p
+          role="note"
+          className="rounded-lg border-s-4 border-primary bg-gold-50 p-3 text-sm dark:bg-gold-950"
+        >
+          {g.introLimits}
+        </p>
       </header>
 
       <section aria-labelledby="can" className={card}>
