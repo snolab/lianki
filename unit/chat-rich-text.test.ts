@@ -427,12 +427,12 @@ describe("rendering links", () => {
   });
 
   it("ours on lianki.com: this tab; elsewhere, or with no location, a new one", () => {
-    g.location = { hostname: "lianki.com" };
+    g.location = { hostname: "lianki.com", href: "https://lianki.com/my" };
     const ours = html(richOf("lianki.com/en", "markdown"));
     expect(ours).toContain('href="https://lianki.com/en"');
     expect(ours).toContain(">lianki.com/en</a>");
     expect(ours).not.toContain("target=");
-    g.location = { hostname: "example.com" };
+    g.location = { hostname: "example.com", href: "https://example.com/" };
     expect(html(richOf("lianki.com/en", "markdown"))).toContain('target="_blank"');
     g.location = undefined;
     expect(html(richOf("lianki.com/en", "markdown"))).toContain('target="_blank"');

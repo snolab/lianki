@@ -34,9 +34,16 @@ An ordinary click or context menu on a chat message link shows its action menu
 (production too). Cmd/Ctrl-click follows the real anchor in a new tab/window,
 without opening the chat menu; middle-click stays native too. Modified clicks
 still reach this delegated guard and follow the account's external-link policy.
-Dragging selects text instead of navigating. The menu's Open action always
-uses a new-tab anchor, including same-origin links, outside the message tree with no bypass
-attribute, so this same delegated guard receives it. Copy and System menu
+Dragging selects text instead of navigating. The menu's Open action keeps a
+link to this same site in the current tab (owner, 2026-11-27): the page's own
+origin and relative links go through the host's router when it has one
+(`router.push`), else a plain navigation; lianki.com and www.lianki.com count
+as one site. Any other link uses a new-tab anchor outside the message tree with
+no bypass attribute, so this same delegated guard receives it. In an embed
+(随身Li on another site, the partner frame, any framed page) every link is a
+new tab, so a lianki.com link never takes the user off the site they are on.
+The rule is `linkOpen` in `packages/debug-chat/src/chat-links.ts`
+(`unit/chat-same-site-links.test.tsx`). Copy and System menu
 operate on the selected effective URL; the latter calls native share when
 available, or offers a normal anchor for a long press. On preview, Lianki
 links default to the current origin and also offer the production site;

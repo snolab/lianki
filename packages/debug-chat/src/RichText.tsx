@@ -4,7 +4,7 @@
  * text node. Colours in oklch(), through light-dark() for both themes.
  */
 import { type CSSProperties, createElement, type ReactNode, useRef, useState } from "react";
-import { linkClick, parseLinks, sameTab } from "./chat-links";
+import { linkClick, linkOpen, parseLinks } from "./chat-links";
 import type { Rich, RichNode, RichString } from "./rich-text";
 import { ChatLinkMenu } from "./ChatLinkMenu";
 import { linkDestinations } from "./link-destination";
@@ -25,6 +25,7 @@ export type RichRead = {
 type OpenPage = (path: string) => void;
 
 const here = () => (typeof location === "undefined" ? undefined : location.hostname);
+const herePage = () => (typeof location === "undefined" ? undefined : location.href);
 
 /**
  * One link. At rest the history is click-through (log-engage.ts), so a link
@@ -36,10 +37,13 @@ export function ChatLink({
   href,
   children,
   onOpenPage,
+  embedded,
 }: {
   href: string;
   children: ReactNode;
   onOpenPage?: OpenPage;
+  /** 随身Li / the partner frame: every link is a new tab (chat-links.ts `linkOpen`). */
+  embedded?: boolean;
 }) {
   const down = useRef<{ x: number; y: number } | null>(null);
   const [menu, setMenu] = useState(false);
@@ -48,7 +52,7 @@ export function ChatLink({
     typeof location === "undefined"
       ? { href, prod: null, forceProd: false }
       : linkDestinations(href, location);
-  const stay = sameTab(destinations.href, here());
+  const stay = linkOpen(destinations.href, herePage(), { embedded }).to !== "tab";
   const close = () => {
     setMenu(false);
     anchor.current?.focus({ preventScroll: true });
@@ -95,7 +99,7 @@ export function ChatLink({
       >
         {children}
       </a>
-      {menu && <ChatLinkMenu {...destinations} onOpenPage={onOpenPage} onClose={close} />}
+      {menu && <ChatLinkMenu {...destinations} onOpenPage={onOpenPage} embedded={embedded} onClose={close} />}
     </>
   );
 }
@@ -141,6 +145,7 @@ function nodeEls(
   o: {
     read?: RichRead;
     onOpenPage?: OpenPage;
+    embedded?: boolean;
     inPre?: boolean;
     widgets?: WidgetHost;
     lineId?: string;
@@ -154,7 +159,7 @@ function nodeEls(
     const kids = () => nodeEls(n.children, { ...o, inPre: o.inPre || tag === "pre" }, `${key}.`);
     if (tag === "a")
       return (
-        <ChatLink key={key} href={attrs.href!} onOpenPage={o.onOpenPage}>
+        <ChatLink key={key} href={attrs.href!} onOpenPage={o.onOpenPage} embedded={o.embedded}>
           {kids()}
         </ChatLink>
       );
@@ -203,27 +208,38 @@ export function RichBody({
   rich,
   read,
   onOpenPage,
+  embedded,
   widgets,
   lineId,
 }: {
   rich: Rich;
   read?: RichRead;
   onOpenPage?: OpenPage;
+  /** 随身Li / the partner frame: links never navigate this page or frame. */
+  embedded?: boolean;
   /** Message widgets (flag chat.message-widgets): where they put his reply, and their words. */
   widgets?: WidgetHost;
   /** The line's id: voice-fill patches name the form's line (widget-fill.ts). */
   lineId?: string;
 }) {
-  return <>{nodeEls(rich.nodes, { read, onOpenPage, widgets, lineId })}</>;
+  return <>{nodeEls(rich.nodes, { read, onOpenPage, embedded, widgets, lineId })}</>;
 }
 
 /** A line in the one-line views (compact, floating): no blocks, the links still links. */
-export function RichLine({ rich, onOpenPage }: { rich: Rich; onOpenPage?: OpenPage }) {
+export function RichLine({
+  rich,
+  onOpenPage,
+  embedded,
+}: {
+  rich: Rich;
+  onOpenPage?: OpenPage;
+  embedded?: boolean;
+}) {
   return (
     <>
       {parseLinks(rich.shown).map((s, i) =>
         s.href ? (
-          <ChatLink key={i} href={s.href} onOpenPage={onOpenPage}>
+          <ChatLink key={i} href={s.href} onOpenPage={onOpenPage} embedded={embedded}>
             {s.text}
           </ChatLink>
         ) : (

@@ -135,6 +135,46 @@ export const sameTab = (href: string, hereHost: string | undefined) =>
   !!hereHost && LIANKI_HOSTS.has(hereHost) && isLianki(href);
 
 /**
+ * Where following a chat link goes (owner, 2026-11-27): a link to this same
+ * site stays in this tab, through the host's router when it has one ("app",
+ * with the path) or as a plain navigation ("here"). The same site is the
+ * page's own origin (relative links included), or lianki.com and
+ * www.lianki.com for each other. Anything else is a new tab ("tab"), where
+ * the host's ExternalLinkGuard asks before leaving. In an embed (随身Li on
+ * another site, the partner frame) every link is a new tab: a lianki.com link
+ * never takes the user away from the site they are on.
+ */
+export type LinkOpen = { to: "app"; path: string } | { to: "here" | "tab"; href: string };
+
+export function linkOpen(
+  href: string,
+  pageHref: string | undefined,
+  o: { embedded?: boolean; hasRouter?: boolean } = {},
+): LinkOpen {
+  let url: URL;
+  let page: URL;
+  try {
+    page = new URL(pageHref ?? "");
+    url = new URL(href, page);
+  } catch {
+    return { to: "tab", href };
+  }
+  const tab = { to: "tab", href: url.href } as const;
+  if (o.embedded || !/^https?:$/.test(url.protocol)) return tab;
+  if (url.origin === page.origin)
+    return o.hasRouter
+      ? { to: "app", path: `${url.pathname}${url.search}${url.hash}` }
+      : { to: "here", href: url.href };
+  if (
+    url.protocol === page.protocol &&
+    LIANKI_HOSTS.has(url.hostname) &&
+    LIANKI_HOSTS.has(page.hostname)
+  )
+    return { to: "here", href: url.href };
+  return tab;
+}
+
+/**
  * What a click on a link does: "drag" (the press moved: it selected text, so
  * no navigation), "app" (the host's client-side navigation, to `path`), or
  * "native" (the anchor's own, a modifier key included).
