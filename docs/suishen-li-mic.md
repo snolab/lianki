@@ -166,11 +166,8 @@ were never delivered.
   from the lianki.com tab holding the source lease. The hub checks it is still
   the target's routeId + gen, the current source `sgen`, the same account +
   bid, and a grant; it dedups by (account, bid, sgen, gen, finalId) and queues
-  it. Otherwise it answers `dictation-rejected { finalId }` and the tab returns
-  that final to its own draft (see "Delivery and ACK").
-- **Clearing:** on a target change, account switch, revoke, or the source or
-  target disconnecting, the hub clears that target's pending items and
-  rejects anything arriving later for the old gen/sgen.
+  it. What happens to a final after that (or when it is refused, or the
+  target ends) is defined only in "Delivery and ACK".
 - **Stop:** `{ type: "dictation-stop", bid }` from a lianki.com tab (its "→
   site" label) clears the target for that bid; the window's next `route`
   answer is `off`.
@@ -184,9 +181,7 @@ were never delivered.
   page's own "stop") clears the route for this tab: back to its own composer.
 - The read-aloud, wake word, merge and polish logic stay as they are; a routed
   line is not merged into this tab's composer text.
-- **Never lose words:** a final the hub returns goes into this tab's own
-  draft, marked "delivery not confirmed" (未确认送达); an unconfirmed one is
-  offered to restore (see "Delivery and ACK").
+- Returned and unconfirmed finals: see "Delivery and ACK".
 
 ### 4. 随身Li (portable window; agy)
 
@@ -216,7 +211,7 @@ were never delivered.
   account switch or a late arrival is rejected before consume and before
   attaching; nothing is attached on any failure.
 
-## Delivery and ACK (no word is ever lost, none appears twice)
+## Delivery and ACK (the single authority for what happens to a final)
 
 - **The source holds the copy.** The lianki.com tab that heard a final keeps
   it in a local outbox `{finalId, routeId, gen, sgen, text, at}` from the
@@ -256,7 +251,8 @@ were never delivered.
     does **not** put it into its draft by itself; it keeps the copy and shows
     "N lines may not have arrived — restore" with one tap that restores them
     into its draft (until that tab closes). So a lost ACK never both appends to the target and
-    returns to the source, and no word is lost.
+    returns to the source, and nothing is dropped while the source tab is
+    open (a closed source tab loses its unsettled lines; see "Persistence").
   - The source returns or restores only on these explicit hub messages, never
     on a timeout of its own.
 - **Privacy revoke:** revoking `page.dictation` makes the hub delete that
