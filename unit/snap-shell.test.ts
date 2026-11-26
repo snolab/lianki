@@ -7,7 +7,14 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { Window } from "happy-dom";
 import { frameShell } from "../src/partner-frame";
 import { iconSvg, SNAP_ICON } from "../packages/debug-chat/src/snap-overlay";
-import { measureSnapViewport, safeInsets } from "../packages/debug-chat/src/snap-viewport";
+import {
+  measureSnapViewport,
+  safeInsets,
+  snapLanding,
+} from "../packages/debug-chat/src/snap-viewport";
+import { snapTargets } from "../packages/debug-chat/src/snap-targets";
+import { fullScreenBox } from "../packages/debug-chat/src/full-screen";
+import { dockViewport } from "../packages/debug-chat/src/dock-resize";
 
 const ORIGIN = "https://lianki.com";
 let open: Window[] = [];
@@ -153,6 +160,51 @@ describe("the viewport contract (snap-viewport.ts)", () => {
       scale: 2,
       wide: false,
     });
+  });
+  it("the preview is the landing rect, at pinch zoom (scale 2) and with the keyboard up (codex review)", () => {
+    const win = page();
+    const at = (vv: {
+      offsetLeft: number;
+      offsetTop: number;
+      width: number;
+      height: number;
+      scale: number;
+    }) => {
+      const w = Object.assign(Object.create(win as object), {
+        document: win.document,
+        innerWidth: 390,
+        innerHeight: 844,
+        getComputedStyle: win.getComputedStyle.bind(win),
+        matchMedia: () => ({ matches: true }),
+        visualViewport: vv,
+      });
+      const vp = measureSnapViewport(w, "(min-width: 35em)");
+      const ts = snapTargets(vp, {
+        fullAllowed: true,
+        dockAllowed: true,
+        open: true,
+        dockWidth: 120,
+        pill: { w: 60, h: 30 },
+        home: { right: vp.x + vp.w - 8, bottom: vp.y + vp.h - 8 },
+      });
+      return { vv, ts };
+    };
+    for (const { vv, ts } of [
+      at({ offsetLeft: 20, offsetTop: 30, width: 195, height: 400, scale: 2 }),
+      at({ offsetLeft: 0, offsetTop: 0, width: 390, height: 500, scale: 1 }),
+    ]) {
+      // What full screen's own style lands on (FULL_SCREEN_STYLE: left 0 to the
+      // layout width, top and height from fullScreenBox) and the sidebar's right edge.
+      const box = fullScreenBox({ innerHeight: 844, vv });
+      const landFull = { x: 0, y: box.top, w: 390, h: box.height };
+      const dockRight = 390 - dockViewport(390, vv).right;
+      expect(snapLanding(390, 844, vv)).toEqual({ full: landFull, right: dockRight });
+      const full = ts.find((t) => t.id === "fullscreen")!;
+      const dock = ts.find((t) => t.id === "dock-right")!;
+      expect(full.result).toEqual(landFull);
+      expect(dock.result.x + dock.result.w).toBe(dockRight);
+      expect({ y: dock.result.y, h: dock.result.h }).toEqual({ y: landFull.y, h: landFull.h });
+    }
   });
   it("a matchMedia that throws reads as narrow", () => {
     const win = page();

@@ -9,6 +9,7 @@
  * cancels that drag (snapshot restored; docs/chat-drag-ux.md); at rest the
  * results follow the viewport through CSS (full-screen.ts).
  */
+import { dockViewport } from "./dock-resize";
 import { fullScreenBox } from "./full-screen";
 import type { SnapViewport } from "./snap-targets";
 
@@ -58,9 +59,10 @@ export function measureSnapViewport(win: Win, wideQuery: string): SnapViewport {
     wide = win.matchMedia(wideQuery).matches;
   } catch {}
   const safe = safeInsets(win.document, win);
+  const land = snapLanding(win.innerWidth, win.innerHeight, vv);
   if (!vv || !(num(vv.height, 0) > 0) || !(num(vv.width, 0) > 0)) {
     const box = fullScreenBox({ innerHeight: win.innerHeight, vv: null });
-    return { x: 0, y: box.top, w: win.innerWidth, h: box.height, scale: 1, safe, wide };
+    return { x: 0, y: box.top, w: win.innerWidth, h: box.height, scale: 1, safe, wide, land };
   }
   return {
     x: num(vv.offsetLeft, 0),
@@ -70,5 +72,22 @@ export function measureSnapViewport(win: Win, wideQuery: string): SnapViewport {
     scale: num(vv.scale, 1),
     safe,
     wide,
+    land,
   };
+}
+
+/**
+ * Where full screen and the sidebar land, client px, computed by the very
+ * functions that place them: fullScreenBox (FULL_SCREEN_STYLE's top and
+ * height, left 0 to the layout width) and dockViewport (the sidebar's right
+ * inset). At any zoom the preview drawn from snapTargets() is this rect.
+ */
+export function snapLanding(
+  innerWidth: number,
+  innerHeight: number,
+  vv: { offsetTop: number; offsetLeft?: number; width?: number; height: number; scale?: number } | null,
+): { full: { x: number; y: number; w: number; h: number }; right: number } {
+  const box = fullScreenBox({ innerHeight, vv });
+  const dv = dockViewport(innerWidth, vv && vv.width ? { width: vv.width, offsetLeft: vv.offsetLeft, scale: vv.scale } : null);
+  return { full: { x: 0, y: box.top, w: innerWidth, h: box.height }, right: innerWidth - dv.right };
 }

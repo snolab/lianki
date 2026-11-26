@@ -1428,7 +1428,18 @@ export function DebugChat({
    */
   const fullAllowed = fullScreenAllowed({ flag: fullScreenFlag, owner, embedded });
   const fullPref = useUi(chatPrefs(), (s) => s.full);
-  const full = fullScreenOn({ allowed: fullAllowed, pref: fullPref, open });
+  /**
+   * A drag that left full screen or the sidebar (a drag up past
+   * chat.fullLeavePx) holds it off for now, in this transient state only:
+   * nothing is written until the drop commits (codex review, 2026-11-27), so
+   * a cancel just lets go of the hold.
+   */
+  const [fullHeld, setFullHeld] = useState(false);
+  const fullHeldNow = useRef(fullHeld);
+  fullHeldNow.current = fullHeld;
+  /** Full screen as kept (the device's choice), the drag's hold aside. */
+  const fullKept = fullScreenOn({ allowed: fullAllowed, pref: fullPref, open });
+  const full = fullKept && !fullHeld;
   const fullOn = useRef(full);
   fullOn.current = full;
   /** Wider than SIDEBAR_QUERY (35em): full screen is a sidebar docked right; the media query's change event, no polling. */
@@ -3257,12 +3268,24 @@ export function DebugChat({
    * `side`, also while it is already on (the sidebar dropped on the bottom).
    */
   const setFull = (on: boolean, byTap = false, mode: FullMode = "auto") => {
-    if (on === fullOn.current && (!on || mode === fullModeNow.current)) return;
+    // A drag's hold (fullHeld) is let go here: the drop commits what it chose.
+    const held = fullHeldNow.current;
+    if (held) {
+      fullHeldNow.current = false;
+      setFullHeld(false);
+    }
+    if (!held && on === fullOn.current && (!on || mode === fullModeNow.current)) return;
     if (on !== fullOn.current) fullAnchor.current = atEnd.current ? null : anchorNow();
     fullByTap.current = on && byTap;
     chatPrefs().setState(on ? { full: true, fullMode: mode } : { full: false });
   };
-  leaveFull.current = () => setFull(false);
+  // A drag up out of full screen: held off for the drag only, nothing written yet.
+  leaveFull.current = () => {
+    fullHeldNow.current = true;
+    setFullHeld(true);
+    // Out of full screen now: its zone is back on offer (measured after this render).
+    snapDrag.current?.remeasure();
+  };
   useLayoutEffect(() => {
     const el = log.current;
     const a = fullAnchor.current;
@@ -3283,8 +3306,9 @@ export function DebugChat({
   // Back leaves full screen (docs/ui-state.md, "Back closes an overlay";
   // full-screen.ts fullScreenBack): its entry is taken at once after a tap,
   // else at the first gesture. Left any other way, the entry is consumed.
+  // Follows full screen as kept, so a drag's transient hold leaves the history alone.
   useEffect(() => {
-    if (!full || !backToClose) return;
+    if (!fullKept || !backToClose) return;
     const close = fullScreenBack(
       window,
       backToClose,
@@ -3298,7 +3322,7 @@ export function DebugChat({
       fullByTap.current = false;
       close();
     };
-  }, [full]);
+  }, [fullKept]);
   /** The + menu or the inbox is up: their own Escape closes them first. */
   const attachMenuNow = useRef(false);
   const attachButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -3848,6 +3872,10 @@ export function DebugChat({
     hot: SnapTarget | null;
     rect0: Rect;
     p0: { x: number; y: number };
+    /** The pointer's latest point (a re-measure hits it again). */
+    last: { x: number; y: number } | null;
+    /** Measure the viewport and zones again (next frame). */
+    remeasure: () => void;
     off: () => void;
   } | null>(null);
   /** The drag's snapshot (codex review, 2026-11-27): a cancel puts exactly this back. */
@@ -3867,32 +3895,58 @@ export function DebugChat({
     const bar = barEl.current?.getBoundingClientRect();
     if (!box || !bar) return;
     const b = box.getBoundingClientRect();
-    const vp = measureSnapViewport(window, SIDEBAR_QUERY);
-    const css = getComputedStyle(document.documentElement);
-    const rem = parseFloat(css.fontSize) || 16;
-    const reserve = parseFloat(css.getPropertyValue("--lk-bottom-reserve")) || 0;
     const saved = dockSaved.current;
-    const dockWidth =
-      saved === null
-        ? defaultDockWidth(vp.w, rem)
-        : clampDockWidth(saved, dockBounds(vp.w, SIDEBAR_MIN_REM * rem));
     const pillH = Math.max(32, Math.min(64, bar.height));
-    const targets = snapTargets(vp, {
-      fullAllowed: fullAllowed && !tucked,
-      dockAllowed: fullAllowed && !tucked,
-      open: openRef.current,
-      full: fullOn.current,
-      dockWidth,
-      pill: { w: Math.min(bar.width, pillH * 3), h: pillH },
-      home: {
-        right: vp.x + vp.w - vp.safe.right - rem / 2,
-        bottom: vp.y + vp.h - vp.safe.bottom - rem / 2 - reserve,
-      },
-      edgePx: publicCfg("chat.snapZoneEdgePx"),
-      cornerPx: publicCfg("chat.snapZoneCornerPx"),
-    });
-    // A resize or rotation mid-drag: the zones and the clamp are stale, so the drag is cancelled.
-    const stale = () => cancelDrag();
+    /**
+     * The viewport and its zones, from one measure (snap-viewport.ts): at
+     * the start, and again whenever the visual viewport resizes or scrolls
+     * mid-drag (the keyboard opening, a pinch). Preview and landing both come
+     * from this one snapTargets() output.
+     */
+    const measure = () => {
+      const vp = measureSnapViewport(window, SIDEBAR_QUERY);
+      const css = getComputedStyle(document.documentElement);
+      const rem = parseFloat(css.fontSize) || 16;
+      const reserve = parseFloat(css.getPropertyValue("--lk-bottom-reserve")) || 0;
+      const dockWidth =
+        saved === null
+          ? defaultDockWidth(vp.w, rem)
+          : clampDockWidth(saved, dockBounds(vp.w, SIDEBAR_MIN_REM * rem));
+      const targets = snapTargets(vp, {
+        fullAllowed: fullAllowed && !tucked,
+        dockAllowed: fullAllowed && !tucked,
+        open: openRef.current,
+        full: fullOn.current,
+        dockWidth,
+        pill: { w: Math.min(bar.width, pillH * 3), h: pillH },
+        home: {
+          right: vp.x + vp.w - vp.safe.right - rem / 2,
+          bottom: vp.y + vp.h - vp.safe.bottom - rem / 2 - reserve,
+        },
+        edgePx: publicCfg("chat.snapZoneEdgePx"),
+        cornerPx: publicCfg("chat.snapZoneCornerPx"),
+      });
+      return { vp, targets };
+    };
+    const { vp, targets } = measure();
+    // The visual viewport moved mid-drag: the zones are measured again (once a frame).
+    let queued = 0;
+    const remeasure = () => {
+      if (queued) return;
+      queued = requestAnimationFrame(() => {
+        queued = 0;
+        const s = snapDrag.current;
+        if (!s) return;
+        const m = measure();
+        s.vp = m.vp;
+        s.targets = m.targets;
+        const hot = s.last ? snapAt(m.targets, s.last.x, s.last.y) : null;
+        s.hot = hot;
+        setSnapView({ vp: m.vp, targets: m.targets, hot: hot?.id ?? null, from: null });
+      });
+    };
+    // A rotation turns the screen under the drag: it is cancelled (the snapshot back).
+    const rotated = () => cancelDrag();
     // Escape cancels the drag, before full screen's own Escape (which skips while dragging).
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -3901,9 +3955,10 @@ export function DebugChat({
       cancelDrag();
     };
     const vv = window.visualViewport;
-    window.addEventListener("resize", stale);
-    window.addEventListener("orientationchange", stale);
-    vv?.addEventListener("resize", stale);
+    window.addEventListener("resize", remeasure);
+    window.addEventListener("orientationchange", rotated);
+    vv?.addEventListener("resize", remeasure);
+    vv?.addEventListener("scroll", remeasure);
     window.addEventListener("keydown", key, true);
     dragSnapshot.current = {
       mode: snapshotMode({ open: openRef.current, full: fullOn.current, sidebar: asSidebarNow.current }),
@@ -3920,10 +3975,15 @@ export function DebugChat({
       hot: null,
       rect0: { x: b.left, y: b.top, w: b.width, h: b.height },
       p0: { x: px, y: py },
+      last: null,
+      remeasure,
       off: () => {
-        window.removeEventListener("resize", stale);
-        window.removeEventListener("orientationchange", stale);
-        vv?.removeEventListener("resize", stale);
+        if (queued) cancelAnimationFrame(queued);
+        queued = 0;
+        window.removeEventListener("resize", remeasure);
+        window.removeEventListener("orientationchange", rotated);
+        vv?.removeEventListener("resize", remeasure);
+        vv?.removeEventListener("scroll", remeasure);
         window.removeEventListener("keydown", key, true);
       },
     };
@@ -3932,6 +3992,7 @@ export function DebugChat({
   snapHooks.current.move = (cx, cy) => {
     const s = snapDrag.current;
     if (!s) return;
+    s.last = { x: cx, y: cy };
     const t = snapAt(s.targets, cx, cy);
     if (t?.id === s.hot?.id) return;
     s.hot = t;
@@ -3948,11 +4009,17 @@ export function DebugChat({
   };
   snapHooks.current.drop = (cx, cy) => {
     const s = snapEnd();
-    if (!s) return "free";
+    // A free drop after leaving full screen commits leaving it, only now.
+    const free = () => {
+      dragSnapshot.current = null;
+      if (fullHeldNow.current) setFull(false);
+      return "free" as const;
+    };
+    if (!s) return free();
     if (pointerOffScreen(s.vp, cx, cy)) return "cancel";
-    dragSnapshot.current = null;
     const t = snapAt(s.targets, cx, cy);
-    if (!t) return "free";
+    if (!t) return free();
+    dragSnapshot.current = null;
     applySnap(t);
     return "snap";
   };
@@ -3961,16 +4028,13 @@ export function DebugChat({
     const snap = dragSnapshot.current;
     dragSnapshot.current = null;
     if (!snap) return;
-    // Whatever the drag changed on the way (a drag up out of full screen or the
-    // sidebar): back exactly, mode, edge, dock width and the page's padding.
-    const wasFull = snap.mode === "fullscreen" || snap.mode === "dock-right";
-    if (fullOn.current !== wasFull || (wasFull && fullModeNow.current !== snap.fullMode))
-      chatPrefs().setState(wasFull ? { full: true, fullMode: snap.fullMode } : { full: false });
-    if (foldNow.current.edge !== snap.edge) {
-      foldNow.current = { ...foldNow.current, edge: snap.edge };
-      foldStore.setState({ edge: snap.edge });
+    // Nothing was written during the drag (mode, edge, dock width and place
+    // commit only on a drop), so a cancel only lets go of the drag's hold on
+    // full screen; the page's padding follows the sidebar back.
+    if (fullHeldNow.current) {
+      fullHeldNow.current = false;
+      setFullHeld(false);
     }
-    if (dockSaved.current !== snap.dockWidth) chatDock().setState({ width: snap.dockWidth });
     requestAnimationFrame(() => {
       const root = document.documentElement;
       if (root.style.paddingRight !== snap.pagePadding) root.style.paddingRight = snap.pagePadding;
@@ -3986,7 +4050,7 @@ export function DebugChat({
       return;
     }
     // Minimize: the pill folds, then goes to its corner (the preview's rect).
-    if (fullOn.current) setFull(false);
+    if (fullOn.current || fullHeldNow.current) setFull(false);
     setPanel("none");
     foldBy({ type: "dropped", nearest: "right", against: null });
     foldBy({ type: "minimize" });

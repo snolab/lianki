@@ -42,6 +42,14 @@ export type SnapViewport = {
   h: number;
   /** visualViewport.scale (pinch zoom), 1 without one. */
   scale?: number;
+  /**
+   * Where full screen and the sidebar actually land, client px, from the
+   * same functions that place them (snap-viewport.ts snapLanding:
+   * full-screen.ts fullScreenBox, dock-resize.ts dockViewport), so a
+   * preview is the landing at any zoom (codex review). `full`: the full
+   * screen's rect; `right`: the sidebar's right edge. Absent: the visible area.
+   */
+  land?: { full: Rect; right: number };
   safe: { top: number; right: number; bottom: number; left: number };
   /** Wider than SIDEBAR_QUERY (35em): a right sidebar leaves the page usable. */
   wide: boolean;
@@ -115,6 +123,10 @@ export function snapTargets(vp: SnapViewport, o: SnapOptions): SnapTarget[] {
   );
   const right = x0 + w;
   const bottom = y0 + h;
+  const land =
+    vp.land && [vp.land.full.x, vp.land.full.y, vp.land.full.w, vp.land.full.h].every(Number.isFinite)
+      ? vp.land
+      : null;
   const out: SnapTarget[] = [];
   // A minimized pill only moves (the spec's `!minimized` on every zone).
   if (!o.open) return out;
@@ -135,15 +147,18 @@ export function snapTargets(vp: SnapViewport, o: SnapOptions): SnapTarget[] {
     out.push({
       id: "fullscreen",
       zone: { x: x0, y: bottom - edge, w: Math.max(0, w - gap), h: edge },
-      result: { x: x0, y: y0, w, h },
+      result: land ? { ...land.full } : { x: x0, y: y0, w, h },
     });
   if (o.fullAllowed && o.dockAllowed && vp.wide && edge > 0) {
-    const dw = Math.max(0, Math.min(fin(o.dockWidth), w));
+    const lr = land ? fin(land.right, right) : right;
+    const dw = Math.max(0, Math.min(fin(o.dockWidth), w, lr));
+    const ly = land ? land.full.y : y0;
+    const lh = land ? land.full.h : h;
     out.push({
       id: "dock-right",
       // Above the corner, or above the bottom strip when there is no corner.
       zone: { x: right - edge, y: y0, w: edge, h: Math.max(0, h - (gap || edge)) },
-      result: { x: right - dw, y: y0, w: dw, h },
+      result: { x: lr - dw, y: ly, w: dw, h: lh },
     });
   }
   return out;

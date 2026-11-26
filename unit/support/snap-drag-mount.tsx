@@ -184,6 +184,14 @@ describe("the drag overlay", () => {
       // Past chat.fullLeavePx up: it left full screen and follows the pointer.
       expect(m.host.querySelector("[data-fullscreen]")).toBeNull();
       expect(m.q('[data-testid="debug-chat-snap"]')).not.toBeNull();
+      // Only transiently (codex review): nothing persisted while the drag lasts.
+      const { chatPrefs } = await import("../../packages/debug-chat/src/ui-store");
+      expect(chatPrefs().getState().full).toBe(true);
+      expect(m.p.win.localStorage.getItem("lk:pref:chat-view") ?? "").not.toContain('"full":false');
+      // A resize mid-drag measures the zones again; the drag goes on.
+      await m.act(async () => void m.p.win.dispatchEvent(new m.p.win.Event("resize") as never));
+      await m.frames();
+      expect(m.q('[data-testid="debug-chat-snap"]')).not.toBeNull();
       await m.act(
         async () =>
           void m.p.win.dispatchEvent(
