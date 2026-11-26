@@ -172,6 +172,25 @@ export async function prune(db: D1Like, tokenHash: string, now: number, l: WakeL
     .prepare("DELETE FROM chat_mention WHERE token_id = ? AND created_at < ?")
     .bind(tokenHash, now - l.retentionMs)
     .run();
+  // The cap: the newest row it evicts is marked first (chat_mention_gap), so a
+  // cursor at or before it, naming a row or not, reads truncated next time.
+  const newestEvicted = await db
+    .prepare(
+      `SELECT created_at, seq FROM chat_mention WHERE token_id = ?
+       ORDER BY created_at DESC, seq DESC LIMIT 1 OFFSET ?`,
+    )
+    .bind(tokenHash, l.maxPerToken)
+    .first<{ created_at: number; seq: number }>();
+  if (!newestEvicted) return;
+  await db
+    .prepare(
+      `INSERT INTO chat_mention_gap (token_id, at, seq) VALUES (?1, ?2, ?3)
+       ON CONFLICT(token_id) DO UPDATE SET at = excluded.at, seq = excluded.seq
+       WHERE excluded.at > chat_mention_gap.at
+          OR (excluded.at = chat_mention_gap.at AND excluded.seq > chat_mention_gap.seq)`,
+    )
+    .bind(tokenHash, Number(newestEvicted.created_at), Number(newestEvicted.seq))
+    .run();
   await db
     .prepare(
       `DELETE FROM chat_mention WHERE token_id = ?1 AND seq NOT IN (
@@ -180,6 +199,18 @@ export async function prune(db: D1Like, tokenHash: string, now: number, l: WakeL
     )
     .bind(tokenHash, l.maxPerToken)
     .run();
+}
+
+/** The newest position the cap evicted for this token, if any. */
+export async function capGap(
+  db: D1Like,
+  tokenHash: string,
+): Promise<{ at: number; seq: number } | null> {
+  const r = await db
+    .prepare("SELECT at, seq FROM chat_mention_gap WHERE token_id = ?")
+    .bind(tokenHash)
+    .first<{ at: number; seq: number }>();
+  return r ? { at: Number(r.at), seq: Number(r.seq) } : null;
 }
 
 /**

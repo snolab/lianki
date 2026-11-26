@@ -136,6 +136,13 @@ describe("rules", () => {
       true,
     );
     expect(cursorTruncated({ at: now - 1000, seq: 0 }, false, now, limits)).toBe(false);
+    // The cap evicted a row at or after the cursor: truncated, row or no row.
+    const gap = { at: now + 5, seq: 9 };
+    expect(cursorTruncated({ at: now, seq: 0 }, false, now, limits, gap)).toBe(true);
+    expect(cursorTruncated({ at: now, seq: 3 }, true, now, limits, gap)).toBe(true);
+    expect(cursorTruncated({ at: now + 5, seq: 9 }, false, now, limits, gap)).toBe(true);
+    expect(cursorTruncated({ at: now + 5, seq: 10 }, true, now, limits, gap)).toBe(false);
+    expect(cursorTruncated({ at: now + 6, seq: 0 }, false, now, limits, gap)).toBe(false);
   });
 
   test("page size: the default, at most 100, a whole number", () => {
@@ -649,5 +656,50 @@ describe("review fixes: a stable cursor across expiry, retention for idle tokens
     // Another token's rows are not counted against Arden's cap.
     await mentionEvents(deps(), put("@Bo", "b0"));
     expect(rows().filter((m) => m.token_id === bo.id)).toHaveLength(1);
+  });
+
+  test("empty-queue bootstrap: a row-less cursor sees a cap eviction after its time (poll)", async () => {
+    limits = { ...limits, maxPerToken: 3 };
+    // Nothing yet: the bootstrap cursor names no row ("from now").
+    const boot = (await rpc(arden.token, "events/poll", { name: "chat.mention", cursor: null }))
+      .result!;
+    expect(decodeCursor(boot.cursor)?.seq).toBe(0);
+    for (let i = 0; i < 5; i++) {
+      now += 1000;
+      await mentionEvents(deps(), put(`@Arden ${i}`, `m${i}`));
+    }
+    // m0 and m1 came after the cursor's time and were evicted by the cap.
+    const r = (await rpc(arden.token, "events/poll", { name: "chat.mention", cursor: boot.cursor }))
+      .result!;
+    expect((r.events as { data: { id: string } }[]).map((e) => e.data.id)).toEqual([
+      "m2",
+      "m3",
+      "m4",
+    ]);
+    expect(r.truncated).toBe(true);
+    // Reported once: the next cursor is past the gap.
+    const again = (
+      await rpc(arden.token, "events/poll", { name: "chat.mention", cursor: r.cursor })
+    ).result!;
+    expect(again.truncated).toBe(false);
+  });
+
+  test("empty-queue bootstrap: the tool's empty-window cursor sees a cap eviction, even with an empty page", async () => {
+    limits = { ...limits, maxPerToken: 3 };
+    const boot = (await rpc(arden.token, "chat/mentions")).result!;
+    expect(boot.mentions).toEqual([]);
+    for (let i = 0; i < 4; i++) {
+      now += 1000;
+      await mentionEvents(deps(), put(`@Arden ${i}`, `m${i}`));
+    }
+    const r = (await rpc(arden.token, "chat/mentions", { cursor: boot.cursor })).result!;
+    expect(texts({ result: r })).toEqual(["@Arden 1", "@Arden 2", "@Arden 3"]);
+    expect(r.truncated).toBe(true);
+    // A row-less cursor from after the eviction is not a gap.
+    const after = (await rpc(arden.token, "chat/mentions", { cursor: `w2.${now + 1}.0` })).result!;
+    expect(after.truncated).toBe(false);
+    // Only the cap marks a gap; a cursor before an eviction of another token is fine.
+    const bo1 = (await rpc(bo.token, "chat/mentions", { cursor: boot.cursor })).result!;
+    expect(bo1.truncated).toBe(false);
   });
 });

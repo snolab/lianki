@@ -17,7 +17,7 @@
  */
 import { hit, type ThrottleDb } from "@/lib/security/throttle";
 import { MENTION_EVENT, type Refusal } from "@/lib/mcp-events/rules";
-import { limitsOf, prune, type WakeDeps } from "./core";
+import { capGap, limitsOf, prune, type WakeDeps } from "./core";
 import {
   type Cursor,
   type MentionRow,
@@ -105,7 +105,13 @@ async function latest(d: WakeDeps, who: Who): Promise<Cursor> {
  * reported once, not on every later call.
  */
 async function page(d: WakeDeps, who: Who, from: Cursor, since: number, n: number, l: WakeLimits) {
-  const truncated = cursorTruncated(from, await rowExists(d, who, from), d.now(), l);
+  const truncated = cursorTruncated(
+    from,
+    await rowExists(d, who, from),
+    d.now(),
+    l,
+    await capGap(d.db, who.tokenHash),
+  );
   const rows = await after(d, who, from, since, n + 1);
   const hasMore = rows.length > n;
   const shown = rows.slice(0, n);

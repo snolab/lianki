@@ -24,14 +24,27 @@ CREATE INDEX IF NOT EXISTS idx_chat_mention_token ON chat_mention(token_id, crea
 -- Retention across all tokens (a bounded purge on every write, no cron).
 CREATE INDEX IF NOT EXISTS idx_chat_mention_age ON chat_mention(created_at);
 
+-- The newest position (created_at, seq) the per-token cap ever evicted, per
+-- token. A cursor at or before it may have missed rows, whether or not it names
+-- a row, so its next page says truncated. Retention needs no mark: it deletes
+-- only rows older than the retention, which a live cursor's age rule covers.
+CREATE TABLE IF NOT EXISTS chat_mention_gap (
+  token_id TEXT PRIMARY KEY,
+  at INTEGER NOT NULL,
+  seq INTEGER NOT NULL
+);
+
 -- Revocation: a token row deleted (revoke, sign out everywhere, the account
 -- deleted) takes its mentions with it, and so does disconnecting an OAuth app.
 CREATE TRIGGER IF NOT EXISTS chat_mention_token_gone AFTER DELETE ON api_tokens
 BEGIN
   DELETE FROM chat_mention WHERE token_id = OLD.token_hash;
+  DELETE FROM chat_mention_gap WHERE token_id = OLD.token_hash;
 END;
 CREATE TRIGGER IF NOT EXISTS chat_mention_grant_gone AFTER DELETE ON mcp_oauth_grant
 BEGIN
   DELETE FROM chat_mention
+  WHERE token_id IN (SELECT token_hash FROM api_tokens WHERE oauth_grant_id = OLD.id);
+  DELETE FROM chat_mention_gap
   WHERE token_id IN (SELECT token_hash FROM api_tokens WHERE oauth_grant_id = OLD.id);
 END;

@@ -139,17 +139,26 @@ export function decodeCursor(raw: unknown): Cursor | null {
   return { at: Number(m[1]), seq: Number(m[2]) };
 }
 
+/** Is position `a` strictly after `b` in (created_at, seq) order? */
+export const isAfter = (a: Cursor, b: Cursor) => a.at > b.at || (a.at === b.at && a.seq > b.seq);
+
 /**
- * Could rows after this cursor be gone? Retention and the per-token cap
- * delete oldest first, so while the cursor's own row exists nothing after it
- * was deleted. `rowExists`: whether the row it names is still there.
+ * Could rows after this cursor be gone?
+ * - The cap evicted a row at or after it (`gap`: the newest position the cap
+ *   ever evicted for the token). This holds for any cursor, also one that names
+ *   no row (a bootstrap, "from now").
+ * - It names a row that no longer exists. Both deletions go oldest first, so
+ *   while its row exists nothing after it was deleted.
+ * - It names no row and is older than the retention.
  */
 export function cursorTruncated(
   c: Cursor,
   rowExists: boolean,
   now: number,
   l: WakeLimits,
+  gap: Cursor | null = null,
 ): boolean {
+  if (gap && !isAfter(c, gap)) return true;
   if (c.seq > 0) return !rowExists;
   return c.at < now - l.retentionMs;
 }

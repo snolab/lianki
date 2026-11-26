@@ -146,7 +146,11 @@ no arguments for naming another thread or token.
 - **`truncated`**: retention and the cap delete oldest first. So rows after a
   cursor can be gone only if the cursor's own row is gone, and then the next
   page says `truncated: true` while still returning every row that is kept. A
-  row-less cursor older than the retention says the same. If such a page is
+  row-less cursor older than the retention says the same. The cap marks the
+  newest position it ever evicted for a token (`chat_mention_gap`). Any cursor
+  at or before that mark reads `truncated: true`, including a row-less one (an
+  empty-queue bootstrap, "from now") whose rows came and were evicted before
+  the next poll. If such a page is
   empty, the cursor moves to the token's newest row, so the gap is reported
   once.
 - **Rate**: `chat.wakePullPerMinute` calls per token (tool and poll together),
