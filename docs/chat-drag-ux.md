@@ -1,5 +1,7 @@
 # Li Chat Window: Drag, Snap, Dock & Minimize UX Proposal
 
+Tree: /chat/drag-snap-preview
+
 Status: Proposal ready for implementation (2026-11-27, owner requests 06:07–06:10 JST).
 Source files: [DebugChat.tsx](../packages/debug-chat/src/DebugChat.tsx), [full-screen.ts](../packages/debug-chat/src/full-screen.ts), [fold.ts](../packages/debug-chat/src/fold.ts), [drag-frame.ts](../packages/debug-chat/src/drag-frame.ts), [dock-resize.ts](../packages/debug-chat/src/dock-resize.ts), [partner-frame.ts](../src/partner-frame.ts), [config.ts](../lib/config.ts).
 
@@ -15,14 +17,40 @@ Source files: [DebugChat.tsx](../packages/debug-chat/src/DebugChat.tsx), [full-s
 
 ## 2. State & Zone Mapping (`snapTargets`)
 
-Pure helper `snapTargets(vp)` takes `{ vw, vh, offsetTop, offsetLeft, safeTop, safeRight, safeBottom, safeLeft, wide, fullAllowed, canDock, dockWidth }`:
+All hit-testing and preview rectangles use **one coordinate space: client coordinates** derived from `window.visualViewport` (`offsetLeft`, `offsetTop`, `width`, `height`, `scale`), falling back to `innerWidth` / `innerHeight` with `0` offsets and `scale = 1`. Using visual-viewport client coordinates keeps `hitRect` and `previewRect` exact under pinch-zoom (`scale != 1`), mobile on-screen keyboards (`vh` / `offsetTop`), and `env(safe-area-inset-*)`.
 
-| Zone ID | Availability | `hitRect` (pointer, in visual viewport) | `previewRect` & Drop Result | Zone Pill Label |
-| --- | --- | --- | --- | --- |
-| `fullscreen` | `fullAllowed && !full` (main site only) | Bottom strip excluding bottom-right corner: `x ∈ [offsetLeft, offsetLeft + vw - cornerW]`, `y ∈ [offsetTop + vh - edgeH, offsetTop + vh]` | `{ x: offsetLeft, y: offsetTop, w: vw, h: vh }` (true full screen on both narrow and wide) | Full screen |
-| `dock-right` | `wide && canDock` (`>= 35em`, main site) | Right edge above bottom-right corner: `x ∈ [offsetLeft + vw - edgeW, offsetLeft + vw]`, `y ∈ [offsetTop + safeTop, offsetTop + vh - cornerH]` | Right sidebar `{ x: offsetLeft + vw - W, y: offsetTop, w: W, h: vh }` (`W` from `lk:pref:chat-dock`, clamped `[20rem, vw]`), padding page root by `W` | Dock right |
-| `minimize` | Always when open (`!minimized`) | Bottom-right corner: `x ∈ [offsetLeft + vw - cornerW, offsetLeft + vw]`, `y ∈ [offsetTop + vh - cornerH, offsetTop + vh]` | Compact minimized pill rect at bottom-right home | Minimize |
-| *(elsewhere)* | Always | Anywhere outside active `hitRect`s (including top edge) | Free move (`dragStep` clamp) + existing left/right half `edge` mirroring | — |
+Pure helper `snapTargets(input)` takes the full state and viewport geometry:
+
+```ts
+type SnapTargetsInput = {
+  full: boolean;
+  minimized: boolean;
+  vw: number;          // visualViewport.width
+  vh: number;          // visualViewport.height
+  offsetTop: number;   // visualViewport.offsetTop
+  offsetLeft: number;  // visualViewport.offsetLeft
+  scale: number;       // visualViewport.scale
+  safeTop: number;
+  safeRight: number;
+  safeBottom: number;
+  safeLeft: number;
+  wide: boolean;       // vw >= 35em (SIDEBAR_QUERY)
+  fullAllowed: boolean;
+  canDock: boolean;
+  dockWidth: number;
+  edgePx: number;      // cfg("chat.snapZoneEdgePx"), default 64
+  cornerPx: number;    // cfg("chat.snapZoneCornerPx"), default 88
+};
+```
+
+**Boundary priority when zones overlap**: evaluated strictly in order **`minimize` (bottom-right corner) > `dock-right` (right edge) > `fullscreen` (bottom strip)**, so shared corner/edge pixels always resolve deterministically.
+
+| Priority | Zone ID | Availability | `hitRect` (client coords in visual viewport) | `previewRect` & Drop Result | Zone Pill Label |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `minimize` | `!minimized` | Bottom-right corner: `x ∈ [offsetLeft + vw - cornerPx, offsetLeft + vw]`, `y ∈ [offsetTop + vh - cornerPx, offsetTop + vh]` | Compact minimized pill rect at bottom-right home | Minimize |
+| 2 | `dock-right` | `wide && canDock && !minimized` | Right edge above corner: `x ∈ [offsetLeft + vw - edgePx, offsetLeft + vw]`, `y ∈ [offsetTop + safeTop, offsetTop + vh - cornerPx]` | Right sidebar `{ x: offsetLeft + vw - W, y: offsetTop, w: W, h: vh }` (`W` from `lk:pref:chat-dock`, clamped `[20rem, vw]`), padding page root by `W` | Dock right |
+| 3 | `fullscreen` | `fullAllowed && !full && !minimized` | Bottom strip left of corner: `x ∈ [offsetLeft, offsetLeft + vw - cornerPx]`, `y ∈ [offsetTop + vh - edgePx, offsetTop + vh]` | `{ x: offsetLeft, y: offsetTop, w: vw, h: vh }` (true full screen on both narrow and wide) | Full screen |
+| 4 | *(elsewhere)* | Always | Anywhere outside active `hitRect`s (including top edge) | Free move (`dragStep` clamp) + existing left/right half `edge` mirroring | — |
 
 - **Top edge**: Intentionally has no snap zone (bar stays a free panel).
 - **Hysteresis & haptic**: Entering a zone triggers `navigator.vibrate?.(cfg("chat.snapHapticMs"))` once per entry. Leaving a zone hides the ghost preview while keeping the subtle zone pills visible until drop/cancel.
@@ -37,17 +65,22 @@ On `begin()` of any drag—regardless of starting mode (`free`, `fullscreen`, `d
 ```ts
 type DragSnapshot = {
   mode: "free" | "fullscreen" | "dock-right" | "minimized";
+  rect: { x: number; y: number; w: number; h: number };
   pos: { x: number; y: number };
   edge: "left" | "right";
   dockWidth: number;
+  pagePadding: string; // e.g. document.documentElement.style.paddingRight
 };
 ```
 
-- **`Escape` during drag**: Immediately aborts the drag, restores the exact `DragSnapshot` (`mode`, `pos`, `edge`, `dockWidth`), clears Tier 1/2 overlays, and writes **nothing** to `lk:debug-chat-pos`, `lk:pref:chat-fold`, or `lk:pref:chat-dock`. (Post-drop `Escape` continues to exit fullscreen/dock when not intercepted by a menu/tree.)
+- **`Escape` during drag**: Immediately aborts the drag, restores the exact `DragSnapshot` (`mode`, `rect`, `pos`, `edge`, `dockWidth`, and `pagePadding`), clears Tier 1/2 overlays, and writes **nothing** to `lk:debug-chat-pos`, `lk:pref:chat-fold`, or `lk:pref:chat-dock`. (Post-drop `Escape` continues to exit fullscreen/dock when not intercepted by a menu/tree.)
 - **`pointercancel`**: Runs the exact same rollback to `DragSnapshot`—never leaves the window stranded or partially saved.
 - **Drop outside any zone**:
   - When dragging from `fullscreen` or `dock-right` without crossing `fullLeavePx`, or when dropping a `minimized` drag outside any snap target without committing a move, restores the exact `DragSnapshot`.
   - When in `free` mode (or after crossing `fullLeavePx` out of `fullscreen` / `dock-right`), dropping outside any zone commits the new free `pos` and `edge` mirroring; canceling beforehand via `Escape` or `pointercancel` restores `DragSnapshot`.
+- **Named regressions**:
+  1. *Drag out of `fullscreen` + `Escape`*: start in `fullscreen`, drag past `fullLeavePx` (`48` px) into free mode, press `Escape` → window returns to `fullscreen` with its exact pre-drag `rect` and `pos` intact.
+  2. *Drag out of `dock-right` + `pointercancel`*: start in `dock-right` with `dockWidth = W` and `pagePadding = "${W}px"`, drag past `fullLeavePx` into free mode, fire `pointercancel` → window restores `dock-right`, `dockWidth`, and page-root `paddingRight` with zero storage writes.
 
 ---
 
