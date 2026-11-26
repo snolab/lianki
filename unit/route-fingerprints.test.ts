@@ -86,6 +86,43 @@ describe("route-fingerprints", () => {
     }
   });
 
+  it("covers lazily loaded chunks (the chat), and only where they are named", () => {
+    // root.js (the root layout, so the shell) lazy-loads the chat; w.js lazy-loads
+    // a words-only chunk. Neither lazy chunk is in any client manifest, and their
+    // names stay put when their content changes, as Turbopack's do.
+    const base = {
+      ...FILES,
+      "root.js": 'root ["static/chunks/chat.js"].map(load)',
+      "chat.js": 'chat v1 ["static/chunks/chat-mic.js"] ["static/chunks/root.js"]',
+      "chat-mic.js": "mic v1",
+      "w.js": 'words import("static/chunks/w-lazy.js")',
+      "w-lazy.js": "words lazy v1",
+    };
+    const a = fakeNext(base);
+    const chat = fakeNext({ ...base, "chat.js": base["chat.js"].replace("v1", "v2") });
+    const mic = fakeNext({ ...base, "chat-mic.js": "mic v2" });
+    const words = fakeNext({ ...base, "w-lazy.js": "words lazy v2" });
+    const same = fakeNext(base);
+    try {
+      const fa = fingerprintBuild({ nextDir: a, build: "A" });
+      const fchat = fingerprintBuild({ nextDir: chat, build: "B" });
+      const fmic = fingerprintBuild({ nextDir: mic, build: "B" });
+      const fwords = fingerprintBuild({ nextDir: words, build: "B" });
+      // A chat-only change (also one chunk deeper) moves the shell: every page asks.
+      expect(fchat.shell).not.toBe(fa.shell);
+      expect(fmic.shell).not.toBe(fa.shell);
+      expect(fmic.shell).not.toBe(fchat.shell);
+      // A lazy chunk of one route moves that route alone, not the shell.
+      expect(fwords.shell).toBe(fa.shell);
+      expect(fwords.routes["/words"]).not.toBe(fa.routes["/words"]);
+      expect(fwords.routes["/list"]).toBe(fa.routes["/list"]);
+      // Unchanged code stays unchanged, reference cycle and all.
+      expect(fingerprintBuild({ nextDir: same, build: "C" })).toEqual({ ...fa, build: "C" });
+    } finally {
+      for (const d of [a, chat, mic, words, same]) rmSync(d, { recursive: true });
+    }
+  });
+
   it("writes the file from the CLI, forced by flag, env or trailer", async () => {
     const dir = fakeNext(FILES);
     const out = join(dir, "out/route-fp.json");

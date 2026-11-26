@@ -597,6 +597,11 @@ client JS chunks and CSS of each layout and page it loads — and
   (route groups dropped from the key: `/(app)/words/page` → `/words`). A
   change to `app/(app)/layout.tsx` moves every `(app)` route; a change to a
   component used by one page moves that page only.
+- A file's hash covers the chunks it names for loading later (`React.lazy` /
+  `import()`, followed transitively): those are in no client manifest, and
+  Turbopack keeps their names when their content changes. The chat is loaded
+  this way from the root layout, so a chat-only deploy moves `shell` (every
+  page asks); a lazy chunk of one route moves that route alone.
 - Content, not file names, and the build id is **never in client code**: it
   is `<html data-build>` (root layout), read by `lib/build-id.ts`. With the id
   inlined, the minifier picked different names in that chunk on every build,

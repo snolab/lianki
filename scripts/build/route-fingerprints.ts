@@ -51,6 +51,9 @@ export function forcedByTrailer(message: string): boolean {
   return /^force-refresh:\s*(yes|true|1)\s*$/im.test(message);
 }
 
+/** A chunk one client file names for loading later ("static/chunks/1q3b.js"). */
+const LAZY_CHUNK = /static\/chunks\/[\w.\-/]+?\.(?:js|css)\b/g;
+
 export function fingerprintBuild(opts: { nextDir: string; build: string; force?: boolean }) {
   const { nextDir, build } = opts;
   const nextBuildId = existsSync(join(nextDir, "BUILD_ID"))
@@ -61,12 +64,46 @@ export function fingerprintBuild(opts: { nextDir: string; build: string; force?:
     for (const id of [build, nextBuildId]) if (id) t = t.split(id).join("@BUILD@");
     return t.replace(/local-\d{13}/g, "@BUILD@");
   };
+  // One file's own content, and the chunks it names (lazy imports).
+  const own = new Map<string, { hash: string; refs: string[] }>();
+  const read = (file: string) => {
+    const key = file.replace(/^\/?_next\//, "");
+    let r = own.get(key);
+    if (r === undefined) {
+      const p = join(nextDir, key);
+      const text = existsSync(p) ? readFileSync(p, "latin1") : null;
+      r = {
+        hash: text === null ? "missing" : fnv1a(blank(text)),
+        refs: text === null ? [] : [...new Set(text.match(LAZY_CHUNK) ?? [])],
+      };
+      own.set(key, r);
+    }
+    return { key, ...r };
+  };
+  // A file's hash covers what it can load later too: a React.lazy / import()
+  // chunk (the chat, docs/cold-start.md) is in no client manifest, and Turbopack
+  // keeps its file name when its content changes, so the chunk that names it
+  // would not move. The closure is a set, so the order files are read in and
+  // reference cycles do not change the hash.
   const cache = new Map<string, string>();
   const hashOf = (file: string) => {
     let h = cache.get(file);
     if (h === undefined) {
-      const p = join(nextDir, file.replace(/^\/?_next\//, ""));
-      h = existsSync(p) ? fnv1a(blank(readFileSync(p, "latin1"))) : "missing";
+      const root = read(file);
+      const seen = new Map<string, string>([[root.key, root.hash]]);
+      const todo = [...root.refs];
+      while (todo.length) {
+        const r = read(todo.pop() as string);
+        if (seen.has(r.key)) continue;
+        seen.set(r.key, r.hash);
+        todo.push(...r.refs);
+      }
+      h =
+        seen.size === 1
+          ? root.hash
+          : fnv1a(
+              [...seen.values()].sort().join("\n"), // content, not file names
+            );
       cache.set(file, h);
     }
     return h;
