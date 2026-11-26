@@ -722,3 +722,99 @@ export function revealScrollLeft(
   const want = w + 2 * pad <= view.width ? bar.x + w / 2 - view.width / 2 : bar.x - pad;
   return Math.round(Math.max(0, Math.min(Math.max(0, contentWidth - view.width), want)));
 }
+
+/* Finished bars: estimate vs actual (docs/state-tree.md, "Estimates"). */
+
+/** A done-history record as the hub sends it ({type:"history"}; lib/progress.ts ProgressHistory). */
+export type DoneRecord = {
+  id: string;
+  title: string;
+  created: number;
+  startedAt?: number;
+  endedAt: number;
+  estimateMs?: number;
+};
+
+/** The Gantt asks the hub for at most this many done records… */
+export const GANTT_HISTORY_LIMIT = 200;
+/** …and draws those that ended within this many days. */
+export const GANTT_HISTORY_DAYS = 7;
+
+/** What historyTasks makes: the parts of an EtaTask (eta.ts) a done bar needs. */
+export type DoneTask = {
+  id: string;
+  title: string;
+  start: number;
+  at: number;
+  plan?: { start: number; at: number };
+  /** Done with no estimate ever given: the label shows only what it took. */
+  unestimated?: true;
+  done: true;
+  doneAt: number;
+};
+
+/**
+ * Done-history records → done Gantt tasks, for the ones not already in the
+ * live tree (`liveIds`) and ended within GANTT_HISTORY_DAYS. The bar runs as
+ * the task really ran (start → end); its estimate (start → start + estimate)
+ * is the plan, drawn as the ghost.
+ */
+export function historyTasks(
+  records: readonly DoneRecord[],
+  liveIds: ReadonlySet<string>,
+  now: number,
+): DoneTask[] {
+  const since = now - GANTT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
+  const out: DoneTask[] = [];
+  for (const r of records) {
+    if (liveIds.has(r.id) || r.endedAt < since) continue;
+    const start = Math.min(r.startedAt ?? r.created, r.endedAt);
+    const est = r.estimateMs && r.estimateMs > 0 ? r.estimateMs : 0;
+    const at = est ? start + est : r.endedAt;
+    out.push({
+      id: r.id,
+      title: r.title,
+      start,
+      at,
+      ...(est ? { plan: { start, at } } : { unestimated: true as const }),
+      done: true,
+      doneAt: r.endedAt,
+    });
+  }
+  return out;
+}
+
+/**
+ * A finished bar's estimate vs actual (as lib/estimate estimateVsActual): the
+ * estimate is the first plan's length (else start → at), the actual start →
+ * done. null for a task not done. ratio > 1: it ran over.
+ */
+export function doneVsEstimate(t: {
+  start: number;
+  at: number;
+  plan?: { start: number; at: number };
+  unestimated?: boolean;
+  done?: boolean;
+  doneAt?: number;
+}): { estimateMs?: number; actualMs: number; ratio?: number } | null {
+  if (!t.done || t.doneAt === undefined) return null;
+  const actualMs = Math.max(0, t.doneAt - t.start);
+  if (t.unestimated) return { actualMs };
+  const p = t.plan ?? t;
+  const estimateMs = p.at - p.start;
+  return estimateMs > 0 ? { estimateMs, actualMs, ratio: actualMs / estimateMs } : { actualMs };
+}
+
+/**
+ * Its label, language-neutral like the time labels: "30M→45M" (the estimate,
+ * then what it took), or just "45M" with no estimate. `over`: more than 10%
+ * past the estimate (drawn in the late colour).
+ */
+export function doneVsLabel(
+  v: { estimateMs?: number; actualMs: number; ratio?: number },
+  fmt: (ms: number) => string,
+): { text: string; over: boolean } {
+  return v.estimateMs
+    ? { text: `${fmt(v.estimateMs)}→${fmt(v.actualMs)}`, over: (v.ratio ?? 0) > 1.1 }
+    : { text: fmt(v.actualMs), over: false };
+}

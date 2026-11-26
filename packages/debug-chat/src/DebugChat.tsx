@@ -88,6 +88,7 @@ import { EtaBar, EtaList } from "./EtaBar";
 import { type EvalLink, type EvalSession } from "./link-state";
 import { GanttFull } from "./GanttFull";
 import { type EtaTask, etaClock, etaParts, etaPartsText, etaTasks } from "./eta";
+import { type DoneRecord, GANTT_HISTORY_LIMIT, historyTasks } from "./gantt-view";
 import type { TickerConfig } from "./eta-ticker";
 import { useEtaTicker } from "./eta-ticker-hook";
 import { type ChatFiles, createPendingFiles, dragHasFiles, filesFrom } from "./files";
@@ -1692,6 +1693,22 @@ export function DebugChat({
   const [etaNow, setEtaNow] = useState(() => Date.now());
   /** The full-screen Gantt (GanttFull.tsx), opened from the ETA bar. */
   const [ganttOpen, setGanttOpen] = useState(false);
+  /**
+   * The hub's done history, asked for when the Gantt opens (and again once the
+   * socket is live): older finished bars, each with its estimate vs actual.
+   */
+  const [ganttHistory, setGanttHistory] = useState<DoneRecord[]>([]);
+  const historySource = etaSource ?? treeSource;
+  const etaLive = (etaSource ? etaData.live : treeData.live) === true;
+  useEffect(() => {
+    if (!ganttOpen || !historySource || typeof historySource !== "object") return;
+    historySource.history?.(GANTT_HISTORY_LIMIT, setGanttHistory);
+  }, [ganttOpen, historySource, etaLive]);
+  const ganttTasks = useMemo<EtaTask[]>(() => {
+    if (!ganttHistory.length) return etaList;
+    const live = new Set(etaList.map((t) => t.id));
+    return [...etaList, ...historyTasks(ganttHistory, live, etaNow)];
+  }, [etaList, ganttHistory, etaNow]);
   const onEtaDueRef = useRef(onEtaDue);
   onEtaDueRef.current = onEtaDue;
   const etaClockRef = useRef<ReturnType<typeof etaClock> | null>(null);
@@ -5477,7 +5494,7 @@ export function DebugChat({
         typeof document !== "undefined" &&
         createPortal(
           <GanttFull
-            tasks={etaList}
+            tasks={ganttTasks}
             now={etaNow}
             strings={t}
             onClose={() => setGanttOpen(false)}

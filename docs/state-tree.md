@@ -313,7 +313,13 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   real actuals, multiplies by the lane's median actual/P50 (shrunk), and
   widens or narrows the band so about 90% of actuals fall inside P5–P95.
   `estimate.ts stats` shows that coverage and ratio per kind. The Gantt
-  draws the band from etaMinAt/etaAt as for any range.
+  draws the band from etaMinAt/etaAt as for any range. Each finished task
+  shows its estimate vs actual after "done" ("1.2H→1.3H"; the first plan's
+  length, else start → etaAt, against start → done; in the late colour and
+  bold when over by more than 10%). When the Gantt opens it asks the hub for
+  the done history ({type:"history"}, newest 200), and those finished in the
+  last 7 days join it as done bars, their estimate the ghost (gantt-view.ts
+  historyTasks; shown when "hide done" is off).
 
   Done history (docs/planning-tools.md, step 3). The live tree still drops a
   done node 24 h after its last write (the bar, the Gantt and this tree show

@@ -27,6 +27,8 @@ import {
   type GanttAxis,
   type GanttScale,
   axisLabel,
+  doneVsEstimate,
+  doneVsLabel,
   ganttBar,
   ganttColor as c,
   ganttSpan,
@@ -317,6 +319,9 @@ function TaskTime({
     );
   }
   const late = !t.done && isLate(left);
+  // A finished task: its estimate vs what it took ("30M→45M"), after "done".
+  const v = doneVsEstimate(t);
+  const eva = v ? doneVsLabel(v, compactTime) : null;
   return (
     <span
       data-testid="debug-chat-gantt-time"
@@ -325,6 +330,15 @@ function TaskTime({
       style={late ? { color: c("late"), fontWeight: 600 } : undefined}
     >
       {t.done ? strings.etaDone : etaLabel(t, now)}
+      {eva && (
+        <span
+          data-testid="debug-chat-gantt-estimate-vs-actual"
+          data-over={eva.over || undefined}
+          style={{ color: c(eva.over ? "late" : "muted"), fontWeight: eva.over ? 600 : undefined }}
+        >
+          {` · ${eva.text}`}
+        </span>
+      )}
     </span>
   );
 }
