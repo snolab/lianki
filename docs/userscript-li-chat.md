@@ -465,7 +465,7 @@ so revoking permission or excluding a site cannot leave a second chat window.
   User cancellation aborts the request; a message already accepted durably
   is not unsent. No microphone, playback or device access is part of this UI.
 
-### The chat window is the main site's DebugChat (2.24.56)
+### The chat window is the main site's DebugChat (2.24.57)
 
 Owner, 2026-11-26: 随身Li reuses the Li chat component, no second wheel, and
 looks exactly like the chat window on lianki.com, everywhere (his sites
@@ -505,17 +505,15 @@ zhihu.com and github.com refuse frames). So there is one chat UI,
   `?lang=` = his Lianki language (middleware reads it). The bundled window
   gets the chat's strings for that language from the same `learning-partner`
   dictionary, built in by the plugin (`portableChatStrings`).
-- **A solid window** (2.24.56, after the zhihu check showed the bundled
-  chat floating half-transparent at the top of a wide page): DebugChat sits in
-  an opaque panel (theme `--background`/`--foreground`, border, shadow, 16 px
-  radius) anchored bottom-right 16 px, at the fixed size; the panel's
-  `transform` makes it the containing block of DebugChat's own fixed parts,
-  so the chat lays out inside it as on a small screen. It always opens
-  expanded: only the scoped drafts are kept in GM storage, every other widget
-  preference (fold, dock, position) is memory for the page. A title bar
-  carries the minimize button; minimized, a seal-red Li button opens it
-  again. Both are `data-lk-portable-toggle` (`close` / `open`), labelled with
-  the `portable-li` collapse / expand strings.
+- **Floating like lianki.com** (2.24.57; the opaque 2.24.56 panel was
+  reverted at the owner's word: the 2.24.55 glass look is the one he wants).
+  DebugChat floats over the page exactly as on the main site and drags across
+  the whole viewport. It starts open at the bottom right: only the scoped
+  drafts and a position he dragged it to (per site, `lianki_portable_ls:<origin>:lk:debug-chat-pos`)
+  are kept in GM storage; fold, dock and compact are memory for the page, so
+  no lianki.com position or minimized state carries over. Its grip (tap:
+  minimize / restore, drag: move) and its menu's Minimize carry
+  `data-lk-portable-toggle` (`grip` / `minimize`).
 - **No other chat UI.** The hand-built plain panel is gone; `portable-li-panel.ts`
   keeps only the consent prompt's styles.
 - **Drafts per account and site.** `draftScope` =

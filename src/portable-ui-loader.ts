@@ -16,10 +16,14 @@ import type { PortableWindowFactory } from "./portable-window";
 export const PORTABLE_STORE_PREFIX = "lianki_portable_ls:";
 /** The widget's storage keys kept across pages: the account- and site-scoped drafts only. */
 export const keptPortableKey = (k: string) => k.includes("portable~");
+/** DebugChat's dragged position (DebugChat.tsx POS_KEY): kept, but per site. */
+export const PORTABLE_POS_KEY = "lk:debug-chat-pos";
 
 export function portableUiBundled(d: {
   /** src/portable-window.ts's default export: null in a build without the plugin. */
   factory: PortableWindowFactory | null;
+  /** This page's origin: a dragged position is remembered for this site only. */
+  site?: string;
   /** The chat's strings per locale (portable-window.ts portableChatStrings). */
   chatStrings?: Record<string, Record<string, string>> | null;
   getValue: (k: string, d?: any) => any;
@@ -31,16 +35,34 @@ export function portableUiBundled(d: {
   const make = (): PortableUi | null => {
     if (!d.factory) return null;
     try {
-      // Only the composer's drafts (scoped `portable~<account>~<site>`) are kept;
-      // every other widget preference (fold, dock, position, compact) lives in
-      // memory for this page, so the window always starts from 随身Li's defaults,
-      // never from a main-site float position or a minimized state.
+      // Kept in GM storage: the composer's drafts (scoped `portable~<account>~<site>`)
+      // and a position he dragged it to, per site. Every other widget
+      // preference (fold, dock, compact) lives in memory for this page, so the
+      // window starts open at the bottom right, never from a lianki.com
+      // position or a minimized state.
       const mem = new Map<string, string>();
-      const kept = (k: string) => keptPortableKey(k);
+      // Drafts carry their own account+site scope; the position gets the site here.
+      const gmKey = (k: string) =>
+        keptPortableKey(k)
+          ? PORTABLE_STORE_PREFIX + k
+          : k === PORTABLE_POS_KEY && d.site
+            ? `${PORTABLE_STORE_PREFIX}${d.site}:${k}`
+            : null;
       const built = d.factory({
-        get: (k) => (kept(k) ? d.getValue(PORTABLE_STORE_PREFIX + k, null) : (mem.get(k) ?? null)),
-        set: (k, v) => (kept(k) ? d.setValue(PORTABLE_STORE_PREFIX + k, v) : void mem.set(k, v)),
-        del: (k) => (kept(k) ? d.deleteValue(PORTABLE_STORE_PREFIX + k) : void mem.delete(k)),
+        get: (k) => {
+          const g = gmKey(k);
+          return g ? d.getValue(g, null) : (mem.get(k) ?? null);
+        },
+        set: (k, v) => {
+          const g = gmKey(k);
+          if (g) d.setValue(g, v);
+          else mem.set(k, v);
+        },
+        del: (k) => {
+          const g = gmKey(k);
+          if (g) d.deleteValue(g);
+          else mem.delete(k);
+        },
         keys: () => [...mem.keys()],
       });
       const mount = built?.api?.mountPortable;

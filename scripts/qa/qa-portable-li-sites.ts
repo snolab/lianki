@@ -26,8 +26,9 @@ const SITES: Record<string, string> = {
   github: "https://github.com/",
   zhihu: "https://www.zhihu.com/",
   example: "https://example.com/",
+  youtube: "https://www.youtube.com/",
 };
-const pick = (arg("--sites") ?? "github,zhihu,example").split(",");
+const pick = (arg("--sites") ?? "github,zhihu,example,youtube").split(",");
 /**
  * --live-frame: let the frame reach the real lianki.com. Before the new
  * /embed/partner is deployed, that is the old embed: the handshake gate must
@@ -205,60 +206,80 @@ try {
         return { input: r, vw: innerWidth, vh: innerHeight };
       });
       check(size.input && size.input.x > 40, `${tag} the window is full size, not a clipped box`);
-      // The window: a solid panel at the bottom right, at the fixed size, over the page's own content.
-      const panel = await p.evaluate(() => {
-        for (const r of (globalThis as any).__qa.roots as ShadowRoot[]) {
-          const el = r.querySelector("[data-lk-portable-panel]") as HTMLElement | null;
-          if (!el) continue;
-          const b = el.getBoundingClientRect();
-          const bg = getComputedStyle(el).backgroundColor;
-          return {
-            x: b.x,
-            y: b.y,
-            w: b.width,
-            h: b.height,
-            right: innerWidth - b.right,
-            bottom: innerHeight - b.bottom,
-            bg,
-            vw: innerWidth,
-            vh: innerHeight,
-            toggle: !!r.querySelector("[data-lk-portable-toggle]"),
-          };
+      // The window: the main site's floating DebugChat, starting at the bottom right.
+      const box = async () =>
+        p.evaluate(() => {
+          for (const r of (globalThis as any).__qa.roots as ShadowRoot[]) {
+            const el = r.querySelector("[data-debug-chat]") as HTMLElement | null;
+            if (!el) continue;
+            const b = el.getBoundingClientRect();
+            return {
+              x: b.x,
+              y: b.y,
+              w: b.width,
+              h: b.height,
+              right: innerWidth - b.right,
+              bottom: innerHeight - b.bottom,
+              vw: innerWidth,
+              vh: innerHeight,
+            };
+          }
+          return null;
+        });
+      const start = await box();
+      check(
+        start && start.right < 40 && start.bottom < 60,
+        `${tag} starts at the bottom right (right ${Math.round(start?.right ?? -1)}, bottom ${Math.round(start?.bottom ?? -1)})`,
+      );
+      check(
+        await p.evaluate(() => !!(globalThis as any).__qa.rect('[data-lk-portable-toggle="grip"]')),
+        `${tag} the grip carries data-lk-portable-toggle`,
+      );
+      // Drag by the grip across the whole viewport, far past a 420×560 corner.
+      const grip = await p.evaluate(() =>
+        (globalThis as any).__qa.rect('[data-testid="debug-chat-grip"]'),
+      );
+      if (grip && start) {
+        const dx = -Math.round(start.vw * 0.6);
+        const dy = -Math.round(start.vh * 0.5);
+        await p.mouse.move(grip.x, grip.y);
+        await p.mouse.down();
+        for (let i = 1; i <= 12; i++)
+          await p.mouse.move(grip.x + (dx * i) / 12, grip.y + (dy * i) / 12);
+        await p.mouse.up();
+        await p.waitForTimeout(400);
+        const end = await box();
+        const moved = end ? Math.hypot(end.x - start.x, end.y - start.y) : 0;
+        // Desktop: far past a 420×560 corner. Phone: the chat is nearly full width, so it moves up.
+        const want = DESKTOP ? 420 : 0.4 * Math.hypot(dx, dy);
+        check(
+          end && moved > want,
+          `${tag} drag moves the chat across the viewport (${Math.round(moved)} px > ${Math.round(want)})`,
+        );
+        check(
+          end &&
+            end.x >= -1 &&
+            end.y >= -1 &&
+            end.x + end.w <= end.vw + 1 &&
+            end.y + end.h <= end.vh + 1,
+          `${tag} and it stays on screen`,
+        );
+        if (SHOTS)
+          await p.screenshot({
+            path: `${SHOTS}/portable-li-${site}-${scheme}${DESKTOP ? "-desktop" : ""}-dragged.png`,
+          });
+        // Back to the corner for the main screenshot.
+        const g2 = await p.evaluate(() =>
+          (globalThis as any).__qa.rect('[data-testid="debug-chat-grip"]'),
+        );
+        if (g2) {
+          await p.mouse.move(g2.x, g2.y);
+          await p.mouse.down();
+          for (let i = 1; i <= 12; i++)
+            await p.mouse.move(g2.x - (dx * i) / 12, g2.y - (dy * i) / 12);
+          await p.mouse.up();
         }
-        return null;
-      });
-      const wantW = Math.min(420, (panel?.vw ?? 0) - 16);
-      const wantH = Math.min(560, (panel?.vh ?? 0) - 24);
-      check(
-        panel && Math.abs(panel.w - wantW) < 2 && Math.abs(panel.h - wantH) < 2,
-        `${tag} panel is ${Math.round(panel?.w ?? 0)}×${Math.round(panel?.h ?? 0)} (want ${wantW}×${wantH})`,
-      );
-      check(
-        panel && Math.abs(panel.right - 16) < 2 && Math.abs(panel.bottom - 16) < 2,
-        `${tag} panel anchored bottom-right, 16 px`,
-      );
-      check(
-        panel && !/\/\s*0?\.\d|transparent|rgba\(.*,\s*0?\.\d+\)$/.test(panel.bg),
-        `${tag} panel background is opaque (${panel?.bg})`,
-      );
-      check(panel?.toggle, `${tag} a data-lk-portable-toggle control is there`);
-      // Minimize to the Li button and back.
-      const close = await p.evaluate(() =>
-        (globalThis as any).__qa.rect('[data-lk-portable-toggle="close"]'),
-      );
-      if (close) await p.mouse.click(close.x, close.y);
-      const reopen = await p.evaluate(() =>
-        (globalThis as any).__qa.rect('[data-lk-portable-toggle="open"]'),
-      );
-      check(reopen, `${tag} minimize leaves the Li button`);
-      if (reopen) await p.mouse.click(reopen.x, reopen.y);
-      check(
-        await until(
-          async () =>
-            !!(await p.evaluate(() => (globalThis as any).__qa.rect("[data-debug-chat]"))),
-        ),
-        `${tag} the Li button opens the window again`,
-      );
+      } else check(false, `${tag} the grip is there to drag`);
       await p.waitForTimeout(500);
       if (SHOTS)
         await p.screenshot({

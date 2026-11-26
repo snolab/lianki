@@ -10,7 +10,7 @@
  * over a ticket socket (partner-client.ts). When it must not run here, a
  * small note says why instead (guard.ts).
  */
-import { useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { DebugChat } from "../DebugChat";
 import { EMBED_NAME, EMBED_STRINGS, embedLang } from "../ui-strings";
@@ -176,9 +176,8 @@ export type PortableMountOptions = {
     failed: string;
     advancedHint: string;
     excludeHere: string;
-    /** The panel's minimize button (intlayer portable-li `collapse`). */
+    /** The grip's label: minimize / restore (intlayer portable-li `collapse`). */
     collapse?: string;
-    /** The Li button that opens it again (intlayer portable-li `expand`). */
     expand?: string;
   };
   /** The chat's own strings in his Lianki language (intlayer `learning-partner`), bundled by the userscript. */
@@ -190,121 +189,25 @@ export type PortableMountOptions = {
   report?: (what: string, detail: string) => void;
 };
 
-/** 随身Li's window size: as the frame's (src/pill-chat.ts PORTABLE_FRAME_SIZE). */
-export const PORTABLE_PANEL_SIZE = {
-  w: "min(420px, calc(100vw - 16px))",
-  h: "min(560px, calc(100vh - 24px))",
-};
-const SEAL = "oklch(0.53 0.207 22.3)";
 /**
- * Inside the panel the chat fills it under the title bar, fully opaque (the
- * main site fades an idle chat; on a third-party page it must stay readable).
+ * Codex's locatable controls: DebugChat's own grip (tap: minimize / restore,
+ * drag: move anywhere on the screen) and its menu's Minimize carry
+ * `data-lk-portable-toggle`, with a label when they have none.
  */
-const PORTABLE_PANEL_CSS = `[data-lk-portable-panel] [data-debug-chat]{left:8px!important;right:8px!important;width:auto!important;bottom:8px!important;opacity:1!important;max-height:calc(100% - 52px)!important}`;
-
-/**
- * The solid window around DebugChat on someone else's page: opaque (theme
- * tokens, light and dark), bordered, shadowed, anchored bottom-right at a
- * fixed size. Its transform makes it the containing block of DebugChat's own
- * fixed-position parts, so the chat lays out inside it as on a small screen,
- * never floating over the page. Minimize leaves a Li button; both carry
- * `data-lk-portable-toggle`.
- */
-function PortablePanel({ client, o }: { client: PortableClient; o: PortableMountOptions }) {
-  const [open, setOpen] = useState(true);
-  const [panel, setPanel] = useState<HTMLDivElement | null>(null);
-  const collapse = o.strings.collapse ?? "Minimize";
-  const expand = o.strings.expand ?? o.strings.name;
-  if (!open)
-    return (
-      <button
-        type="button"
-        data-lk-portable-toggle="open"
-        aria-label={expand}
-        title={expand}
-        onClick={() => setOpen(true)}
-        style={{
-          position: "fixed",
-          right: "16px",
-          bottom: "16px",
-          width: "48px",
-          height: "48px",
-          borderRadius: "999px",
-          background: SEAL,
-          color: "oklch(0.99 0 0)",
-          font: "600 16px/48px system-ui, sans-serif",
-          textAlign: "center",
-          boxShadow: "0 6px 20px oklch(0 0 0 / 0.3)",
-          pointerEvents: "auto",
-          cursor: "pointer",
-        }}
-      >
-        Li
-      </button>
-    );
-  return (
-    <div
-      ref={setPanel}
-      data-lk-portable-panel=""
-      role="dialog"
-      aria-label={o.strings.name}
-      style={{
-        position: "fixed",
-        right: "16px",
-        bottom: "16px",
-        width: PORTABLE_PANEL_SIZE.w,
-        height: PORTABLE_PANEL_SIZE.h,
-        // Opaque, from the app's own tokens (globals.css, light and dark).
-        background: "var(--background, oklch(0.99 0.005 82))",
-        color: "var(--foreground, oklch(0.25 0.02 65))",
-        border: "1px solid color-mix(in oklch, var(--foreground, oklch(0.25 0.02 65)) 18%, transparent)",
-        borderRadius: "16px",
-        boxShadow: "0 12px 40px oklch(0 0 0 / 0.3)",
-        overflow: "hidden",
-        // The containing block for DebugChat's fixed parts.
-        transform: "translateZ(0)",
-        pointerEvents: "auto",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          height: "44px",
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          padding: "0 8px 0 14px",
-          borderBottom: "1px solid color-mix(in oklch, var(--foreground, oklch(0.25 0.02 65)) 12%, transparent)",
-          font: "600 14px/1 system-ui, sans-serif",
-          zIndex: 1,
-        }}
-      >
-        <span style={{ flex: "1 1 auto", minWidth: 0 }}>{o.strings.name}</span>
-        <button
-          type="button"
-          data-lk-portable-toggle="close"
-          aria-label={collapse}
-          title={collapse}
-          onClick={() => setOpen(false)}
-          style={{
-            width: "40px",
-            height: "40px",
-            borderRadius: "999px",
-            font: "400 20px/40px system-ui, sans-serif",
-            textAlign: "center",
-            cursor: "pointer",
-            color: "inherit",
-          }}
-        >
-          –
-        </button>
-      </div>
-      {panel && <Portable client={client} o={o} portal={panel} />}
-    </div>
-  );
+function tagToggles(root: ShadowRoot, label: string) {
+  const tag = () => {
+    for (const el of root.querySelectorAll<HTMLElement>(
+      '[data-testid="debug-chat-grip"], [data-testid="debug-menu-minimize"]',
+    )) {
+      if (!el.hasAttribute("data-lk-portable-toggle"))
+        el.setAttribute("data-lk-portable-toggle", el.dataset.testid === "debug-chat-grip" ? "grip" : "minimize");
+      if (!el.getAttribute("aria-label")) el.setAttribute("aria-label", label);
+    }
+  };
+  const mo = new MutationObserver(tag);
+  mo.observe(root, { childList: true, subtree: true });
+  tag();
+  return () => mo.disconnect();
 }
 
 function Portable({ client, o, portal }: { client: PortableClient; o: PortableMountOptions; portal: Element }) {
@@ -349,7 +252,8 @@ export function mountPortable(o: PortableMountOptions): {
   // No scope = the shared, unscoped draft store: another account or site would see it.
   if (typeof o.draftScope !== "string" || !o.draftScope.startsWith("portable~"))
     throw new Error("portable chat needs an account and site draft scope");
-  const shadow = createShadowHost(o.doc, [...o.css, PORTABLE_PANEL_CSS]);
+  // The same look as lianki.com (and as 2.24.55): no portable-only styles.
+  const shadow = createShadowHost(o.doc, o.css);
   if (shadow.styles === "blocked") {
     shadow.destroy();
     throw new Error("styles blocked");
@@ -365,11 +269,14 @@ export function mountPortable(o: PortableMountOptions): {
   const root = createRoot(shadow.container, {
     onUncaughtError: (err) => o.report?.("portable-render", String((err as Error)?.message ?? err)),
   });
-  root.render(<PortablePanel client={client} o={o} />);
+  // The main site's floating DebugChat itself: drag anywhere, bottom-right by default.
+  root.render(<Portable client={client} o={o} portal={shadow.container} />);
+  const untag = tagToggles(shadow.root, o.strings.collapse ?? o.strings.name);
   return {
     portable: client,
     root: shadow.root,
     destroy() {
+      untag();
       client.stop();
       root.unmount();
       shadow.destroy();

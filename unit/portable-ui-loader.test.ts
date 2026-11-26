@@ -17,6 +17,7 @@ const deps = (factory: PortableWindowFactory | null) => {
     d: {
       factory,
       chatStrings,
+      site: "https://x.test",
       getValue: (k: string, dflt?: unknown) => values.get(k) ?? dflt,
       setValue: (k: string, v: unknown) => void values.set(k, v),
       deleteValue: (k: string) => void values.delete(k),
@@ -61,6 +62,14 @@ test("the bundled window runs only when first needed, once, and mounts with its 
   expect(t.values.has(PORTABLE_STORE_PREFIX + "lk:pref:chat-fold")).toBe(false);
   expect(gm!.get("lk:pref:chat-fold")).toBe('{"tucked":true}');
   expect(gm!.keys()).toEqual(["lk:pref:chat-fold"]);
+  // A position he dragged it to is kept, for this site only.
+  gm!.set("lk:debug-chat-pos", '{"x":-300,"y":-200}');
+  expect(t.values.get(PORTABLE_STORE_PREFIX + "https://x.test:lk:debug-chat-pos")).toBe(
+    '{"x":-300,"y":-200}',
+  );
+  expect(gm!.get("lk:debug-chat-pos")).toBe('{"x":-300,"y":-200}');
+  gm!.del("lk:debug-chat-pos");
+  expect(gm!.get("lk:debug-chat-pos")).toBeNull();
   gm!.del("lk:pref:chat-fold");
   expect(gm!.get("lk:pref:chat-fold")).toBeNull();
 });
