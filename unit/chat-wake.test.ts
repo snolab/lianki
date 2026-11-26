@@ -729,4 +729,23 @@ describe("review fix: retention holds while mcp.events is off", () => {
     await mentionEvents(deps(), put("a line", "n1"));
     expect(rows().map((m) => m.line_id)).toEqual(["b0"]);
   });
+
+  test("flag on: an @ naming no token records nothing and still purges expired rows", async () => {
+    for (let i = 0; i < 2; i++) await mentionEvents(deps(), put("@Bo", `b${i}`));
+    now += limits.retentionMs + 1;
+    const r = await mentionEvents(deps(), put("@Nobody are you there?", "n1"));
+    expect(r.recorded).toBe(0);
+    expect(rows()).toEqual([]);
+  });
+
+  test("flag on: a repeated mention (recorded nothing) also sweeps", async () => {
+    await mentionEvents(deps(), put("@Bo", "b0"));
+    await mentionEvents(deps(), put("@Arden", "a1"));
+    now += limits.retentionMs - 1000;
+    await mentionEvents(deps(), put("@Arden again", "a2"));
+    now += 2000; // b0 and a1 now expired, a2 not
+    const r = await mentionEvents(deps(), put("@Arden again", "a2"));
+    expect(r.recorded).toBe(0);
+    expect(rows().map((m) => m.line_id)).toEqual(["a2"]);
+  });
 });

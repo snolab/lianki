@@ -324,6 +324,9 @@ export async function wakeOnPut<D extends WakeDeps>(
       await prune(d.db, p.tokenHash, now, l);
       await wake(d, target, events, live, report);
     }
+    // The mention path recorded nothing (an @ naming no token, a repeat, the
+    // rate cap): no write ran the purge, so this put sweeps like any other.
+    if (!report.recorded) await sweep(d);
   } catch (e) {
     console.error("[chat-wake] put:", String(e).slice(0, 200));
   }
