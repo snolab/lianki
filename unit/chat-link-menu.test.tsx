@@ -70,7 +70,7 @@ afterEach(async () => {
 });
 
 describe("chat link menu", () => {
-  it("a tap opens it; open uses a new-tab anchor through the host guard; close refocuses the link", async () => {
+  it("a tap opens it; open routes a same-site link in this tab; close refocuses the link", async () => {
     setup("https://lianki.com/en");
     const opened: string[] = [];
     const navigations: { href: string; target: string; rel: string }[] = [];
@@ -94,10 +94,8 @@ describe("chat link menu", () => {
     expect(q('[data-testid="chat-link-menu"]')).not.toBeNull();
     expect(q('[data-testid="chat-link-prod"]')).toBeNull();
     await click(q('[data-testid="chat-link-open"]'));
-    expect(opened).toEqual([]);
-    expect(navigations).toEqual([
-      { href: "https://lianki.com/dev/flags#a", target: "_blank", rel: "noopener noreferrer" },
-    ]);
+    expect(opened).toEqual(["/dev/flags#a"]);
+    expect(navigations).toEqual([]);
     expect(q('[data-testid="chat-link-menu"]')).toBeNull();
 
     // Right-click opens it too; the close button shuts it.
@@ -225,20 +223,27 @@ describe("chat link menu", () => {
         menu.dispatchEvent(new win.MouseEvent(t, { bubbles: true, cancelable: true }) as never);
     });
 
-    // No navigator.share here: the system item is a plain link that opens elsewhere.
+    // No navigator.share here: the system item is a plain link; this same
+    // origin opens in this tab, not through a new-tab anchor.
     const native = q('[data-testid="chat-link-system-native"]')!;
     let anchors = 0;
+    const assigned: string[] = [];
     const orig = win.HTMLAnchorElement.prototype.click;
     win.HTMLAnchorElement.prototype.click = function () {
       anchors++;
     };
+    const unstub = stubGlobals({
+      location: { href: win.location.href, assign: (u: string) => assigned.push(u) },
+    });
     await act(async () => {
       native.dispatchEvent(
         new win.MouseEvent("click", { bubbles: true, cancelable: true }) as never,
       );
     });
+    unstub();
     win.HTMLAnchorElement.prototype.click = orig;
-    expect(anchors).toBe(1);
+    expect(anchors).toBe(0);
+    expect(assigned).toEqual(["https://preview.lianki.com/my"]);
     expect(closed).toBe(1);
 
     await act(async () => {

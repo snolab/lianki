@@ -3791,7 +3791,7 @@ export function DebugChat({
     return {
       text: raw ? (
         <span data-testid="debug-chat-raw" className="text-gray-500">
-          <RichBody rich={richOf(m.raw, "markdown")} onOpenPage={onOpenPage} />
+          <RichBody rich={richOf(m.raw, "markdown")} onOpenPage={onOpenPage} embedded={embedded} />
         </span>
       ) : (
         m.text
@@ -5100,11 +5100,14 @@ export function DebugChat({
     const rich = richOf(text, lineTier(m, { embedded }), widgetLine(m, { embedded }));
     // An agent line, or his own read back in his cloned voice: in its sentences.
     if (!showsReading(m, readbackOf))
-      return <RichBody rich={rich} onOpenPage={onOpenPage} widgets={widgetHost} lineId={m.id} />;
+      return (
+        <RichBody rich={rich} onOpenPage={onOpenPage} embedded={embedded} widgets={widgetHost} lineId={m.id} />
+      );
     return (
       <RichBody
         rich={rich}
         onOpenPage={onOpenPage}
+        embedded={embedded}
         widgets={widgetHost}
         lineId={m.id}
         read={{
@@ -5156,7 +5159,7 @@ export function DebugChat({
   }
   function lineText(m: ChatMessage, text: ReactNode) {
     return typeof text === "string" ? (
-      <RichLine rich={richOf(text, lineTier(m, { embedded }))} onOpenPage={onOpenPage} />
+      <RichLine rich={richOf(text, lineTier(m, { embedded }))} onOpenPage={onOpenPage} embedded={embedded} />
     ) : (
       text
     );

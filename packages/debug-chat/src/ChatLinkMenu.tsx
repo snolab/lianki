@@ -1,15 +1,37 @@
 /** The chat's link actions. Native popover stays in the widget's style root. */
 import { useEffect, useRef, useState } from "react";
+import { linkOpen } from "./chat-links";
 import { chatExtra } from "./chat-ui-locales";
 
+/** Framed (the partner frame on another site): never navigate this frame in place. */
+function inFrame(): boolean {
+  try {
+    return typeof window !== "undefined" && window.top !== window.self;
+  } catch {
+    return true;
+  }
+}
+
 /**
- * Use an ordinary anchor outside the message tree: the host's existing
+ * A same-site link stays in this tab (the host's router when it has one,
+ * chat-links.ts `linkOpen`). Anything else, and every link in an embed, is an
+ * ordinary new-tab anchor outside the message tree: the host's existing
  * ExternalLinkGuard sees this click and keeps all account bypass rules.
  * No app imports or new permission path in the standalone chat package.
  */
-export function openChatLink(href: string, _onOpenPage?: (path: string) => void) {
+export function openChatLink(
+  href: string,
+  onOpenPage?: (path: string) => void,
+  o: { embedded?: boolean } = {},
+) {
   const url = new URL(href, location.href);
   if (!/^https?:$/.test(url.protocol)) return;
+  const to = linkOpen(url.href, location.href, {
+    embedded: o.embedded || inFrame(),
+    hasRouter: !!onOpenPage,
+  });
+  if (to.to === "app") return onOpenPage!(to.path);
+  if (to.to === "here") return location.assign(to.href);
   const link = document.createElement("a");
   link.href = url.href;
   link.target = "_blank";
@@ -24,12 +46,15 @@ export function ChatLinkMenu({
   prod,
   forceProd,
   onOpenPage,
+  embedded,
   onClose,
 }: {
   href: string;
   prod: string | null;
   forceProd: boolean;
   onOpenPage?: (path: string) => void;
+  /** 随身Li / the partner frame: every link opens a new tab. */
+  embedded?: boolean;
   onClose: () => void;
 }) {
   const t = chatExtra();
@@ -46,7 +71,7 @@ export function ChatLinkMenu({
   }, []);
   const go = (url: string) => {
     onClose();
-    openChatLink(url, onOpenPage);
+    openChatLink(url, onOpenPage, { embedded });
   };
   const row =
     "min-h-11 w-full rounded-xl px-3 py-2 text-start fs-14 hover:bg-[oklch(0.5_0.02_250/0.1)] focus-visible:outline-2 focus-visible:outline-offset-[-2px]";
