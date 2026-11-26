@@ -158,6 +158,25 @@ export const CONFIG = {
     audience: "server",
     description: "每个账号每分钟最多检查多少张下一页预览；超出后照常复习，只显示标题链接。",
   }),
+  "review.titleFitChars": int({
+    default: 40,
+    min: 10,
+    max: 400,
+    unit: "chars",
+    group: "review",
+    audience: "public",
+    description:
+      "/review 当前卡片标题超过多少宽度（英文字母算 1，中日韩字算 2）开始缩小字号；标题越长字越小，始终完整显示。",
+  }),
+  "review.titleMinScalePct": int({
+    default: 75,
+    min: 40,
+    max: 100,
+    unit: "%",
+    group: "review",
+    audience: "public",
+    description: "/review 当前卡片长标题最多缩到原字号的百分之几；再长就换行显示，不省略、不截断。",
+  }),
   "words.speak.skipForeignParens": {
     default: true as boolean,
     schema: z.boolean(),

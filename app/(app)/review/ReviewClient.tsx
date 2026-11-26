@@ -41,6 +41,7 @@ import { openExternal } from "@/lib/external-link";
 import { ReviewOpenHint } from "./ReviewOpenHint";
 import { ReviewPagePreviews } from "./ReviewPagePreviews";
 import { publicCfg } from "@/lib/config-client";
+import { CardTitle } from "./ReviewCardTitle";
 
 /**
  * /review: one due page card at a time, graded inside the site.
@@ -387,9 +388,7 @@ export default function ReviewClient({
               </p>
             )}
             <p className="text-xs font-semibold uppercase tracking-wide opacity-60">{t.upNext}</p>
-            <h2 className="text-2xl sm:text-3xl font-semibold leading-snug break-words">
-              {reviewTitle(card.title, card.url) ?? card.url}
-            </h2>
+            <CardTitle text={reviewTitle(card.title, card.url) ?? card.url} />
             <p className="text-sm opacity-60 break-all">{card.url}</p>
           </div>
         </div>
