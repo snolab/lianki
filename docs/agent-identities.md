@@ -20,9 +20,10 @@ Design plan for turning API tokens into user-understandable **Agent Identities**
 
 ### 2. Name-Before-Use Gate
 
-- Until the identity has a non-empty name, **every other API/MCP call is refused** (including permission requests).
+- Until the identity has a non-empty name, **every other API/MCP call is refused** (including permission requests), **explicitly exempting**:
+  - the authenticated name-only bootstrap call for that token (`identity:self`), and
+  - a rename performed by the signed-in user from Settings (which does not require `identity:self`).
 - Requiring the name first guarantees that when the agent later requests permissions, the Li Chat approval prompt always shows the agent's real name rather than `"untitled"`.
-- An agent holding the `identity:self` scope names itself on first connect before using any other capability.
 
 ### 3. Self-Profile (`identity:self`)
 
@@ -46,5 +47,5 @@ With `identity:self`, an agent can update its own:
 
 ### 5. Continuity with Existing Token Security
 
-- Secrets are still shown once at creation (or in the one-time setup message) and never stored in plain guide pointers.
+- The one-time secret setup message is shown **only in private Settings** at creation time—**never in chat, cards, or the agent guide**.
 - Every identity remains revocable at any time from Settings.
