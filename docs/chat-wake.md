@@ -86,7 +86,11 @@ When the hub puts new lines of a thread (`DebugSessions.chatLog`, below):
    `chat.wakeMaxPerToken` (oldest first), are deleted at the same time. Every
    new row also deletes at most `chat.wakePurgeBatch` expired rows of **any**
    token, oldest first. So a token that is never polled or named again still
-   loses its old rows, with no cron.
+   loses its old rows, with no cron. When a put records nothing (`mcp.events`
+   is off, or no person's line holds an `@`), retention still holds: `sweep`
+   runs the same bounded purge on that put. It runs at most once a minute per
+   isolate (`SWEEP_EVERY_MS`) and does one one-row read first; the delete runs
+   only when the table has rows.
 6. **`wake(target, events)`**: the events, deduped on their id, go to every
    enabled adapter. If one adapter throws, the others still run.
 

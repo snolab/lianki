@@ -162,6 +162,33 @@ export async function purgeExpired(db: D1Like, now: number, l: WakeLimits) {
     .run();
 }
 
+/** How often a put that writes no mention runs the bounded purge, per isolate. */
+export const SWEEP_EVERY_MS = 60_000;
+const lastSweep = new WeakMap<object, number>();
+
+/**
+ * Retention while nothing is recorded (mcp.events off, or lines without an
+ * @): the hub's put is the event, so no cron. At most once per
+ * SWEEP_EVERY_MS per isolate and database; a one-row read, then the bounded
+ * purge (chat.wakePurgeBatch, oldest expired first, any token) only when the
+ * table has rows. Never throws.
+ */
+export async function sweep(d: WakeDeps): Promise<void> {
+  try {
+    const now = d.now();
+    const last = lastSweep.get(d.db);
+    if (last !== undefined && now - last < SWEEP_EVERY_MS) return;
+    lastSweep.set(d.db, now);
+    const any = await d.db
+      .prepare("SELECT 1 AS ok FROM chat_mention LIMIT 1")
+      .first<{ ok: number }>();
+    if (!any) return;
+    await purgeExpired(d.db, now, await limitsOf(d));
+  } catch (e) {
+    console.error("[chat-wake] sweep:", String(e).slice(0, 200));
+  }
+}
+
 /**
  * One token: its rows past retention, and past the cap
  * (`chat.wakeMaxPerToken`), oldest first. A cursor that pointed at a deleted
@@ -256,9 +283,13 @@ export async function wakeOnPut<D extends WakeDeps>(
     if (req.op !== "put" || typeof req.thread !== "string") return report;
     const thread = req.thread;
     const lines = linesOf(req);
-    // No person's line holds an @: nothing read from D1 at all.
-    if (!anyCandidate(lines)) return report;
-    if (!(await d.flagOn())) return report;
+    // No person's line holds an @, or the core is off: no mention is read or
+    // written, but retention still holds (sweep: at most once a minute per
+    // isolate, one tiny read, a bounded delete only when rows exist).
+    if (!anyCandidate(lines) || !(await d.flagOn())) {
+      await sweep(d);
+      return report;
+    }
     const live = await enabledOf(d, adapters);
     const now = d.now();
     const people = lines.filter(mayTrigger);

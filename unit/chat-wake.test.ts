@@ -703,3 +703,30 @@ describe("review fixes: a stable cursor across expiry, retention for idle tokens
     expect(bo1.truncated).toBe(false);
   });
 });
+
+describe("review fix: retention holds while mcp.events is off", () => {
+  test("flag off: a new chat line purges expired rows (bounded, oldest first)", async () => {
+    for (let i = 0; i < 3; i++) await mentionEvents(deps(), put("@Bo", `b${i}`));
+    now += limits.retentionMs + 1;
+    eventsOn = false;
+    limits = { ...limits, purgeBatch: 2 };
+    // A plain line (no @) and a mention both count; neither records anything.
+    const r = await mentionEvents(deps(), put("just a note", "n1"));
+    expect(r.recorded).toBe(0);
+    expect(rows().map((m) => m.line_id)).toEqual(["b2"]);
+    // At most once a minute per isolate: the next line within it does nothing.
+    await mentionEvents(deps(), put("@Arden hi", "n2"));
+    expect(rows().map((m) => m.line_id)).toEqual(["b2"]);
+    now += 61_000;
+    await mentionEvents(deps(), put("@Arden hi", "n3"));
+    expect(rows()).toEqual([]);
+  });
+
+  test("flag off: rows still inside retention are kept", async () => {
+    await mentionEvents(deps(), put("@Bo", "b0"));
+    now += limits.retentionMs - 60_000;
+    eventsOn = false;
+    await mentionEvents(deps(), put("a line", "n1"));
+    expect(rows().map((m) => m.line_id)).toEqual(["b0"]);
+  });
+});
