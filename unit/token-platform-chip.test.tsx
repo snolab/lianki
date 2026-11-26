@@ -29,12 +29,11 @@ test("platform quick-pick sets only the token name and aria-pressed without POST
     await act(async () => {
       root.render(<TokenManager />);
     });
-    const checkedBefore = [
-      ...host.querySelectorAll<HTMLInputElement>('[data-token-picker="permissions"] input'),
-    ]
+    const checkedBefore = [...host.querySelectorAll('[data-token-picker="permissions"] input')]
+      .map((el) => el as unknown as HTMLInputElement)
       .filter((el) => el.checked)
       .map((el) => el.dataset.scope);
-    const chip = host.querySelector<HTMLButtonElement>('[data-testid="token-platform-claude"]')!;
+    const chip = host.querySelector('[data-testid="token-platform-claude"]')!;
     expect(chip.getAttribute("aria-pressed")).toBe("false");
 
     await act(async () => {
@@ -43,18 +42,17 @@ test("platform quick-pick sets only the token name and aria-pressed without POST
 
     expect(requests.some((r) => r.method === "POST")).toBe(false);
     expect(chip.getAttribute("aria-pressed")).toBe("true");
-    expect(host.querySelector<HTMLInputElement>('[data-testid="token-name"]')!.value).toBe(
-      "Claude",
-    );
-    const checkedAfter = [
-      ...host.querySelectorAll<HTMLInputElement>('[data-token-picker="permissions"] input'),
-    ]
+    expect(
+      (host.querySelector('[data-testid="token-name"]') as unknown as HTMLInputElement).value,
+    ).toBe("Claude");
+    const checkedAfter = [...host.querySelectorAll('[data-token-picker="permissions"] input')]
+      .map((el) => el as unknown as HTMLInputElement)
       .filter((el) => el.checked)
       .map((el) => el.dataset.scope);
     expect(checkedAfter).toEqual(checkedBefore);
-    const pressedExpiry = [
-      ...host.querySelectorAll<HTMLButtonElement>('[data-token-picker="expiry"] button'),
-    ].filter((b) => b.getAttribute("aria-pressed") === "true");
+    const pressedExpiry = [...host.querySelectorAll('[data-token-picker="expiry"] button')].filter(
+      (b) => b.getAttribute("aria-pressed") === "true",
+    );
     expect(pressedExpiry).toHaveLength(0);
   } finally {
     await act(async () => {
