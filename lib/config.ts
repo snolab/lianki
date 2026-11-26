@@ -500,7 +500,7 @@ export const CONFIG = {
     group: "chat",
     audience: "server",
     description:
-      "被 @ 的记录（chat_mention，唤醒代理用）保留几天；过期的在下次写入或读取时删除。只存那一行的文字，不存历史。",
+      "被 @ 的记录（chat_mention，唤醒代理用）超过几天后可以删除。不是定时删：只在有动静时顺带分批删（有人在聊天里写话、代理来查「谁 @ 了我」时），平时通常在下一次动静后几分钟内删掉；整个网站都没人用时不会删，所以没有保证的删除时间。撤销令牌时它的记录立即删除。只存那一行的文字，不存历史。",
   }),
   "chat.wakeMaxPerToken": int({
     default: 500,

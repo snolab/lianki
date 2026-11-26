@@ -87,10 +87,21 @@ When the hub puts new lines of a thread (`DebugSessions.chatLog`, below):
    new row also deletes at most `chat.wakePurgeBatch` expired rows of **any**
    token, oldest first. So a token that is never polled or named again still
    loses its old rows, with no cron. When a put records nothing (`mcp.events`
-   is off, or no person's line holds an `@`), retention still holds: `sweep`
-   runs the same bounded purge on that put. It runs at most once a minute per
-   isolate (`SWEEP_EVERY_MS`) and does one one-row read first; the delete runs
-   only when the table has rows.
+   is off, or no person's line holds an `@`), `sweep` runs the same bounded
+   purge on that put. It runs at most once a minute per isolate
+   (`SWEEP_EVERY_MS`) and does one one-row read first; the delete runs only
+   when the table has rows.
+
+**Retention is enforced opportunistically, not on a clock.**
+`chat.wakeRetentionDays` is the age after which a row *may* be deleted. It is
+not a promise that the row is gone by then. The bounded purge runs only when
+there is activity: chat writes (any put to any thread) and polls (the tool and
+`events/poll`). On a site with ordinary traffic, an expired row is usually
+removed within minutes of the next activity. While the whole site is idle (no
+chat line and no poll anywhere), nothing runs, so there is no bound on when an
+expired row is deleted. A large backlog drains `chat.wakePurgeBatch` rows per
+write (sweeps at most once a minute per isolate). Revocation is different: a
+revoked token's rows go at once, through the D1 trigger.
 6. **`wake(target, events)`**: the events, deduped on their id, go to every
    enabled adapter. If one adapter throws, the others still run.
 
@@ -171,10 +182,10 @@ used either. We keep the codes the webhook already answers (-32602, -32005,
 
 | key                      | default | meaning                                                  |
 | ------------------------ | ------- | -------------------------------------------------------- |
-| `chat.wakeRetentionDays` | 7       | how long a `chat_mention` row is kept                    |
+| `chat.wakeRetentionDays` | 7       | age after which a row may be purged (on activity; no bound while idle) |
 | `chat.wakePerMinute`     | 10      | new rows per token per minute                            |
 | `chat.wakeMaxPerToken`   | 500     | rows kept per token at most (oldest dropped)             |
-| `chat.wakePurgeBatch`    | 100     | expired rows of any token deleted per new row            |
+| `chat.wakePurgeBatch`    | 100     | expired rows of any token deleted per new row or sweep   |
 | `chat.wakeMaxTokens`     | 50      | the thread's own tokens compared per line                |
 | `chat.wakePullTtlMin`    | 1440    | the tool's window without a cursor; `maxAgeMs` cap       |
 | `chat.wakePullLimit`     | 20      | rows per pull by default (at most 100)                   |

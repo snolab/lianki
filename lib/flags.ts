@@ -414,7 +414,7 @@ export const FLAGS = {
   },
   "chat.wake.pull": {
     description:
-      "拉取式唤醒（docs/chat-wake.md）：任何代理（Gemini 定时任务、本机 Claude Code / Codex、以后的客户端）用自己的令牌查「谁 @ 了我」——MCP 工具 lianki_chat_mentions_since 和 events/poll，只返回这个令牌自己线程里 @ 它名字的那几行（id、文字、作者），不带历史，需要 chat:read。要先打开 mcp.events（被 @ 的记录由它记下）。只对有 dev 权限的账号开放。关闭 = 工具和 events/poll 都答「未开启」，events/list 不再列出 poll；记录照记，过期自动删。",
+      "拉取式唤醒（docs/chat-wake.md）：任何代理（Gemini 定时任务、本机 Claude Code / Codex、以后的客户端）用自己的令牌查「谁 @ 了我」——MCP 工具 lianki_chat_mentions_since 和 events/poll，只返回这个令牌自己线程里 @ 它名字的那几行（id、文字、作者），不带历史，需要 chat:read。要先打开 mcp.events（被 @ 的记录由它记下）。只对有 dev 权限的账号开放。关闭 = 工具和 events/poll 都答「未开启」，events/list 不再列出 poll；记录照记，过期后在有人写聊天或代理来查时顺带分批删（网站完全没人用时不删）。",
     default: true,
     group: "mcp",
     audience: "owner",

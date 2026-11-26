@@ -284,7 +284,7 @@ export async function wakeOnPut<D extends WakeDeps>(
     const thread = req.thread;
     const lines = linesOf(req);
     // No person's line holds an @, or the core is off: no mention is read or
-    // written, but retention still holds (sweep: at most once a minute per
+    // written, but this put still drives retention (sweep: at most once a minute per
     // isolate, one tiny read, a bounded delete only when rows exist).
     if (!anyCandidate(lines) || !(await d.flagOn())) {
       await sweep(d);
