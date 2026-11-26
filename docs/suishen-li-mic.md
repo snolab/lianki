@@ -1,6 +1,6 @@
 # 随身Li mic: dictate from the lianki.com tab into the page you are on (spec, for review)
 
-Status: **draft for review** (front end: agy lane; broker and hub: codex lane).
+Status: **draft for review**. UI and this contract: agy lane; broker, hub and bridge: coco lane (branch `feat/portable-shared-mic`); review: codex lane.
 Nothing is built. Flag **`portable.mic-route`**, default **off**, audience
 **owner** (lib/flags.ts), switched on for the owner when it ships.
 
@@ -29,7 +29,7 @@ lianki.com tab (DebugChat + mic)        hub (DebugHub DO)            site tab (�
                     (who listens now)      the 随身Li page)            set / beat / clear
 ```
 
-### 1. Broker op (page broker, `POST /api/chat/page-broker`; codex)
+### 1. Broker op (page broker, `POST /api/chat/page-broker`; coco)
 
 New op in `lib/page-chat-http-wire.ts`, same rules as `read`/`send`: the
 userscript header, the login cookie, no Authorization, the expected principal
@@ -58,7 +58,7 @@ last read), copied by `publicPageChatResult` with the same bounds as messages
 (text ≤ 4000 chars, ≤ 50 per read). Not chat history: never stored as a
 thread line, dropped once read or after 60 s.
 
-### 2. Hub messages (DebugHub; codex)
+### 2. Hub messages (DebugHub; coco)
 
 - To lianki.com tabs of the account, on every target change:
   `{ type: "dictation-target", target: { origin, id } | null }`.
