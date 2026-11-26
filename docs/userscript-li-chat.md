@@ -465,7 +465,7 @@ so revoking permission or excluding a site cannot leave a second chat window.
   User cancellation aborts the request; a message already accepted durably
   is not unsent. No microphone, playback or device access is part of this UI.
 
-### The chat window is the main site's DebugChat (2.24.60)
+### The chat window is the main site's DebugChat (2.24.61)
 
 Owner, 2026-11-26: 随身Li reuses the Li chat component, no second wheel, and
 looks exactly like the chat window on lianki.com, everywhere (his sites
@@ -526,6 +526,12 @@ zhihu.com and github.com refuse frames). So there is one chat UI,
   `html[data-embed]`), matching the iframe; the dark tokens still apply, so
   the chat keeps the 2.24.55 glass. Takes effect when the app deploys.
   `scripts/qa/probe-frame-glass.ts --embed-normal` shows it on the live embed.
+- **The bundled window comes first** (2.24.61, owner 2026-11-27: he wants
+  the 2.24.55 glass and free drag everywhere, and the frame is a fixed box).
+  The bundled DebugChat draws on every site; the lianki.com frame is only its
+  fallback, when the bundled window cannot draw (`data-lk-portable` then reads
+  `frame bundle:…`). GM key `lianki_portable_prefer_frame` = true flips the
+  order back (`PORTABLE_PREFER_FRAME_KEY`); the frame code is unchanged.
 - **No other chat UI.** The hand-built plain panel is gone; `portable-li-panel.ts`
   keeps only the consent prompt's styles.
 - **Drafts per account and site.** `draftScope` =

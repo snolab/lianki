@@ -14,7 +14,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.60
+// @version     2.24.61
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -4148,6 +4148,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
     "https://www.lianki.com",
     "https://preview.lianki.com",
   ]);
+  var PORTABLE_PREFER_FRAME_KEY = "lianki_portable_prefer_frame";
   function portableWhy(e) {
     const err = e;
     const raw = `${typeof err?.name === "string" ? err.name : "Error"}: ${typeof err?.message === "string" ? err.message : String(e)}`;
@@ -4227,39 +4228,41 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
       panel = slot;
       const live = () => !gone && !destroyed && generation === gen && panel === slot;
       const t = strings();
-      (async () => {
-        let frameWas = d.frame ? "" : "frame:none";
-        if (d.frame) {
-          try {
-            const f = d.frame({
-              principal,
-              onAccountMismatch: () => {
-                if (!live()) return;
-                mark("none frame:account-mismatch");
-                onInvalidAccount();
-              },
-            });
-            current = f;
-            const how = await f.result;
-            if (!live()) return f.destroy();
-            if (how === "ready") return mark("frame");
-            frameWas = `frame:${how}`;
+      const tryFrame = async () => {
+        if (!d.frame) return "frame:none";
+        try {
+          const f = d.frame({
+            principal,
+            onAccountMismatch: () => {
+              if (!live()) return;
+              mark("none frame:account-mismatch");
+              onInvalidAccount();
+            },
+          });
+          current = f;
+          const how = await f.result;
+          if (!live()) {
             f.destroy();
-            current = undefined;
-          } catch (e) {
-            frameWas = `frame:error ${portableWhy(e)}`;
-            current = undefined;
+            return "gone";
           }
+          if (how === "ready") return "frame";
+          f.destroy();
+          current = undefined;
+          return `frame:${how}`;
+        } catch (e) {
+          current = undefined;
+          return `frame:error ${portableWhy(e)}`;
         }
+      };
+      const tryBundled = async () => {
         let ui = null;
         try {
           ui = d.ui ? await d.ui() : null;
         } catch (e) {
-          if (live()) mark(`none ${frameWas} bundle:error ${portableWhy(e)}`);
-          return;
+          return `bundle:error ${portableWhy(e)}`;
         }
-        if (!live()) return;
-        if (!ui) return mark(`none ${frameWas} bundle:absent`);
+        if (!live()) return "gone";
+        if (!ui) return "bundle:absent";
         try {
           current = ui.mount({
             doc: d.doc,
@@ -4281,10 +4284,20 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
             onExclude,
             onInvalidAccount,
           });
-          mark(`bundled ${frameWas}`);
+          return "bundled";
         } catch (e) {
-          mark(`none ${frameWas} mount:error ${portableWhy(e)}`);
+          return `mount:error ${portableWhy(e)}`;
         }
+      };
+      const preferFrame = d.gm.getValue(PORTABLE_PREFER_FRAME_KEY, false) === true;
+      (async () => {
+        const first = preferFrame ? await tryFrame() : await tryBundled();
+        if (first === "gone" || !live()) return;
+        if (first === "frame" || first === "bundled") return mark(first);
+        const second = preferFrame ? await tryBundled() : await tryFrame();
+        if (second === "gone" || !live()) return;
+        if (second === "frame" || second === "bundled") return mark(`${second} ${first}`);
+        mark(`none ${first} ${second}`);
       })();
     };
     const mark = (state) => {
