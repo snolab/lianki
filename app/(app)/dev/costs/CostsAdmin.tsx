@@ -10,6 +10,7 @@ import { useDeviceZone } from "@/app/components/useDeviceZone";
 import { localDay, zoneLabel, zoneOffsetMin } from "@/lib/time-zone";
 import { CostMatrix, HEAT_CSS, HeatLegend, type Matrix } from "./CostMatrix";
 import { freePaidSeries, featureSeries, StackedBars, TopAccounts } from "./CostCharts";
+import { PartnerTokens, type TokensData } from "./PartnerTokens";
 
 /**
  * /dev/costs: the cost ledger (docs/payments.md, "Cost ledger") through
@@ -112,6 +113,31 @@ export default function CostsAdmin() {
       live = false;
     };
   }, [range, hours]);
+  const [tokens, setTokens] = useState<TokensData | null>(null);
+  useEffect(() => {
+    if (!range) return;
+    let live = true;
+    fetch(`/api/dev/costs?${range}&view=tokens`, { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<TokensData>) : Promise.reject(r.status)))
+      .then((d) => live && setTokens(d))
+      .catch(() => live && setFailed(true));
+    return () => {
+      live = false;
+    };
+  }, [range]);
+  const tokenFmt = useMemo(() => {
+    const exact = new Intl.NumberFormat(locale);
+    const short = new Intl.NumberFormat(locale, {
+      notation: "compact",
+      maximumSignificantDigits: 3,
+    });
+    const pct = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 });
+    return {
+      num: (n: number) => exact.format(n),
+      short: (n: number) => short.format(n),
+      pct: (r: number | null) => (r === null ? "—" : pct.format(r)),
+    };
+  }, [locale]);
   const usdShort = useMemo(() => {
     const f = new Intl.NumberFormat(locale, {
       style: "currency",
@@ -330,6 +356,31 @@ export default function CostsAdmin() {
             paid={c.paidCost.value}
           />
         </section>
+      ) : null}
+
+      {tokens ? (
+        <PartnerTokens
+          data={tokens}
+          w={{
+            tokens: c.tokens.value,
+            tokensNote: c.tokensNote.value,
+            tokensIn: c.tokensIn.value,
+            tokensCached: c.tokensCached.value,
+            tokensUncached: c.tokensUncached.value,
+            tokensOut: c.tokensOut.value,
+            tokensTotal: c.tokensTotal.value,
+            hitRate: c.hitRate.value,
+            replies: c.replies.value,
+            chartTokens: c.chartTokens.value,
+            chartHitRate: c.chartHitRate.value,
+            tokensByUser: c.tokensByUser.value,
+            tokensEmpty: c.tokensEmpty.value,
+            chartHint: c.chartHint.value,
+            guest: c.guest.value,
+            noName: c.noName.value,
+          }}
+          {...tokenFmt}
+        />
       ) : null}
 
       {days && days.rows.length > 0 ? (

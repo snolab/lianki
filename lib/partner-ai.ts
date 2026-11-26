@@ -485,6 +485,8 @@ export async function partnerReply(
         new Date(now()),
         // Called over RPC: no OpenNext context, so the hub is passed in.
         { push: env.PUSH ?? null },
+        // Counts for /dev/costs' token chart and cache hit rate (no text).
+        { tokensIn, cachedIn: res.ok ? (res.cachedIn ?? 0) : 0, tokensOut },
       );
     } catch {}
     if (res.ok && settled) res = { ...res, charged: settled.charged };

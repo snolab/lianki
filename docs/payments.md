@@ -628,6 +628,22 @@ admin-only. Rules in `lib/payments/cost-ledger.ts`, the API in
   bars. Each red/gold series carries its own pattern and a legend label, so
   colour is never alone; hover, tap or ←/→ shows a bar's exact values; the
   chart points at its table with `aria-describedby`.
+- **Learning Partner tokens** (owner, 2026-11-27;
+  `lib/payments/cost-tokens.ts`). A reply's `settleAi` also writes its
+  `tokensIn` (prompt, cached included), `cachedIn`
+  (`prompt_tokens_details.cached_tokens`, never more than `tokensIn`) and
+  `tokensOut` onto its `credit_ai_charge` row (migration 0086; counts only).
+  Rows without them — settled before 0086, or another paid feature — are left
+  out, so the history starts with the deploy. `?view=tokens` sums them per day
+  of the range (`&by=hour&hours=N`: per hour of the hour window) in the `tz`
+  offset, labelled (`zone`: "UTC", "UTC+9"), with every bucket listed, and
+  per account (id and display name, the most tokens first, every account in
+  one answer). Cache hit rate = cached ÷ prompt tokens, weighted by tokens
+  (not a mean of daily rates); null, shown "—", when there was no prompt
+  token. The page's section (`PartnerTokens.tsx`): tiles (hit rate, input,
+  cached input, output), tokens per day stacked cached / uncached / output,
+  the hit rate per day as a line (broken on days without replies), and the
+  accounts as a VirtualList. Tests: `unit/cost-tokens.test.ts`.
 - Tests: `unit/cost-ledger.test.ts` (booking, failure, the speech-server
   route, aggregation, the API's 404); `unit/cost-buckets.test.ts` (hour
   and day edges at UTC and at an offset, a fixed offset, the hour window cap, the matrix sums, both views and

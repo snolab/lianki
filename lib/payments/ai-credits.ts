@@ -83,6 +83,11 @@ export async function reserveAi(
   return { status: "reserved", reserved: r.reserved, balance: await getBalance(d1, r.userId) };
 }
 
+/** A reply's token counts: prompt, the cached part of the prompt, completion. */
+export type AiTokens = { tokensIn: number; cachedIn?: number; tokensOut: number };
+const count = (n: number | undefined) =>
+  typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+
 export type SettleResult = { charged: number; refunded: number } | null;
 
 /**
@@ -90,7 +95,9 @@ export type SettleResult = { charged: number; refunded: number } | null;
  * nothing was billed). Once only: null when it was not pending (already
  * settled, or never reserved). A settled cost goes on to the spend alert's
  * counters (lib/payments/spend-alert.ts) at the provider's cost; `spend.push`
- * is the hub it posts to (default: the Worker's PUSH binding).
+ * is the hub it posts to (default: the Worker's PUSH binding). `tokens`, a
+ * Learning Partner reply's counts, are kept on the row for /dev/costs
+ * (lib/payments/cost-tokens.ts); other charges leave them NULL.
  */
 export async function settleAi(
   d1: D1WithBatch,
@@ -98,6 +105,7 @@ export async function settleAi(
   costMicro: number,
   now = new Date(),
   spend: Omit<SpendDeps, "now"> = {},
+  tokens?: AiTokens,
 ): Promise<SettleResult> {
   const cost = Math.max(0, Math.ceil(costMicro));
   const row = await d1
@@ -117,6 +125,21 @@ export async function settleAi(
         "UPDATE credit_ai_charge SET status = 'settled', costMicro = ?, settleId = ?, settledAt = ? WHERE key = ? AND status = 'pending'",
       )
       .bind(cost, tok, at, key),
+    ...(tokens
+      ? [
+          d1
+            .prepare(
+              "UPDATE credit_ai_charge SET tokensIn = ?, cachedIn = ?, tokensOut = ? WHERE key = ? AND settleId = ?",
+            )
+            .bind(
+              count(tokens.tokensIn),
+              Math.min(count(tokens.tokensIn), count(tokens.cachedIn)),
+              count(tokens.tokensOut),
+              key,
+              tok,
+            ),
+        ]
+      : []),
     d1
       .prepare(
         "INSERT INTO credit_ai_carry (userId, micro) VALUES (?, 0) ON CONFLICT(userId) DO NOTHING",

@@ -11,11 +11,15 @@
  *   only — never an email;
  * - `&view=days` → day × feature (every day of the range);
  * - `&view=hours&hours=N` → hour × feature: the last N hours of the range
- *   (default `COSTS_DEFAULT_HOURS`, at most `COSTS_MAX_HOURS`), not after now.
+ *   (default `COSTS_DEFAULT_HOURS`, at most `COSTS_MAX_HOURS`), not after now;
+ * - `&view=tokens` → Learning Partner tokens (prompt, cached prompt,
+ *   completion) and the cache hit rate per day (`&by=hour&hours=N`: per hour)
+ *   and per account, every account at once (lib/payments/cost-tokens.ts).
  */
 import type { D1Like } from "@/lib/d1/types";
 import { costDayMatrix, costHourMatrix, COSTS_DEFAULT_HOURS, hourWindow } from "./cost-buckets";
 import { costSummary, costUsers, defaultRange, isDay, type CostRange } from "./cost-ledger";
+import { partnerTokens } from "./cost-tokens";
 import { parseOffsetMin } from "@/lib/time-zone";
 
 /** The widest range one request may ask for. */
@@ -61,6 +65,19 @@ export async function costsGet(
     return Response.json(await costHourMatrix(db, hourWindow(hours, range, now, off)), {
       headers: NO_STORE,
     });
+  }
+  if (view === "tokens") {
+    // Learning Partner tokens and cache hit rate: by day, or `&by=hour&hours=N`.
+    const w =
+      q.get("by") === "hour"
+        ? hourWindow(
+            Math.max(1, int(q.get("hours"), COSTS_DEFAULT_HOURS, Number.MAX_SAFE_INTEGER)),
+            range,
+            now,
+            off,
+          )
+        : undefined;
+    return Response.json(await partnerTokens(db, range, off, w), { headers: NO_STORE });
   }
   if (view === "users") {
     const offset = int(q.get("offset"), 0, Number.MAX_SAFE_INTEGER);

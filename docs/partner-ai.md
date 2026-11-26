@@ -188,7 +188,10 @@ repeat. It reads the earlier lines as read-only context
 (docs/dev-debug-widget.md, "Automatic polish"). `usage` `tokensIn` /
 `cachedIn` (`prompt_tokens_details.cached_tokens`) go into the hub's
 `debug.auto-polish` log, so the hit rate shows in `wrangler tail lianki-push`.
-Billing stays at the list input price for now.
+Billing stays at the list input price for now. Li's own replies keep their
+`tokensIn` / `cachedIn` / `tokensOut` on the settled `credit_ai_charge` row,
+so /dev/costs charts tokens per day and the cache hit rate per day and per
+account (docs/payments.md, "Cost ledger", "Learning Partner tokens").
 
 **Li's prompt in cache order (flag `partner.stable-prompt`, default on, for
 everyone; off = the old order, exactly as before).** Until 2026-11-25
