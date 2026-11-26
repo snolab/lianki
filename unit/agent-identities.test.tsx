@@ -188,9 +188,12 @@ describe("TokenManager Add My Agent UI", () => {
       expect(host.querySelector('[data-testid="agent-setup-url"]')?.textContent).toContain(
         "token=lk_",
       );
-      expect(host.querySelector('[data-testid="agent-setup-prompt"]')?.textContent).toContain(
-        "/api/my/identity",
-      );
+      const promptText =
+        host.querySelector('[data-testid="agent-setup-prompt"]')?.textContent ?? "";
+      expect(promptText).toContain("/api/my/identity");
+      expect(promptText).not.toContain("lk_");
+      expect(host.querySelector('[data-testid="token-share-copy"]')).toBeNull();
+      expect(host.querySelector('[data-testid="agent-prompt-copy"]')).not.toBeNull();
 
       // Inline rename from Settings row.
       const renameBtn = host.querySelector('[data-testid="token-rename"]')!;

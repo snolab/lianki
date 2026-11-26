@@ -282,12 +282,7 @@ export default function TokenManager({
 
   const setupPrompt =
     secret && agentIdentities && secret.untitled
-      ? agentGuideWithToken({
-          scopes: secret.scopes,
-          lang: String(locale),
-          token: secret.token,
-          template: s("agentPromptTemplate"),
-        })
+      ? s("agentPromptTemplate").replaceAll("{url}", agentGuideUrl(secret.scopes, String(locale)))
       : null;
 
   const manualForm = (
@@ -436,15 +431,28 @@ export default function TokenManager({
             </div>
           )}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <button
-              type="button"
-              ref={shareButton}
-              data-testid="token-share-copy"
-              onClick={copyWithGuide}
-              className="text-sm font-medium bg-primary text-on-primary rounded px-3 py-1.5 hover:opacity-90"
-            >
-              {shared ? s("copied") : s("shareCopy")}
-            </button>
+            {setupPrompt ? (
+              <button
+                type="button"
+                data-testid="agent-prompt-copy"
+                onClick={() => {
+                  navigator.clipboard.writeText(setupPrompt).then(() => setShared(true));
+                }}
+                className="text-sm font-medium bg-primary text-on-primary rounded px-3 py-1.5 hover:opacity-90"
+              >
+                {shared ? s("copied") : s("copy")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                ref={shareButton}
+                data-testid="token-share-copy"
+                onClick={copyWithGuide}
+                className="text-sm font-medium bg-primary text-on-primary rounded px-3 py-1.5 hover:opacity-90"
+              >
+                {shared ? s("copied") : s("shareCopy")}
+              </button>
+            )}
             <button
               type="button"
               onClick={copy}
