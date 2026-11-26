@@ -1,5 +1,7 @@
 # Agent channel protocol (design)
 
+Tree: /chat/agent-channel
+
 Status: **design, nothing built.** Owner request, 2026-11-27: a user runs their
 own agent under `ay` (agent-yes: the open-source runner that drives Claude
 Code, Codex, Gemini CLI, opencode and others); Lianki posts the user's chat
@@ -180,7 +182,7 @@ Each row says who sends it, its payload and the ACP or A2A shape it reuses.
 
 | type                  | sender → receiver | payload                                                                                                                         | reuses                                                                 |
 | --------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `hello`               | both              | endpoint, versions, capabilities (§4)                                                                                           | ACP `initialize`                                                       |
+| `hello`               | both              | endpoint, versions, capabilities (§4); Lianki's also opaque `account`, `thread` hashes (§12.1)                                                                                           | ACP `initialize`                                                       |
 | `message`             | both              | `{ content: ContentBlock[], final?: true, quiet?: true }`. From the chat: a user line. From the agent: a whole reply, or the final form of a streamed one (`re` = the first delta's id is not required; `turn` ties it) | ACP `ContentBlock`; A2A `Message.parts`                                |
 | `delta`               | agent → chat      | `{ update: SessionUpdate }`, one of `agent_message_chunk`, `agent_thought_chunk`, `tool_call`, `tool_call_update`, `plan`        | ACP `session/update` verbatim                                          |
 | `ack`                 | receiver → sender | `{ status: "received" \| "delivered" \| "queued" \| "read" \| "rejected", reason? }`, `re` = the acked event                      | chat receipts; ay send's exit codes (§9)                                |
@@ -385,9 +387,11 @@ exit codes.
 For Codex and Gemini the same table applies once ay's stream mode covers them:
 Codex `exec --json` has no token deltas (`item.updated` is a snapshot, so ay
 emits the new suffix as `agent_message_chunk`, or prefers `codex app-server`'s
-`item/agentMessage/delta` and its `requestApproval` requests, which map to
-`permission.request` with `accept`/`acceptForSession`/`decline` →
-`allow_once`/`allow_always`/`reject_once`),
+`item/agentMessage/delta` and its `requestApproval` requests. Those map to
+`permission.request` with `accept` → `allow_once` and `decline` →
+`reject_once`. Codex's `acceptForSession` is **omitted**: never offered,
+never sent. A chat "for this session" approval is held by ay and answered
+`accept` call by call (§12.2), so its lifetime is never widened),
 `item.started`/`item.completed` (`command_execution`, `file_change`) →
 `tool_call`/`tool_call_update`, `turn.completed`/`turn.failed` → `turn.end`;
 Gemini `message` `delta` → `agent_message_chunk`, `tool_use`/`tool_result` →
@@ -404,9 +408,12 @@ natively needs no table: ay wraps its `session/update` as `delta` as is.
   and the user answers at the terminal.
 - Lianki shows it as an `ask` card on the token's thread: the tool's title,
   the command or path (secrets redacted with the same `redact()` the stall
-  watcher uses), and one button per ACP option. `allow_always` is shown only
-  when the user turned it on for that agent (config
-  `chat.channel.allowAlways`, default off).
+  watcher uses), and one button per offered option. The card never shows an
+  "always" button. ACP's `allow_always` appears only as "for this session",
+  with session-only semantics enforced by ay (§12.2). That button is shown
+  only when the user turned session approvals on for that agent (config
+  `chat.channel.sessionApprovals`, default off). Otherwise the option is
+  omitted.
 - Only a tap answers it (cards are pages-only today; a token or a voice line
   never does). Expired (`expiresAt`, default 10 minutes) or dismissed →
   `reject_once`.
@@ -424,6 +431,9 @@ A `permission.request` carries a binding that ay's endpoint mints and keeps:
     "session": "ay-sess-7f3c…",
     "turn": "turn-12",
     "agent": "agent:repo-main",
+    "account": "acct-h:3f9a…",
+    "thread": "thr-h:c21e…",
+    "optionIds": ["allow_once", "reject_once"],
     "nonce": "b64url, 128 bits"
   },
   "toolCall": { "...": "ACP ToolCallUpdate" },
@@ -436,15 +446,36 @@ A `permission.request` carries a binding that ay's endpoint mints and keeps:
   (the agent's pid + start time, or the stream/ACP session id), `turn` the
   turn the prompt came from, `agent` the agent address ay launched (§13.1),
   `nonce` a random value never shown in the chat UI.
+- `account` and `thread` are opaque ids: hashes, never an email or a raw id.
+  Lianki's endpoint states them in its `hello`, from the verified token
+  (§13.1); ay copies them into every binding of that channel session.
+  `optionIds` lists the options offered.
 - A `permission.response` must echo the whole binding (`re` = the request's
-  `id`, `payload.binding` byte-for-byte). ay's endpoint acts on it only when
-  every field matches a request it has **open** in this channel session:
-  same request, same session, same turn, same agent, same nonce.
+  `id`, `payload.binding` byte-for-byte) and add the chosen `optionId` to
+  it. ay's endpoint acts on it only when all of these hold:
+  - every field matches a request it has **open** in this channel session:
+    same request, session, turn, agent, account, thread and nonce;
+  - the chosen `optionId` is one of `optionIds`;
+  - it equals the ACP `outcome.optionId`.
+
+  Lianki's endpoint makes the same account and thread check on the tap: an
+  `answered` event from another account or thread is never turned into a
+  response.
 - Anything else is rejected with `error` `binding-mismatch` and never reaches
-  the agent: a response from another session (ay restarted, or another
-  bridge), for another turn, for another agent, or for a request that the
-  agent has already moved past (the prompt left its screen, the turn ended or
-  was cancelled).
+  the agent:
+  - a response from another session (ay restarted, or another bridge);
+  - one for another turn, agent, account or thread;
+  - one with an option that was not offered;
+  - one for a request the agent has already moved past (the prompt left its
+    screen).
+- **Invalidation.** A binding dies, at once and for good, when its request is
+  cancelled (by the agent, by `turn.cancel`, by expiry or by the card being
+  dismissed), when its turn ends (`turn.end`, any stop reason), or when its
+  session ends (the agent exits or restarts, the channel closes, `bye`). ay
+  drops it from its open set and remembers only its `requestId` as closed. A
+  response arriving after that gets `binding-mismatch` (or
+  `already-answered`) and is never acted on. Lianki's endpoint closes the
+  matching card ("no longer needed").
 - **Answered once.** The first matching response closes the request; ay
   records the `requestId` as answered for the life of the session. A replay
   (the same event id, or a new event with the same binding) is ignored with
@@ -481,19 +512,21 @@ A `permission.request` carries a binding that ay's endpoint mints and keeps:
   | option (ACP kind)            | scope                 | lasts                                                                  |
   | ---------------------------- | --------------------- | ---------------------------------------------------------------------- |
   | `allow_once`                 | this one tool call    | until used, or the request's `expiresAt`                               |
-  | `allow_always` (shown as "for this session") | this agent session, this tool kind (and command prefix or path when the agent gives one) | `chat.channel.sessionApprovalTtlMin` (default 60 min), and never past the session's end |
+  | ACP `allow_always`, offered only as "for this session" (held by ay; the agent's own "always" is never sent) | this agent session, this tool kind (and command prefix or path when the agent gives one) | `chat.channel.sessionApprovalTtlMin` (default 60 min), and never past the session's end |
   | `reject_once` / `reject_always` | same scopes         | same TTLs                                                              |
 
 - An unanswered request expires at `expiresAt` = `ts` +
   `chat.channel.permissionTtlSec` (default 600 s) and is answered
   `reject_once` (fail closed).
 - The defaults are config keys (`chat.channel.permissionTtlSec`,
-  `chat.channel.sessionApprovalTtlMin`, `chat.channel.allowAlways`), defaults
+  `chat.channel.sessionApprovalTtlMin`, `chat.channel.sessionApprovals`), defaults
   in code and live values in the config store (docs/config-store.md); ay has
   the same keys as flags/env on its side, and the shorter of the two wins.
 - **No "forever".** The profile has no approval that outlives an agent
-  session. ACP's `allow_always` is mapped to "for this session" and labelled so
-  on the card. A standing rule beyond a session (for example "always allow
+  session. ACP's `allow_always` is either kept to session-only semantics, as
+  "for this session" held and enforced by ay, or omitted. It is never
+  passed to an agent in a way that could make it last longer (see the table
+  below). A standing rule beyond a session (for example "always allow
   `bun test` in this repo") exists only if the user sets it explicitly in
   ay's own config at the terminal or in a Lianki settings page; it is never
   created by tapping a card, and both endpoints show it in their lists so the
