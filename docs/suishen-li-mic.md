@@ -5,10 +5,11 @@ Nothing is built. Flag **`portable.mic-route`**, default **off**, audience
 **owner** (lib/flags.ts), switched on for the owner when it ships.
 
 **Scope.** **v1:** dictated text is routed into the active page's 随身Li draft
-only, with **no selection chip** (#1125's page.read is not deployed yet). It
-needs the same per-site consent as 随身Li chat, the owner-only flag, no raw
-audio and no host-page mic. **v2**, after #1125 deploys: the page's selection
-is attached as below ("Selection").
+only, with **no selection chip**. It needs the same per-site consent as
+随身Li chat, the owner-only flag, no raw audio and no host-page mic. **v2**,
+after #1125 deploys: the page's selection is attached as below
+("Selection"); page.read is its own grant, asked separately, never implied
+by the mic or the chat consent.
 
 The owner, 2026-11-27 04:06 JST: 随身Li shows a mic button on every site. It
 does not open a mic on that site: it borrows the mic of the lianki.com tab next
@@ -35,43 +36,68 @@ lianki.com tab (DebugChat + mic)        hub (DebugHub DO)            site tab (�
                     (who listens now)      the 随身Li page)            set / beat / clear
 ```
 
-### 1. Broker op (page broker, `POST /api/chat/page-broker`; coco)
+### 0. Keys: account + browser
 
-New op in `lib/page-chat-http-wire.ts`, same rules as `read`/`send`: the
-userscript header, the login cookie, no Authorization, the expected principal
-header compared on every call, `x-lianki-host-origin` = this page's origin.
+Routing is **per browser**, never account-wide: a mic on one device never
+types into a page on another. Both ends carry a **browser id** (`bid`): a
+random id the userscript keeps in its GM storage (`lianki_browser_id`,
+`[A-Za-z0-9_-]{16,64}`) and hands to the lianki.com tabs of the same browser
+(the userscript runs there too, mirroring it into the page the way it already
+mirrors the UI language). The hub keys every target and every source by
+**account + bid**.
+
+### 1. Broker ops (page broker, `POST /api/chat/page-broker`; coco)
+
+Same rules as `read`/`send`: the userscript header, the login cookie, no
+Authorization, the expected principal header compared on every call,
+`x-lianki-host-origin` = this page's origin.
 
 ```ts
-| { op: "route"; state: "on" | "beat" | "off"; id: string }
+| { op: "route"; state: "on" | "beat" | "off"; bid: string; routeId: string; gen?: number }
+| { op: "read"; afterSeq?: number; wait: boolean;
+    dictation?: { routeId: string; gen: number; afterSeq?: number } }   // selector + receipt cursor
 ```
 
-- `id`: this page's route id (random per page load, `[A-Za-z0-9_-]{8,64}`).
-- `on`: "send this account's dictation to me". The hub records
-  `{account, id, origin, at}` as **the** target (one per account; a newer `on`
-  replaces an older one: the tab he used last wins).
-- `beat`: keeps it (every 20 s while the page is visible and the button is
-  on); no beat for 60 s = the target lapses.
-- `off`: clears it if it is still this `id`.
-- Answer: `{ ok: true, kind: "route", state: "listening" | "no-source" }`:
-  `listening` when at least one lianki.com tab of the same account has its
-  chat mic on; `no-source` otherwise (the button offers "open lianki.com").
+- `routeId`: this 随身Li window (random per window, `[A-Za-z0-9_-]{8,64}`);
+  two windows on the same site have different ids.
+- `on`: "this window takes this browser's dictation". The hub records
+  `{account, bid, routeId, origin, gen}` as **the** target for that account +
+  bid and answers a new generation `gen` (increasing). A newer `on` from any
+  other window replaces it.
+- `beat` (with `gen`): keeps it while the page is visible and the button on.
+- `off` (with `gen`): clears it if it is still this `routeId` + `gen`.
+- **Answer to every `route`:**
+  `{ ok: true, kind: "route", state: "listening" | "no-source" | "off", gen }`.
+  `off` = this window is not (or no longer) the target: a newer `on` took it,
+  or it lapsed. The window shows **off** at once and stops beating.
+  `listening` / `no-source` come from the source's own report (below).
+- **Delivery with a receipt:** `read` carries the selector
+  `{routeId, gen, afterSeq}`; the answer's range gets
+  `dictation: { routeId, gen, items: { seq, text, at }[], throughSeq }`, only
+  for that exact routeId + gen. Items stay queued until a later `read` names
+  `afterSeq ≥ seq` (the ACK). Never dropped on read: a lost response re-sends
+  them. Bounded: text ≤ 4000 chars, ≤ 50 queued per target, dropped only when
+  the target ends (generation change) or after 10 minutes unacked. Not chat
+  history: never a thread line.
 - Refused like the other ops (`account-changed`, `signed-out`, `off` when the
-  flag is off for this account).
-
-Delivery to the page: the existing long-poll `read` gets a new range field,
-`dictation: { id, text, at, seq }[]` (finals for this route id since the
-last read), copied by `publicPageChatResult` with the same bounds as messages
-(text ≤ 4000 chars, ≤ 50 per read). Not chat history: never stored as a
-thread line, dropped once read or after 60 s.
+  flag is off for this account, or no 随身Li consent for this site).
 
 ### 2. Hub messages (DebugHub; coco)
 
-- To lianki.com tabs of the account, on every target change:
-  `{ type: "dictation-target", target: { origin, id } | null }`.
-- From a lianki.com tab, a final while a target is set:
-  `{ type: "chat-dictation", id, text, at }`. The hub checks the target is
-  still `id` and the same account, then queues it for that page's `read`.
-  A stale `id` → ignored, and the tab is told `dictation-target: null`.
+- **Source presence (explicit):** a lianki.com tab reports its mic with
+  `{ type: "dictation-source", bid, state: "on" | "off" }` when its chat mic
+  turns on or off, and `off` when it closes or hides its socket. `listening`
+  in the `route` answer is derived only from these reports (any tab of the
+  same account + bid with `on`), never inferred.
+- **Target fan-out:** to the lianki.com tabs of the same account + bid, on
+  every change: `{ type: "dictation-target", target: { origin, routeId, gen } | null }`.
+- **A final:** `{ type: "chat-dictation", routeId, gen, text, at }` from a
+  lianki.com tab. The hub checks it is still the target's routeId + gen and
+  the same account + bid, then queues it for that target. Otherwise it is
+  ignored and the tab gets `dictation-target: null` (its own composer again).
+- **Stop:** `{ type: "dictation-stop", bid }` from a lianki.com tab (its "→
+  site" label) clears the target for that bid; the window's next `route`
+  answer is `off`.
 
 ### 3. The lianki.com tab (DebugChat mic path; agy)
 
@@ -93,8 +119,11 @@ thread line, dropped once read or after 60 s.
     turns the mic on); the button stays armed and turns listening when a tab
     with a live mic appears (the next `route beat` answer);
   - **off**.
-- Tap: `route on` (and `beat` while visible). Tap again, Escape, closing the
-  window, `pagehide`: `route off`.
+- Tap: `route on` (and `beat` every 20 s while visible). Tap again, Escape,
+  closing the window, hidden, `pagehide`: `route off` at once. A `route`
+  answer of `off` turns the button off.
+- `read` carries the dictation selector `{routeId, gen, afterSeq}`; each
+  delivered item is appended once (by `seq`) and ACKed by the next `read`.
 - Each routed final is appended to the composer draft (a space between), never
   sent by itself. The draft scope stays `portable~<account>~<origin>`.
 - **Selection (v2, after #1125 deploys; not in v1)**: when a final arrives and this page has a selection, it is
@@ -105,28 +134,31 @@ thread line, dropped once read or after 60 s.
 
 ## The active tab rule
 
-- **Who is the target:** the 随身Li page whose mic button was turned on last
-  (`route on`), per account. Turning it on in another site's tab moves the
-  target there; the previous page sees `state` change on its next beat and
-  shows **off**.
-- **Visibility:** a hidden page stops beating; after 60 s it lapses. A page
-  that becomes visible again with the button on sends `route on` again (it
-  takes the target back: he is working there).
-- **Focus:** not used to move the target by itself (a click into another
-  window must not steal dictation); only the button and visibility do.
+- **Who is the target:** in this browser, the 随身Li window whose mic button
+  was turned on last (`route on`). Turning it on in another window or tab
+  moves the target there; the old one learns it on its next `route` answer
+  (`off`) and shows **off**.
+- **Hidden = off at once:** on `visibilitychange` to hidden (or `pagehide`)
+  the window sends `route off` immediately and the hub bumps the generation,
+  so no late text lands on a page he has left. Coming back does not take the
+  target back by itself: he taps the button again (a new `on`, a new `gen`).
+- **Focus:** never moves the target by itself.
 - **Explicit revoke:** the button, Escape in the window, closing it, the
-  lianki.com tab's "stop" label, consent withdrawn, site excluded.
-- **Disconnect / timeout:** no beat for 60 s, the broker refusing
-  (account-changed, signed-out, flag off), or the 随身Li page gone → the hub
-  clears the target and tells the lianki.com tabs `target: null`: their
-  finals go back to their own composer.
+  lianki.com tab's "→ site" label (`dictation-stop`), consent withdrawn, site
+  excluded, the flag off.
+- **Lapse (fallback only):** a dropped connection with no `off` (crash,
+  network) — no beat for 60 s → the hub clears the target and bumps `gen`.
+- Whenever the target ends, the lianki.com tabs get `dictation-target: null`
+  and their finals go back to their own composer.
 
 ## Account binding
 
-- Both ends are the same account: the broker checks the expected principal on
-  every `route` and `read` (as for the frame ticket, the session-verified
-  principal); the hub keys targets by account and only lianki.com sockets of
-  that account receive `dictation-target` or may send `chat-dictation`.
+- Both ends are the same account **and the same browser**: the broker checks
+  the expected principal on every `route` and `read` (as for the frame
+  ticket, the session-verified principal), and the hub keys targets and
+  sources by account + bid; only lianki.com sockets of that account and bid
+  receive `dictation-target` or may send `dictation-source`,
+  `chat-dictation` or `dictation-stop`.
 - If the lianki.com cookie switches account, the 随身Li window closes and asks
   for consent again (the existing `account-changed` path); the old target
   lapses.
@@ -142,9 +174,14 @@ thread line, dropped once read or after 60 s.
 
 ## Tests (planned)
 
-- Broker: `route` parse/refuse, principal mismatch, one target per account,
-  newest wins, 60 s lapse, `dictation` bounds in `publicPageChatResult`.
-- Hub: target change fan-out, stale id ignored, other account refused.
+- Broker: `route` parse/refuse, principal mismatch, one target per account +
+  bid, newest wins and the old window gets `off`, hidden → off and gen bump,
+  60 s lapse fallback, `dictation` selector by routeId + gen, receipt cursor
+  (an unacked item is re-sent after a lost response), bounds in
+  `publicPageChatResult`.
+- Hub: explicit `dictation-source` presence, target fan-out per account + bid,
+  stale routeId/gen ignored, other account or other bid refused,
+  `dictation-stop`.
 - lianki.com tab: final → `chat-dictation` only while a target is set; partials
   stay local; stop label clears.
 - 随身Li: button states, append without sending, `route off` on close /
