@@ -20,14 +20,15 @@ function page() {
   const win = new Window({ url: "https://news.example/a", width: 1024, height: 768 });
   open.push(win);
   // The shell's root is closed; open it here so the test can reach the grip.
-  const proto = (
-    win as unknown as {
-      HTMLElement: { prototype: { attachShadow: (o: ShadowRootInit) => ShadowRoot } };
-    }
-  ).HTMLElement.prototype;
-  const attach = proto.attachShadow;
-  proto.attachShadow = function (this: HTMLElement) {
-    return attach.call(this, { mode: "open" });
+  // Per element of this window's document only: never a shared prototype,
+  // which other suites (closed-root checks) would see.
+  const doc = win.document as unknown as { createElement: (t: string) => HTMLElement };
+  const create = doc.createElement.bind(doc);
+  doc.createElement = (t: string) => {
+    const el = create(t);
+    const attach = el.attachShadow.bind(el);
+    el.attachShadow = () => attach({ mode: "open" });
+    return el;
   };
   return win;
 }
