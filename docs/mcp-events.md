@@ -169,8 +169,10 @@ live rows) < cap … ON CONFLICT(id) DO UPDATE … RETURNING id`. No row
 **The control is an allowlist of callback hosts**: `mcp.eventsCallbackHosts`
 (lib/config.ts; /dev/config). Lianki only POSTs to a host on that list.
 `rules.ts hostAllowed` is checked at subscribe, before any lookup or request,
-and again right before each verification and each delivery attempt, so
-narrowing the list stops deliveries at once. An entry `host` matches that host
+and again right before each verification and each delivery attempt. The list
+is re-read from D1 for every delivery attempt (not a snapshot of the batch),
+so narrowing it stops a delivery already in flight at its next attempt; only a
+POST already being sent finishes. An entry `host` matches that host
 only; `.suffix` matches its subdomains but not the suffix itself. An empty list
 allows nothing. A refused host answers `-32015` with reason `host_not_allowed`.
 

@@ -852,6 +852,17 @@ describe("re-review fix 1: the callback host allowlist is the control", () => {
     expect(count()).toBe(0);
   });
 
+  test("delivery: the list narrowed during a retry's backoff stops the next attempt", async () => {
+    await subscribe();
+    sent = [];
+    respond = () => new Response("", { status: 503 });
+    onSleep = () => {
+      limits = { ...limits, callbackHosts: ["connectors.api.openai.com"] };
+    };
+    await mentionEvents(deps(), ownerLine("@Arden"));
+    expect(sent).toHaveLength(1);
+  });
+
   test("delivery: the list narrowed after subscribing means nothing is sent", async () => {
     await subscribe();
     sent = [];

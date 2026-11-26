@@ -600,7 +600,10 @@ async function deliver(
   for (let attempt = 0; attempt <= l.retries; attempt++) {
     if (attempt) await d.sleep(backoffMs(attempt - 1, l.retryBaseMs));
     // The allowlist and the callback's addresses, now, before every attempt.
-    const host = await checkHost(d, sub.url, l);
+    // The limits are re-read too, so narrowing mcp.eventsCallbackHosts stops a
+    // delivery already in flight at its next attempt.
+    const live = await d.limits();
+    const host = await checkHost(d, sub.url, live);
     if (host === "private_address" || host === "host_not_allowed") break;
     if (host !== "ok") continue;
     // Same eventId every attempt; a fresh timestamp and signature each time.
@@ -614,7 +617,7 @@ async function deliver(
     // Last thing before every POST, the first included and after every await
     // above (a wait, a DNS answer, the signing): is it all still allowed?
     if (!(await stillLive(d, sub))) return "stopped";
-    const { attempt: a } = await post(d, sub.url, headers, body, l.timeoutMs);
+    const { attempt: a } = await post(d, sub.url, headers, body, live.timeoutMs);
     const o = outcome(a);
     if (o === "ok") {
       await d.db
