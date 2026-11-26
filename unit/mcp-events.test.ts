@@ -36,7 +36,7 @@ import {
   type EventsDeps,
 } from "../lib/mcp-events/server";
 import { resolveDoh } from "../lib/mcp-events/deps";
-import { addressVerdict, dohAddresses, publicAddress } from "../lib/mcp-events/rules";
+import { addressVerdict, dohAddresses, hostAllowed, publicAddress } from "../lib/mcp-events/rules";
 import { handle, type Env } from "../workers/mcp/src/mcp";
 
 const SEAL = "s".repeat(40);
@@ -125,7 +125,8 @@ beforeEach(async () => {
   addrs = ["203.0.114.7", "2606:4700:10::6816:1"];
   resolved = [];
   respond = echo;
-  limits = { ...eventsLimits(defaultConfig()), timeoutMs: 200 };
+  // The synthetic receivers' hosts are allowed here; the shipped default is OpenAI's.
+  limits = { ...eventsLimits(defaultConfig()), timeoutMs: 200, callbackHosts: [".example.net"] };
   const t = await createToken(
     D(),
     { userId: "owner1", email: "owner@example.com" },
@@ -814,5 +815,173 @@ describe("review fix 5: the lifetime never exceeds the configured longest", () =
       expires_at_ms: number;
     };
     expect(row.expires_at_ms - now).toBe(3600_000);
+  });
+});
+
+describe("re-review fix 1: the callback host allowlist is the control", () => {
+  test("hostAllowed: exact hosts, .suffix for subdomains only, nothing for an empty list", () => {
+    const list = ["connectors.api.openai.com", ".hooks.example.net"];
+    expect(hostAllowed("https://connectors.api.openai.com/cb/1", list)).toBe(true);
+    expect(hostAllowed("https://CONNECTORS.api.openai.com./cb", list)).toBe(true);
+    expect(hostAllowed("https://a.hooks.example.net/x", list)).toBe(true);
+    for (const bad of [
+      "https://hooks.example.net/x",
+      "https://evilhooks.example.net/x",
+      "https://x.connectors.api.openai.com/cb",
+      "https://connectors.api.openai.com.evil.example.net/cb",
+      "https://api.openai.com/cb",
+      "not a url",
+    ])
+      expect([bad, hostAllowed(bad, list)]).toEqual([bad, false]);
+    expect(hostAllowed("https://connectors.api.openai.com/cb", [])).toBe(false);
+  });
+
+  test("the shipped default is OpenAI's callback host only, and a config key", () => {
+    expect(CONFIG["mcp.eventsCallbackHosts"].default).toEqual(["connectors.api.openai.com"]);
+    expect(eventsLimits(defaultConfig()).callbackHosts).toEqual(["connectors.api.openai.com"]);
+    expect(CONFIG["mcp.eventsCallbackHosts"].schema.safeParse(["http://x"]).success).toBe(false);
+  });
+
+  test("subscribe: a host outside the list is refused before any lookup or POST", async () => {
+    limits = { ...limits, callbackHosts: ["connectors.api.openai.com"] };
+    const out = (await subscribe()).body as { error: { code: number; data?: unknown } };
+    expect(out.error.code).toBe(-32015);
+    expect(out.error.data).toEqual({ reason: "host_not_allowed" });
+    expect(resolved).toEqual([]);
+    expect(sent).toEqual([]);
+    expect(count()).toBe(0);
+  });
+
+  test("delivery: the list narrowed after subscribing means nothing is sent", async () => {
+    await subscribe();
+    sent = [];
+    resolved = [];
+    limits = { ...limits, callbackHosts: ["connectors.api.openai.com"] };
+    const r = await mentionEvents(deps(), ownerLine("@Arden"));
+    expect(r.delivered).toBe(0);
+    expect(sent).toEqual([]);
+    expect(resolved).toEqual([]);
+  });
+});
+
+describe("re-review fix 2: a live re-check right before every POST", () => {
+  const twoLines = () => ({
+    op: "put",
+    thread: "owner",
+    lines: [
+      {
+        id: "b1",
+        from: "owner",
+        lane: null,
+        text: "@Arden one",
+        at: now,
+        ask: false,
+        answer: null,
+      },
+      {
+        id: "b2",
+        from: "owner",
+        lane: null,
+        text: "@Arden two",
+        at: now,
+        ask: false,
+        answer: null,
+      },
+    ],
+  });
+  async function afterFirstPost(change: () => void | Promise<void>) {
+    await subscribe();
+    sent = [];
+    let first = true;
+    respond = async () => {
+      if (first) {
+        first = false;
+        await change();
+      }
+      return new Response("");
+    };
+    await mentionEvents(deps(), twoLines());
+    return sent.map((s) => JSON.parse(s.body).data.id);
+  }
+  test("unsubscribed after the first line's POST: the second line is not sent", async () => {
+    const ids = await afterFirstPost(() => {
+      db.raw().exec(`DELETE FROM mcp_event_subscription`);
+    });
+    expect(ids).toEqual(["b1"]);
+  });
+  test("token revoked after the first POST: the second is not sent", async () => {
+    const ids = await afterFirstPost(() =>
+      revokeToken(D(), { userId: "owner1", email: "owner@example.com" }, ownerHash).then(() => {}),
+    );
+    expect(ids).toEqual(["b1"]);
+  });
+  test("flag off after the first POST: the second is not sent", async () => {
+    const ids = await afterFirstPost(() => {
+      flag = false;
+    });
+    expect(ids).toEqual(["b1"]);
+  });
+  test("nothing changed: both lines are sent", async () => {
+    expect(await afterFirstPost(() => {})).toEqual(["b1", "b2"]);
+  });
+  test("revoked while the DNS answer was pending: nothing is sent", async () => {
+    await subscribe();
+    sent = [];
+    const slow = deps({
+      resolve: async () => {
+        await revokeToken(D(), { userId: "owner1", email: "owner@example.com" }, ownerHash);
+        return addrs;
+      },
+    });
+    const r = await mentionEvents(slow, ownerLine("@Arden"));
+    expect(r.delivered).toBe(0);
+    expect(sent).toEqual([]);
+  });
+  test("flag off while the DNS answer was pending, first attempt: nothing is sent", async () => {
+    await subscribe();
+    sent = [];
+    const slow = deps({
+      resolve: async () => {
+        flag = false;
+        return addrs;
+      },
+    });
+    await mentionEvents(slow, ownerLine("@Arden"));
+    expect(sent).toEqual([]);
+  });
+});
+
+describe("re-review fix 3: a stream cancel that never settles holds nothing up", () => {
+  /** A body whose cancel() never resolves. */
+  function stuck(chunks: string[] | "endless", end = false) {
+    const enc = new TextEncoder();
+    let i = 0;
+    return new ReadableStream<Uint8Array>({
+      pull(c) {
+        if (chunks === "endless") c.enqueue(enc.encode("x".repeat(1024)));
+        else if (i < chunks.length) c.enqueue(enc.encode(chunks[i++]));
+        else if (end) c.close();
+        else return new Promise(() => {});
+      },
+      cancel: () => new Promise<void>(() => {}),
+    });
+  }
+  test("delivery: the unread body's cancel never resolves, the delivery still completes", async () => {
+    await subscribe();
+    sent = [];
+    respond = () => new Response(stuck(["ok"], false));
+    const r = await mentionEvents(deps(), ownerLine("@Arden"));
+    expect(r.delivered).toBe(1);
+  });
+  test("verification: too large with a stuck cancel still fails at once", async () => {
+    respond = () => new Response(stuck("endless"));
+    const out = (await subscribe()).body as { error: { data?: unknown } };
+    expect(out.error.data).toEqual({ reason: "challenge_failed" });
+  });
+  test("verification: a trickle past the deadline with a stuck cancel is a timeout", async () => {
+    limits = { ...limits, timeoutMs: 30 };
+    respond = () => new Response(stuck(['{"ch'], false));
+    const out = (await subscribe()).body as { error: { data?: unknown } };
+    expect(out.error.data).toEqual({ reason: "timeout" });
   });
 });

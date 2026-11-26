@@ -139,16 +139,16 @@ is turned on.
 6. Rate limit `mcp.eventsSubscribePerHour` per token. An early check refuses
    a token already at `mcp.eventsMaxPerToken` live subscriptions before any
    network call.
-7. **Verification**: first the host is resolved and checked (see "Callback
-   addresses"). Then a signed POST `{type:"verification", challenge}` (random,
+7. **Verification**: first the host must be on the allowlist, and it is
+   resolved and checked (see "Callback addresses"). Then a signed POST `{type:"verification", challenge}` (random,
    single use) with the same headers as an event. Success is only a 2xx whose
    JSON echoes `challenge`, compared in constant time. The answer is read as a
    stream, at most 4096 bytes (`MAX_ANSWER_BYTES`; past that the read is
    cancelled). One deadline, `mcp.eventsTimeoutMs`, covers the request, the
    status and the whole body read, so a body that trickles in is a timeout.
    Failure: JSON-RPC `-32015` (`CallbackEndpointError`) with `data.reason` set
-   to `challenge_failed`, `timeout`, `unreachable`, `unresolved` or
-   `private_address`, and nothing stored. Success is cached per token and URL
+   to `challenge_failed`, `timeout`, `unreachable`, `unresolved`,
+   `private_address` or `host_not_allowed`, and nothing stored. Success is cached per token and URL
    for `mcp.eventsVerifyCacheMin`, so a refresh with the same secret does not
    re-verify.
 8. Only after verification, one statement writes the row and enforces the cap:
@@ -166,11 +166,37 @@ live rows) < cap … ON CONFLICT(id) DO UPDATE … RETURNING id`. No row
 
 ## Callback addresses
 
-The spelling rule (`callbackUrl`) is only the first layer. Right before **each
-verification and each delivery attempt**, the host is resolved fresh through
+**The control is an allowlist of callback hosts**: `mcp.eventsCallbackHosts`
+(lib/config.ts; /dev/config). Lianki only POSTs to a host on that list.
+`rules.ts hostAllowed` is checked at subscribe, before any lookup or request,
+and again right before each verification and each delivery attempt, so
+narrowing the list stops deliveries at once. An entry `host` matches that host
+only; `.suffix` matches its subdomains but not the suffix itself. An empty list
+allows nothing. A refused host answers `-32015` with reason `host_not_allowed`.
+
+The default is `["connectors.api.openai.com"]`. OpenAI's MCP Events guide
+names no callback host: its example is `receiver.example.com`, and it says
+only to validate, verify and block non-public addresses. That host is the one
+ChatGPT is reported to use (community field reports and demos, 2026-11), so it
+is an observation, not a documented contract. If ChatGPT's subscribe is
+refused with `host_not_allowed`, the owner adds the exact host it used at
+/dev/config. Keep entries exact, or as narrow a `.suffix` as possible.
+
+**Why this answers rebinding.** Workers have no fetch pinned to an IP: `fetch`
+takes a URL and resolves the name itself, and `cf.resolveOverride` only
+re-points to hosts in our own zone. So a DNS check followed by a fetch that
+resolves again is not a guarantee on its own. With the allowlist, the only
+names ever fetched are OpenAI's own. A rebinding attack would need control of
+OpenAI's DNS, which is out of scope: we already trust that host with the
+events' content.
+
+**Second layer: public addresses.** Right before each verification and each
+delivery attempt, after the allowlist, the host is also resolved fresh through
 DNS over HTTPS (`https://cloudflare-dns.com/dns-query`, A and AAAA together,
 `deps.ts resolveDoh`). The attempt goes ahead only when there is at least one
-answer and **every** answer is public (`rules.ts publicAddress`). Refused:
+answer and **every** answer is public (`rules.ts publicAddress`). This catches
+a misconfigured allowlist entry or a trusted name pointing somewhere private.
+Refused:
 
 - IPv4 private (10/8, 172.16/12, 192.168/16), loopback (127/8), link-local
   (169.254/16, including the 169.254.169.254 cloud metadata address), CGNAT
@@ -186,19 +212,15 @@ A name with no A or AAAA answer, or a resolver failure, is `unresolved`. At
 verification that refuses the subscription. At delivery, a private answer ends
 the delivery and an unresolved one counts as a failed attempt, retried.
 
-**Second layer.** A Worker's outbound `fetch` leaves through Cloudflare's edge
-to the public internet. It cannot reach a private network (RFC 1918, loopback,
-link-local) of Cloudflare's or anyone's, unless a binding such as a Tunnel or
-VPC service is attached, and lianki's main Worker has none for this. So even a
-name that slips past the check cannot reach an internal service.
+**Third layer: Workers egress.** A Worker's outbound `fetch` leaves through
+Cloudflare's edge to the public internet. It cannot reach a private network
+(RFC 1918, loopback, link-local) of Cloudflare's or anyone's, unless a binding
+such as a Tunnel or VPC service is attached, and lianki's main Worker has none
+for this.
 
-**What remains: the rebinding window.** Workers have no fetch pinned to an IP:
-`fetch` takes a URL and resolves the name itself, and `cf.resolveOverride`
-only re-points to hosts in our own zone. Between our DoH answer and fetch's
-own lookup, a name with a short TTL can change. The window is one lookup,
-milliseconds long, and on the far side is only the public internet (the second
-layer). We accept it and say so. A pinned fetch, if Workers ever offer one, is
-the fix.
+**Streams.** A callback's answer body is cancelled without waiting
+(`cancelSoon`): a cancel that never settles cannot hold an attempt past its
+deadline.
 
 **Secret rotation**: a re-subscribe with a new secret keeps the old one for
 `mcp.eventsRotationOverlapMin`. During that time every delivery carries both
@@ -230,17 +252,21 @@ For a `put` of lines in thread T:
    Webhooks, key = the decoded `whsec_` bytes), and `X-MCP-Subscription-Id`.
    `eventId` = `evt_` + a hash of the subscription and line id, so a retry or a
    repeated `put` of the same line has the same id and the receiver dedupes it.
-7. **Before every attempt** the host is resolved and checked again ("Callback
-   addresses"). **Timeout** `mcp.eventsTimeoutMs` (default 6 s; the spec's
+7. **Before every attempt** the host must be on the allowlist, and it is
+   resolved and checked again ("Callback addresses"). Then, **immediately before
+   every POST**, the first attempt included and after every await (the backoff,
+   the DNS answer, the signing), everything is re-checked live: the flag, the
+   row (not unsubscribed, not expired), the token (known, unexpired,
+   `chat:read`, not revoked), the audience, and that its thread is still the
+   subscription's. If anything fails, it stops without sending, and the put's
+   other lines are not sent to that subscription either. So an unsubscribe,
+   revoke or flag-off after the first line of a batch stops the second.
+   **Timeout** `mcp.eventsTimeoutMs` (default 6 s; the spec's
    example is 10 s) covers the whole exchange; the answer's body is cancelled
    unread. `redirect: "manual"`, so a 3xx is a failure and is never followed.
 8. **Retries**: 408, 429, 5xx, a timeout or a network error retry up to
    `mcp.eventsRetries` times. The waits are `mcp.eventsRetryBaseMs` × 1, 2, 4.
-   After each wait and before the retry, everything is re-checked live: the
-   flag, the row (not unsubscribed, not expired), the token (known, unexpired,
-   `chat:read`, not revoked), the audience, and that its thread is still the
-   subscription's. If anything fails, it stops without sending, and the put's
-   other lines are not sent to that subscription either. Each retry has the same
+   Each retry goes through the same checks as step 7. Each retry has the same
    eventId, a fresh timestamp and a fresh signature. **410** deletes the
    subscription. **413** and other 4xx give up at once. The defaults (per
    attempt 2 s DNS + 6 s POST, × 3, plus 1 s + 2 s of backoff = 27 s) fit inside
@@ -282,24 +308,26 @@ live, so a rename takes effect at the next line.
 
 ## Config keys (lib/config.ts, group `mcp`, /dev/config)
 
-| key                            | default | meaning                                       |
-| ------------------------------ | ------- | --------------------------------------------- |
-| `mcp.eventsSubscribePerHour`   | 30      | subscribe / refresh calls per token per hour  |
-| `mcp.eventsMaxPerToken`        | 3       | live subscriptions per token                  |
-| `mcp.eventsPerMinute`          | 10      | deliveries per subscription per minute        |
-| `mcp.eventsTtlMin`             | 1440    | lifetime when ChatGPT asks none               |
-| `mcp.eventsMaxTtlMin`          | 10080   | the longest lifetime granted                  |
-| `mcp.eventsTimeoutMs`          | 6000    | per POST incl. the body read (verify, events) |
-| `mcp.eventsRetries`            | 2       | retries after a transient failure             |
-| `mcp.eventsRetryBaseMs`        | 1000    | first backoff, doubling                       |
-| `mcp.eventsVerifyCacheMin`     | 60      | re-use a verification for the same token+URL  |
-| `mcp.eventsRotationOverlapMin` | 60      | old secret keeps signing after a rotation     |
+| key                            | default                         | meaning                                          |
+| ------------------------------ | ------------------------------- | ------------------------------------------------ |
+| `mcp.eventsCallbackHosts`      | `["connectors.api.openai.com"]` | the only callback hosts (`.suffix` = subdomains) |
+| `mcp.eventsSubscribePerHour`   | 30                              | subscribe / refresh calls per token per hour     |
+| `mcp.eventsMaxPerToken`        | 3                               | live subscriptions per token                     |
+| `mcp.eventsPerMinute`          | 10                              | deliveries per subscription per minute           |
+| `mcp.eventsTtlMin`             | 1440                            | lifetime when ChatGPT asks none                  |
+| `mcp.eventsMaxTtlMin`          | 10080                           | the longest lifetime granted                     |
+| `mcp.eventsTimeoutMs`          | 6000                            | per POST incl. the body read (verify, events)    |
+| `mcp.eventsRetries`            | 2                               | retries after a transient failure                |
+| `mcp.eventsRetryBaseMs`        | 1000                            | first backoff, doubling                          |
+| `mcp.eventsVerifyCacheMin`     | 60                              | re-use a verification for the same token+URL     |
+| `mcp.eventsRotationOverlapMin` | 60                              | old secret keeps signing after a rotation        |
 
 ## Rollout
 
 1. Apply migration 0085 to D1 (owner step; not done).
 2. Deploy main and lianki-mcp.
-3. Turn `mcp.events` on at https://lianki.com/dev/flags#mcp.events.
+3. Turn `mcp.events` on at https://lianki.com/dev/flags#mcp.events. Check
+   `mcp.eventsCallbackHosts` at /dev/config.
 4. In a ChatGPT Work chat on the web, connect Lianki with a chat-only token
    named e.g. Arden, and ask it to subscribe to `chat.mention`.
 5. Write `@Arden …` in the Li chat and check the task run in that Work chat.
@@ -308,9 +336,11 @@ live, so a rename takes effect at the next line.
 
 - **Voice**: see "Voice (ChatGPT Live)". Events are documented for Work chats
   and dots only.
-- **DNS rebinding**: the host is resolved (DoH) and checked right before every
-  verification and attempt, but `fetch` resolves again and cannot be pinned.
-  The window is one lookup; see "Callback addresses".
+- **The callback host**: OpenAI documents none. The default
+  `connectors.api.openai.com` is observed, not contractual. If OpenAI moves it,
+  subscribes fail with `host_not_allowed` until the owner adds the new host at
+  /dev/config. DNS rebinding is out of scope: only allowlisted OpenAI hosts
+  are ever fetched ("Callback addresses").
 - **Retries in-isolate**: retries run inside `waitUntil`, so a Worker restart
   loses them. A Cloudflare Queue would make them durable (a new binding).
 - **Audience**: the owner audience is enforced as "the account holds `dev`".

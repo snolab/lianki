@@ -390,6 +390,25 @@ export const CONFIG = {
     description:
       "同一个令牌每小时最多订阅/续订几次 MCP 事件（ChatGPT 被 @ 名字唤醒；每次订阅都要先回呼验证对方地址）。",
   }),
+  // The callback allowlist is the control against SSRF (docs/mcp-events.md,
+  // "Callback addresses"): only hosts listed here are ever POSTed to.
+  "mcp.eventsCallbackHosts": {
+    default: ["connectors.api.openai.com"] as string[],
+    schema: z
+      .array(
+        z
+          .string()
+          .regex(
+            /^\.?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/,
+            "a lower-case host name, or .suffix for its subdomains",
+          ),
+      )
+      .max(20),
+    group: "mcp",
+    audience: "server",
+    description:
+      "MCP 事件只往这些主机发回呼（验证和每次通知都检查）：JSON 数组。写 host 只匹配这个主机本身；以点开头（.example.com）匹配它的所有子域名，不含它本身。空数组 = 一个都不发。默认是 ChatGPT 实际用的回呼主机 connectors.api.openai.com（OpenAI 文档没写明，是观察到的）；ChatGPT 订阅被拒、原因 host_not_allowed 时，在这里加上它用的主机。",
+  },
   "mcp.eventsMaxPerToken": int({
     default: 3,
     min: 1,

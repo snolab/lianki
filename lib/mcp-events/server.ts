@@ -35,6 +35,7 @@ import {
   b64encode,
   eventId,
   grantedTtl,
+  hostAllowed,
   mayTrigger,
   mentionData,
   mentions,
@@ -174,6 +175,11 @@ async function subscribe(
     });
   if (!d.sealSecret || d.sealSecret.length < 32)
     return err(-32603, "Events are not available on this server");
+  // The allowlist first: a host outside it is never contacted, not even to verify.
+  if (!hostAllowed(q.url, l.callbackHosts))
+    return err(CALLBACK_ENDPOINT_ERROR, "The callback host is not allowed", {
+      reason: "host_not_allowed",
+    });
   const id = await subscriptionId(p.tokenHash, q.url, q.name, q.args);
   const existing = await d.db
     .prepare("SELECT * FROM mcp_event_subscription WHERE id = ?")
@@ -279,16 +285,18 @@ async function openSecret(d: EventsDeps, row: Row, sealed: string): Promise<stri
 export const MAX_ANSWER_BYTES = 4096;
 
 /**
- * The callback's host, resolved now: every address must be public
- * (rules.ts publicAddress). Run right before each verification and each
- * delivery attempt, so a name re-pointed at a private address since the last
- * one is refused. A Worker's fetch cannot be pinned to the address checked
- * here; docs/mcp-events.md, "Callback addresses", names the window left.
+ * May this callback be reached now? First the control: its host is on the
+ * allowlist `mcp.eventsCallbackHosts` (rules.ts hostAllowed), so only
+ * trusted hosts are ever POSTed to. Then a second layer: the host resolved
+ * now, every address public (rules.ts publicAddress). Run right before each
+ * verification and each delivery attempt. docs/mcp-events.md, "Callback addresses".
  */
 async function checkHost(
   d: EventsDeps,
   url: string,
-): Promise<"ok" | "unresolved" | "private_address"> {
+  l: EventsLimits,
+): Promise<"ok" | "unresolved" | "private_address" | "host_not_allowed"> {
+  if (!hostAllowed(url, l.callbackHosts)) return "host_not_allowed";
   let host: string;
   try {
     host = new URL(url).hostname;
@@ -296,6 +304,15 @@ async function checkHost(
     return "unresolved";
   }
   return addressVerdict(await d.resolve(host).catch(() => null));
+}
+
+/** Cancel a stream without waiting on it: a cancel that never settles holds nothing up. */
+function cancelSoon(c: { cancel(): Promise<void> } | null | undefined) {
+  try {
+    c?.cancel().catch(() => {});
+  } catch {
+    // already released or errored: nothing to cancel
+  }
 }
 
 class TooLarge extends Error {}
@@ -319,7 +336,7 @@ async function readBounded(res: Response, limit: number, aborted: Promise<never>
       chunks.push(value);
     }
   } catch (e) {
-    await reader.cancel().catch(() => {});
+    cancelSoon(reader);
     throw e;
   }
   const all = new Uint8Array(size);
@@ -369,7 +386,7 @@ async function post(
     ]);
     const attempt = { status: res.status };
     if (!read) {
-      await res.body?.cancel().catch(() => {});
+      cancelSoon(res.body);
       return { attempt };
     }
     try {
@@ -400,9 +417,15 @@ async function verifyCallback(
   key: Uint8Array,
   l: EventsLimits,
 ): Promise<
-  "ok" | "challenge_failed" | "timeout" | "unreachable" | "unresolved" | "private_address"
+  | "ok"
+  | "challenge_failed"
+  | "timeout"
+  | "unreachable"
+  | "unresolved"
+  | "private_address"
+  | "host_not_allowed"
 > {
-  const host = await checkHost(d, url);
+  const host = await checkHost(d, url, l);
   if (host !== "ok") return host;
   const challenge = randomToken();
   const msgId = `msg_verification_${randomToken(12)}`;
@@ -539,7 +562,7 @@ async function keysOf(d: EventsDeps, sub: Row): Promise<Uint8Array[]> {
 }
 
 /**
- * Before a retry: is everything that allowed the first attempt still true,
+ * Right before each POST: is everything that allowed the delivery still true,
  * read live? The flag; the row (not unsubscribed, not expired); the token
  * (known, unexpired, chat:read, not revoked); the audience; and the token's
  * thread still the subscription's.
@@ -575,29 +598,23 @@ async function deliver(
   });
   if (new TextEncoder().encode(body).length > MAX_EVENT_BODY) return "failed";
   for (let attempt = 0; attempt <= l.retries; attempt++) {
-    if (attempt) {
-      await d.sleep(backoffMs(attempt - 1, l.retryBaseMs));
-      // Anything may have changed while waiting: revoked, unsubscribed, flag off.
-      if (!(await stillLive(d, sub))) return "stopped";
-    }
-    // The callback's addresses, now, before every attempt.
-    const host = await checkHost(d, sub.url);
-    if (host === "private_address") break;
+    if (attempt) await d.sleep(backoffMs(attempt - 1, l.retryBaseMs));
+    // The allowlist and the callback's addresses, now, before every attempt.
+    const host = await checkHost(d, sub.url, l);
+    if (host === "private_address" || host === "host_not_allowed") break;
     if (host !== "ok") continue;
     // Same eventId every attempt; a fresh timestamp and signature each time.
     const ts = Math.floor(d.now() / 1000);
-    const { attempt: a } = await post(
-      d,
-      sub.url,
-      {
-        "webhook-id": id,
-        "webhook-timestamp": String(ts),
-        "webhook-signature": await signatures(keys, id, ts, body),
-        "x-mcp-subscription-id": sub.id,
-      },
-      body,
-      l.timeoutMs,
-    );
+    const headers = {
+      "webhook-id": id,
+      "webhook-timestamp": String(ts),
+      "webhook-signature": await signatures(keys, id, ts, body),
+      "x-mcp-subscription-id": sub.id,
+    };
+    // Last thing before every POST, the first included and after every await
+    // above (a wait, a DNS answer, the signing): is it all still allowed?
+    if (!(await stillLive(d, sub))) return "stopped";
+    const { attempt: a } = await post(d, sub.url, headers, body, l.timeoutMs);
     const o = outcome(a);
     if (o === "ok") {
       await d.db

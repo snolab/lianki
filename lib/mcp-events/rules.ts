@@ -58,6 +58,8 @@ export type EventsLimits = {
   retryBaseMs: number;
   verifyCacheMs: number;
   rotationOverlapMs: number;
+  /** The only callback hosts ever reached: `host` exactly, `.suffix` for its subdomains. */
+  callbackHosts: string[];
 };
 
 const MIN = 60_000;
@@ -74,6 +76,7 @@ export function eventsLimits(c: ConfigValues): EventsLimits {
     retryBaseMs: c["mcp.eventsRetryBaseMs"],
     verifyCacheMs: c["mcp.eventsVerifyCacheMin"] * MIN,
     rotationOverlapMs: c["mcp.eventsRotationOverlapMin"] * MIN,
+    callbackHosts: [...c["mcp.eventsCallbackHosts"]],
   };
 }
 
@@ -144,6 +147,28 @@ export function mentionData(l: MentionLine & { from: "owner" | "friend" }) {
  * AAAA, DNS over HTTPS) and refuses any non-public answer (`publicAddress`,
  * server.ts `checkHost`; docs/mcp-events.md, "Callback addresses").
  */
+/**
+ * Is this callback URL's host on the allowlist (`mcp.eventsCallbackHosts`)?
+ * An entry `host` matches that host only; `.suffix` matches its subdomains,
+ * not the suffix itself. Case- and trailing-dot-insensitive. An empty list
+ * allows nothing. This is the control: only trusted hosts are ever reached.
+ */
+export function hostAllowed(url: string, allow: readonly string[]): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase().replace(/\.$/, "");
+  } catch {
+    return false;
+  }
+  if (!host) return false;
+  return allow.some((raw) => {
+    const e = raw.toLowerCase().trim();
+    if (!e) return false;
+    if (e.startsWith(".")) return host.endsWith(e) && host.length > e.length;
+    return host === e;
+  });
+}
+
 export function callbackUrl(raw: unknown): { ok: true; url: string } | { ok: false; why: string } {
   if (typeof raw !== "string" || !raw || raw.length > MAX_CALLBACK_URL)
     return { ok: false, why: "url" };
