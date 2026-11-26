@@ -465,7 +465,7 @@ so revoking permission or excluding a site cannot leave a second chat window.
   User cancellation aborts the request; a message already accepted durably
   is not unsent. No microphone, playback or device access is part of this UI.
 
-### The chat window is the main site's DebugChat (2.24.51)
+### The chat window is the main site's DebugChat (2.24.52)
 
 Owner, 2026-11-26: 随身Li reuses the Li chat component, no second wheel, and
 looks exactly like the chat window on lianki.com, everywhere (his sites
@@ -514,9 +514,11 @@ zhihu.com and github.com refuse frames). So there is one chat UI,
   (the `userbuild` output plus the plugin). The dev servers use the same
   plugin. A build without it (unit tests, other tools) keeps
   `portable-window.ts` = null: frame only.
-- **Cost.** `lianki.user.js` 343 KB → about 2.0 MB (gzip 98 KB → 600 KB). On a
+- **Cost.** `lianki.user.js` 364 KB → 2.6 MB (gzip 98 KB → 646 KB; the
+  release build is formatted, so the bundled window is readable too). On a
   plain page with chat closed (muted headless Chromium, median of 11):
-  compile 2.9 → 18.1 ms, run 4.8 → 5.0 ms (`scripts/qa/userscript-load-cost.ts`).
+  compile 2.8 → 18.3 ms, run 5.1 → 4.8 ms, i.e. the window's code is parsed
+  but not run (`scripts/qa/userscript-load-cost.ts`).
 
 QA: `bun scripts/qa/qa-portable-li-sites.ts --shots <dir>` (the built
 userscript in the page's world as ScriptCat raw runs it, on github.com,
