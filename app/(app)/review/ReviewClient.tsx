@@ -38,6 +38,7 @@ import { reviewTitle } from "@/lib/review-title";
 import { noteBadgeSeen } from "@/lib/app-badge";
 import { VoiceBadge, useVoiceMode, useVoicePref, voiceOutcomeLabel } from "../words/VoiceMode";
 import { openExternal } from "@/lib/external-link";
+import { ReviewOpenHint } from "./ReviewOpenHint";
 
 /**
  * /review: one due page card at a time, graded inside the site.
@@ -398,7 +399,11 @@ export default function ReviewClient({
             </a>
             {!back && (
               <p className="lk-review-help text-sm opacity-70">
-                {ret === "idle" ? t.openHint : t.opened}
+                {ret === "idle" ? (
+                  <ReviewOpenHint desktop={t.openHint.value} mobile={t.openHintBack.value} />
+                ) : (
+                  t.opened
+                )}
               </p>
             )}
           </div>

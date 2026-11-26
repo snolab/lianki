@@ -266,6 +266,14 @@ export function detectPlatform(userAgent: string, maxTouchPoints = 0): Platform 
   return "web";
 }
 
+export type ReviewReturnShortcut = "back" | "Ctrl+W" | "⌘W";
+
+/** The actual device's return action, independent of the tutorial's manual platform picker. */
+export function reviewReturnShortcut(userAgent: string, maxTouchPoints = 0): ReviewReturnShortcut {
+  if (detectPlatform(userAgent, maxTouchPoints) !== "web") return "back";
+  return /macintosh|mac os x/i.test(userAgent) ? "⌘W" : "Ctrl+W";
+}
+
 /** Where the userscript install guide for that platform lives. */
 export function installGuideHref(p: Platform, locale = "en"): string {
   const slug = {
