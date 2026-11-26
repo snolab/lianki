@@ -147,7 +147,11 @@ were never delivered.
 ```
 
 `sgen` is handed out only in `dictation-source-ok`, the answer to that tab's
-`dictation-source on`; a `chat-dictation` with any other `sgen` is rejected.
+`dictation-source on`; it is assigned by the hub and bound to that
+authenticated first-party socket, never accepted as caller-chosen authority.
+The source waits for it before sending any final; a `chat-dictation` with any
+other `sgen` is returned (`dictation-returned`, why `rejected`). The browser id
+is an isolation selector, not account authorization.
 
 - **The source may capture in the background.** The lianki.com tab keeps
   listening and routing while it is hidden (that is the point: he talks there
@@ -213,13 +217,27 @@ were never delivered.
 
 ## Delivery and ACK (the single authority for what happens to a final)
 
+Promise, exactly: a final is **kept and not automatically duplicated while its
+source session is alive or restorable**; a manual restore is labelled
+未确认送达. Closing the source tab, clearing browser storage or a browser
+failure can lose words. There is no extra storage and no audio kept to
+compensate.
+
 - **The source holds the copy.** The lianki.com tab that heard a final keeps
   it in a local outbox `{finalId, routeId, gen, sgen, text, at}` from the
-  moment it sends `chat-dictation` until the hub settles it. The outbox is
-  isolated per **account + bid + source tab** (a random tab id, `stid`): it
-  lives in that tab's `sessionStorage` under `lk:dictation-outbox:<account>:<bid>:<stid>`,
-  and that tab restores only its own entries, only while the same account is
-  signed in. A different account or tab never sees or restores them.
+  moment it sends `chat-dictation` until the hub settles it. Each entry also
+  records the **verified principal** (the session-verified account id the hub
+  stamped on `dictation-source-ok`). The outbox is isolated per **principal +
+  bid + source tab** (a random tab id, `stid`): it lives in that tab's
+  `sessionStorage` under `lk:dictation-outbox:<principal>:<bid>:<stid>`.
+- **Recheck before any restore or refill:** before reading, restoring or
+  appending a stored final, the tab checks that the currently signed-in,
+  verified principal equals the entry's. Otherwise nothing is restored, and the
+  entries stay inaccessible until that account returns (or that account
+  discards them). A failed check never falls back to an unscoped draft.
+  Counterexample that must fail: account A dictates, A's line is
+  `dictation-returned`, the tab signs in as B before restoring → B's draft
+  gets nothing; signing back in as A offers A's line again.
 - **Persistence, honestly:** `sessionStorage` survives a reload of that tab
   but **not closing it**. A closed source tab loses its unsettled local copy;
   anything the hub had not delivered is then gone too (the hub drops it on
@@ -303,8 +321,10 @@ were never delivered.
 
 ## Tests (planned)
 
-- Outbox isolation: another account or another tab never restores the
-  entries; a reload keeps them, closing the tab drops them.
+- Outbox isolation: another principal or another tab never restores the
+  entries; a reload keeps them, closing the tab drops them. Cross-account
+  counterexample: A's returned line, then signing in as B → B's draft stays
+  untouched; back as A → the line is offered again.
 - Every op's refusal has the one error shape `{ok:false, error, gen?}`.
 - Synthetic delivery scenarios (no audio): (a) accepted → the target ends
   (change / revoke / disconnect) → returned to the source; (b) queue full →
