@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import {
   SNAP_DEFAULTS,
+  SNAP_PRIORITY,
   defaultDockWidth,
+  snapshotMode,
   fullModeFor,
   pointerOffScreen,
   sidebarNow,
@@ -104,9 +106,50 @@ describe("snapTargets: the zones (owner, 2026-11-27)", () => {
     expect(hit(desktop, 640, 799, { fullAllowed: false })).toBeNull();
   });
 
-  it("a minimized pill cannot be minimized again; it may still go full screen", () => {
-    expect(ids(desktop, { open: false }).sort()).toEqual(["dock-right", "fullscreen"]);
-    expect(hit(desktop, 1279, 799, { open: false })).toBe("fullscreen");
+  it("a minimized pill only moves: no zones (spec: every zone needs !minimized)", () => {
+    expect(ids(desktop, { open: false })).toEqual([]);
+    expect(hit(desktop, 1279, 799, { open: false })).toBeNull();
+  });
+
+  it("in full screen there is no Full screen zone; the corner and the sidebar stay", () => {
+    expect(ids(desktop, { full: true }).sort()).toEqual(["dock-right", "minimize"]);
+    expect(hit(desktop, 640, 799, { full: true })).toBeNull();
+  });
+
+  it("where zones touch: minimize > dock-right > fullscreen", () => {
+    expect(SNAP_PRIORITY).toEqual(["minimize", "dock-right", "fullscreen"]);
+    // Hand-made overlapping zones: the order decides, not the list's order.
+    const r = { x: 0, y: 0, w: 10, h: 10 };
+    const all = [
+      { id: "fullscreen" as const, zone: r, result: r },
+      { id: "dock-right" as const, zone: r, result: r },
+      { id: "minimize" as const, zone: r, result: r },
+    ];
+    expect(snapAt(all, 5, 5)?.id).toBe("minimize");
+    expect(snapAt(all.slice(0, 2), 5, 5)?.id).toBe("dock-right");
+    expect(snapAt(all.slice(0, 1), 5, 5)?.id).toBe("fullscreen");
+  });
+
+  it("visual-viewport offsets (pinch zoom, keyboard) move the zones with what is visible", () => {
+    const zoomed: SnapViewport = {
+      x: 100,
+      y: 50,
+      w: 400,
+      h: 300,
+      scale: 2,
+      safe: noSafe,
+      wide: true,
+    };
+    const ts = snapTargets(zoomed, opts({ home: { right: 492, bottom: 342 } }));
+    expect(ts.find((t) => t.id === "fullscreen")!.result).toEqual({
+      x: 100,
+      y: 50,
+      w: 400,
+      h: 300,
+    });
+    expect(snapAt(ts, 499, 349)?.id).toBe("minimize");
+    expect(snapAt(ts, 200, 345)?.id).toBe("fullscreen");
+    expect(snapAt(ts, 200, 395)).toBeNull();
   });
 
   it("dockAllowed off: no sidebar even when wide", () => {
@@ -172,6 +215,12 @@ describe("drop helpers", () => {
     expect(defaultDockWidth(600, 16)).toBe(320);
     expect(defaultDockWidth(300, 16)).toBe(300);
   });
+  it("the snapshot's mode", () => {
+    expect(snapshotMode({ open: false, full: true, sidebar: true })).toBe("minimized");
+    expect(snapshotMode({ open: true, full: true, sidebar: true })).toBe("dock-right");
+    expect(snapshotMode({ open: true, full: true, sidebar: false })).toBe("fullscreen");
+    expect(snapshotMode({ open: true, full: false, sidebar: true })).toBe("free");
+  });
   it("defaults keep feedback under 0.2 s", () => {
     expect(SNAP_DEFAULTS.hintMs).toBeLessThanOrEqual(200);
   });
@@ -188,7 +237,7 @@ describe("the overlay mounted in DebugChat", () => {
     const out = `${r.stdout.toString()}${r.stderr.toString()}`;
     if (r.exitCode !== 0) console.error(out);
     expect(r.exitCode).toBe(0);
-    expect(out).toMatch(/\b4 pass\b/);
+    expect(out).toMatch(/\b6 pass\b/);
     expect(out).toMatch(/\b0 fail\b/);
   }, 90_000);
 });

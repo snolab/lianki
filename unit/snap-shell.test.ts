@@ -134,6 +134,25 @@ describe("the viewport contract (snap-viewport.ts)", () => {
     // The probe never stays in the page.
     expect(win.document.body.children.length).toBe(0);
   });
+  it("with a visual viewport: its offsets, size and scale (client px)", () => {
+    const win = page();
+    const w = Object.assign(Object.create(win as object), {
+      document: win.document,
+      innerWidth: 390,
+      innerHeight: 844,
+      getComputedStyle: win.getComputedStyle.bind(win),
+      matchMedia: () => ({ matches: false }),
+      visualViewport: { offsetLeft: 20, offsetTop: 30, width: 195, height: 400, scale: 2 },
+    });
+    expect(measureSnapViewport(w, "(min-width: 35em)")).toMatchObject({
+      x: 20,
+      y: 30,
+      w: 195,
+      h: 400,
+      scale: 2,
+      wide: false,
+    });
+  });
   it("a matchMedia that throws reads as narrow", () => {
     const win = page();
     const w = Object.assign(Object.create(win as object), {

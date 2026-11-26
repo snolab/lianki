@@ -11,6 +11,7 @@ import tokensDict from "@/app/components/api-tokens.content";
 import agentDict from "@/lib/agent-guide.content";
 import {
   AI_APPS,
+  AI_APPS_CHECKED_ON,
   AI_APPS_GUIDE_PATH,
   AI_APPS_GUIDE_URL,
   checkedOn,
@@ -74,6 +75,8 @@ describe("ai-apps guide", () => {
     }
     expect(fillGuide("a {x} {y}", { x: 1 })).toBe("a 1 {y}");
     expect(checkedOn("en")).toContain("2026");
+    // A locale Intl refuses falls back to the ISO date.
+    expect(checkedOn("not a locale!")).toBe(AI_APPS_CHECKED_ON);
   });
 
   it("no token secret or prefix is shown on the page", () => {

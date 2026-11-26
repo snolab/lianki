@@ -35,10 +35,13 @@ export type Rect = { x: number; y: number; w: number; h: number };
  * in it), never an iframe's.
  */
 export type SnapViewport = {
+  /** visualViewport.offsetLeft / offsetTop / width / height (client px); innerWidth × innerHeight and 0 offsets without one. */
   x: number;
   y: number;
   w: number;
   h: number;
+  /** visualViewport.scale (pinch zoom), 1 without one. */
+  scale?: number;
   safe: { top: number; right: number; bottom: number; left: number };
   /** Wider than SIDEBAR_QUERY (35em): a right sidebar leaves the page usable. */
   wide: boolean;
@@ -77,8 +80,10 @@ export type SnapOptions = {
   fullAllowed: boolean;
   /** The right sidebar may be docked here (full screen allowed and a wide viewport). */
   dockAllowed: boolean;
-  /** The window is open (a pill cannot be minimized again). */
+  /** The window is open: every zone needs it (a pill only moves; docs/chat-drag-ux.md). */
   open: boolean;
+  /** Full screen is on now (no Full screen zone then; the right zone may still turn it into the sidebar). */
+  full?: boolean;
   /** The sidebar's width, px, already clamped (dockWidth). */
   dockWidth: number;
   /** The pill's size after minimizing, px. */
@@ -111,7 +116,9 @@ export function snapTargets(vp: SnapViewport, o: SnapOptions): SnapTarget[] {
   const right = x0 + w;
   const bottom = y0 + h;
   const out: SnapTarget[] = [];
-  if (o.open && corner > 0) {
+  // A minimized pill only moves (the spec's `!minimized` on every zone).
+  if (!o.open) return out;
+  if (corner > 0) {
     const pw = Math.max(0, Math.min(fin(o.pill.w), w));
     const ph = Math.max(0, Math.min(fin(o.pill.h), h));
     const hr = Math.min(right, fin(o.home.right, right));
@@ -124,7 +131,7 @@ export function snapTargets(vp: SnapViewport, o: SnapOptions): SnapTarget[] {
   }
   // Without a Minimize corner (a pill), the bottom strip runs to the corner.
   const gap = out.length ? corner : 0;
-  if (o.fullAllowed && edge > 0)
+  if (o.fullAllowed && !o.full && edge > 0)
     out.push({
       id: "fullscreen",
       zone: { x: x0, y: bottom - edge, w: Math.max(0, w - gap), h: edge },
@@ -145,14 +152,17 @@ export function snapTargets(vp: SnapViewport, o: SnapOptions): SnapTarget[] {
 const inside = (r: Rect, x: number, y: number) =>
   x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h && r.w > 0 && r.h > 0;
 
-/** The zone under the pointer, or null for a free move. The corner wins where zones touch. */
+/** Where zones touch, the first of these wins (docs/chat-drag-ux.md, "Boundary priority"). */
+export const SNAP_PRIORITY: readonly SnapId[] = ["minimize", "dock-right", "fullscreen"];
+
+/** The zone under the pointer, or null for a free move: minimize > dock-right > fullscreen. */
 export function snapAt(targets: SnapTarget[], x: number, y: number): SnapTarget | null {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  return (
-    targets.find((t) => t.id === "minimize" && inside(t.zone, x, y)) ??
-    targets.find((t) => inside(t.zone, x, y)) ??
-    null
-  );
+  for (const id of SNAP_PRIORITY) {
+    const t = targets.find((t) => t.id === id && inside(t.zone, x, y));
+    if (t) return t;
+  }
+  return null;
 }
 
 /** The pointer left the screen altogether (released outside the window): the drop is a cancel. */
@@ -173,12 +183,28 @@ export function defaultDockWidth(vw: number, remPx: number): number {
  * drag changed on the way (a drag up out of full screen included).
  */
 export type DragSnapshot = {
+  /** What the window was (docs/chat-drag-ux.md, "Cancel-Snapshot Contract"). */
+  mode: "free" | "fullscreen" | "dock-right" | "minimized";
+  /** Its rect on screen. */
+  rect: Rect;
+  /** Its free offset (lk:debug-chat-pos), kept for leaving full screen too. */
   pos: { x: number; y: number };
-  open: boolean;
-  full: boolean;
-  fullMode: FullMode;
+  /** The edge it keeps to (fold.ts). */
+  edge: "left" | "right";
+  /** The saved sidebar width (lk:pref:chat-dock), null for the default. */
   dockWidth: number | null;
+  /** The page root's own right padding (the sidebar's reserve). */
+  pagePadding: string;
+  /** How full screen was drawn (FullMode), so `auto` comes back as `auto`. */
+  fullMode: FullMode;
 };
+
+/** The snapshot's mode from the window's state. */
+export function snapshotMode(d: { open: boolean; full: boolean; sidebar: boolean }): DragSnapshot["mode"] {
+  if (!d.open) return "minimized";
+  if (d.full) return d.sidebar ? "dock-right" : "fullscreen";
+  return "free";
+}
 
 /**
  * How full screen is drawn: `auto` (the menu and the double tap, as before:

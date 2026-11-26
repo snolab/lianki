@@ -67,16 +67,22 @@ const ptr = (p: P, type: string, x: number, y: number) =>
     pointerType: "mouse",
   }) as never;
 
-async function mount() {
+async function mount(full?: "screen" | "side") {
   const p = await page();
   const { act } = await import("react");
   const { createRoot } = await import("react-dom/client");
   const { DebugChat } = await import("../../packages/debug-chat/src/DebugChat");
+  const { chatPrefs } = await import("../../packages/debug-chat/src/ui-store");
   const host = p.win.document.createElement("div");
   p.win.document.body.appendChild(host);
   const root = createRoot(host as never);
   p.win.localStorage.setItem("lk:debug-chat-open", "1");
-  await act(() => root.render(<DebugChat live listeners={1} messages={[]} onSend={() => true} />));
+  chatPrefs().setState(full ? { full: true, fullMode: full } : { full: false });
+  await act(() =>
+    root.render(
+      <DebugChat live listeners={1} messages={[]} onSend={() => true} fullScreen={!!full} />,
+    ),
+  );
   const grip = host.querySelector('[data-testid="debug-chat-pill-min"]') as unknown as HTMLElement;
   const q = (s: string) => p.win.document.querySelector(s);
   const frames = () => act(async () => void (await new Promise((r) => setTimeout(r, 40))));
@@ -158,6 +164,60 @@ describe("the drag overlay", () => {
       await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointercancel", 600, 500)));
       await m.frames();
       expect(m.q('[data-testid="debug-chat-snap"]')).toBeNull();
+      expect(m.p.win.localStorage.getItem("lk:debug-chat-pos")).toBeNull();
+    } finally {
+      await m.act(() => m.root.unmount());
+      await m.p.close();
+    }
+  }, 20_000);
+
+  // docs/chat-drag-ux.md, "Named regressions".
+  it("dragged out of full screen, then Escape: full screen comes back, nothing saved", async () => {
+    const m = await mount("screen");
+    try {
+      m.p.win.localStorage.removeItem("lk:debug-chat-pos");
+      expect(m.host.querySelector("[data-fullscreen]")).not.toBeNull();
+      const b = m.grip.getBoundingClientRect();
+      await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointerdown", b.left + 5, 700)));
+      await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointermove", b.left + 5, 600)));
+      await m.frames();
+      // Past chat.fullLeavePx up: it left full screen and follows the pointer.
+      expect(m.host.querySelector("[data-fullscreen]")).toBeNull();
+      expect(m.q('[data-testid="debug-chat-snap"]')).not.toBeNull();
+      await m.act(
+        async () =>
+          void m.p.win.dispatchEvent(
+            new m.p.win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }) as never,
+          ),
+      );
+      await m.frames();
+      expect(m.host.querySelector("[data-fullscreen]")).not.toBeNull();
+      expect(m.q('[data-testid="debug-chat-snap"]')).toBeNull();
+      expect(m.p.win.localStorage.getItem("lk:debug-chat-pos")).toBeNull();
+    } finally {
+      await m.act(() => m.root.unmount());
+      await m.p.close();
+    }
+  }, 20_000);
+
+  it("dragged out of the sidebar, then pointercancel: the sidebar and the page's padding come back", async () => {
+    const m = await mount("side");
+    try {
+      const html = m.p.win.document.documentElement;
+      await m.frames();
+      const padding = html.style.paddingRight;
+      expect(padding).not.toBe("");
+      const b = m.grip.getBoundingClientRect();
+      await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointerdown", b.left + 5, 700)));
+      await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointermove", b.left + 5, 600)));
+      await m.frames();
+      expect(m.host.querySelector("[data-fullscreen]")).toBeNull();
+      await m.act(
+        async () => void m.grip.dispatchEvent(ptr(m.p, "pointercancel", b.left + 5, 600)),
+      );
+      await m.frames();
+      expect(m.host.querySelector("[data-fullscreen]")).not.toBeNull();
+      expect(html.style.paddingRight).toBe(padding);
       expect(m.p.win.localStorage.getItem("lk:debug-chat-pos")).toBeNull();
     } finally {
       await m.act(() => m.root.unmount());

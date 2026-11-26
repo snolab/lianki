@@ -303,6 +303,7 @@ import {
   pointerOffScreen,
   sidebarNow,
   snapAt,
+  snapshotMode,
   snapTargets,
   type DragSnapshot,
   type FullMode,
@@ -3880,6 +3881,7 @@ export function DebugChat({
       fullAllowed: fullAllowed && !tucked,
       dockAllowed: fullAllowed && !tucked,
       open: openRef.current,
+      full: fullOn.current,
       dockWidth,
       pill: { w: Math.min(bar.width, pillH * 3), h: pillH },
       home: {
@@ -3904,11 +3906,13 @@ export function DebugChat({
     vv?.addEventListener("resize", stale);
     window.addEventListener("keydown", key, true);
     dragSnapshot.current = {
+      mode: snapshotMode({ open: openRef.current, full: fullOn.current, sidebar: asSidebarNow.current }),
+      rect: { x: b.left, y: b.top, w: b.width, h: b.height },
       pos: { ...posNow() },
-      open: openRef.current,
-      full: fullOn.current,
-      fullMode: fullModeNow.current,
+      edge: foldNow.current.edge,
       dockWidth: saved,
+      pagePadding: document.documentElement.style.paddingRight,
+      fullMode: fullModeNow.current,
     };
     snapDrag.current = {
       vp,
@@ -3957,9 +3961,20 @@ export function DebugChat({
     const snap = dragSnapshot.current;
     dragSnapshot.current = null;
     if (!snap) return;
-    // Whatever the drag changed on the way (a drag up out of full screen): back exactly.
-    if (fullOn.current !== snap.full || (snap.full && fullModeNow.current !== snap.fullMode))
-      chatPrefs().setState(snap.full ? { full: true, fullMode: snap.fullMode } : { full: false });
+    // Whatever the drag changed on the way (a drag up out of full screen or the
+    // sidebar): back exactly, mode, edge, dock width and the page's padding.
+    const wasFull = snap.mode === "fullscreen" || snap.mode === "dock-right";
+    if (fullOn.current !== wasFull || (wasFull && fullModeNow.current !== snap.fullMode))
+      chatPrefs().setState(wasFull ? { full: true, fullMode: snap.fullMode } : { full: false });
+    if (foldNow.current.edge !== snap.edge) {
+      foldNow.current = { ...foldNow.current, edge: snap.edge };
+      foldStore.setState({ edge: snap.edge });
+    }
+    if (dockSaved.current !== snap.dockWidth) chatDock().setState({ width: snap.dockWidth });
+    requestAnimationFrame(() => {
+      const root = document.documentElement;
+      if (root.style.paddingRight !== snap.pagePadding) root.style.paddingRight = snap.pagePadding;
+    });
   };
   /** A zone took the drop: its result (snap-targets.ts), as the preview showed it. */
   const applySnap = (t: SnapTarget) => {

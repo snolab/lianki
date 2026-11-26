@@ -13,9 +13,17 @@ import { fullScreenBox } from "./full-screen";
 import type { SnapViewport } from "./snap-targets";
 
 type Win = Pick<Window, "innerWidth" | "innerHeight" | "getComputedStyle" | "matchMedia"> & {
-  visualViewport?: { offsetTop: number; height: number; scale?: number } | null;
+  visualViewport?: {
+    offsetTop: number;
+    offsetLeft?: number;
+    width?: number;
+    height: number;
+    scale?: number;
+  } | null;
   document: Document;
 };
+
+const num = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? v : d);
 
 /** env(safe-area-inset-*) in px, through one hidden probe. */
 export function safeInsets(doc: Document, win: Pick<Window, "getComputedStyle">) {
@@ -36,19 +44,31 @@ export function safeInsets(doc: Document, win: Pick<Window, "getComputedStyle">)
   return out;
 }
 
-/** The viewport now, in the snap contract's terms. `wideQuery`: SIDEBAR_QUERY. */
+/**
+ * The viewport now, in the snap contract's terms (docs/chat-drag-ux.md,
+ * "Viewport Geometry Contract"): the visual viewport in client px
+ * (offsetLeft, offsetTop, width, height, scale), so an open keyboard or a
+ * pinch zoom moves the zones with what is visible; innerWidth × innerHeight
+ * with 0 offsets without one. `wideQuery`: SIDEBAR_QUERY.
+ */
 export function measureSnapViewport(win: Win, wideQuery: string): SnapViewport {
-  const box = fullScreenBox({ innerHeight: win.innerHeight, vv: win.visualViewport ?? null });
+  const vv = win.visualViewport ?? null;
   let wide = false;
   try {
     wide = win.matchMedia(wideQuery).matches;
   } catch {}
+  const safe = safeInsets(win.document, win);
+  if (!vv || !(num(vv.height, 0) > 0) || !(num(vv.width, 0) > 0)) {
+    const box = fullScreenBox({ innerHeight: win.innerHeight, vv: null });
+    return { x: 0, y: box.top, w: win.innerWidth, h: box.height, scale: 1, safe, wide };
+  }
   return {
-    x: 0,
-    y: box.top,
-    w: win.innerWidth,
-    h: box.height,
-    safe: safeInsets(win.document, win),
+    x: num(vv.offsetLeft, 0),
+    y: num(vv.offsetTop, 0),
+    w: num(vv.width, win.innerWidth),
+    h: num(vv.height, win.innerHeight),
+    scale: num(vv.scale, 1),
+    safe,
     wide,
   };
 }
