@@ -39,6 +39,13 @@ type Token = {
 /** `scopes`: what this account may pick (`eval` only for a site owner, lib/api-token-api.ts). */
 type Listing = { account: string; tokens: Token[]; scopes?: { id: ScopeId }[] };
 
+const PLATFORMS = [
+  { name: "ChatGPT", glyph: "💬" },
+  { name: "Claude", glyph: "✦" },
+  { name: "Gemini", glyph: "◆" },
+  { name: "Cursor", glyph: "⌘" },
+] as const;
+
 export default function TokenManager({ hideHeading = false }: { hideHeading?: boolean } = {}) {
   const c = useIntlayer("api-tokens") as unknown as Record<string, unknown>;
   const s = (k: string) => textOf(c[k]);
@@ -349,6 +356,35 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
         aria-describedby={error ? `${formId}-error` : undefined}
         className="space-y-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4"
       >
+        <div className="space-y-1.5">
+          <span className="block text-sm font-medium">{s("platformsLabel")}</span>
+          <div className="flex flex-wrap gap-2">
+            {PLATFORMS.map((p) => {
+              const active = name.trim().toLowerCase() === p.name.toLowerCase();
+              return (
+                <button
+                  key={p.name}
+                  type="button"
+                  disabled={busy}
+                  aria-pressed={name.trim().toLowerCase() === p.name.toLowerCase()}
+                  data-testid={`token-platform-${p.name.toLowerCase()}`}
+                  onClick={() => {
+                    setName(p.name);
+                    setError(null);
+                  }}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${
+                    active
+                      ? "border-blue-600 bg-blue-600 text-white"
+                      : "border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  <span aria-hidden="true">{p.glyph}</span>
+                  <span>{p.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <label className="block text-sm">
           <span className="font-medium">{s("nameLabel")}</span>
           <input
