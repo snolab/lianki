@@ -97,7 +97,7 @@ Authorization, the expected principal header compared on every call,
   `listening` / `no-source` come from the source's own report (below).
 - **Delivery with a receipt:** `read` carries the selector
   `{routeId, gen, afterSeq}`; the answer's range gets
-  `dictation: { routeId, gen, items: { seq, text, at }[], throughSeq }`, only
+  `dictation: { routeId, gen, items: { seq, finalId, text, at }[], throughSeq }`, only
   for that exact routeId + gen. Items stay queued until a later `read` names
   `afterSeq ≥ seq` (the ACK). Never dropped on read: a lost response re-sends
   them. Bounded: text ≤ 4000 chars, ≤ 50 queued per target, dropped only when
@@ -121,8 +121,8 @@ Authorization, the expected principal header compared on every call,
   from the lianki.com tab holding the source lease. The hub checks it is still
   the target's routeId + gen, the current source `sgen`, the same account +
   bid, and a grant; it dedups by (account, bid, sgen, gen, finalId) and queues
-  it. Otherwise it answers `dictation-rejected { finalId }` and the tab keeps
-  that final in **its own** composer draft (words are never lost).
+  it. Otherwise it answers `dictation-rejected { finalId }` and the tab returns
+  that final to its own draft (see "Delivery and ACK").
 - **Clearing:** on a target change, account switch, revoke, or the source or
   target disconnecting, the hub clears that target's pending items and
   rejects anything arriving later for the old gen/sgen.
@@ -140,8 +140,7 @@ Authorization, the expected principal header compared on every call,
 - The read-aloud, wake word, merge and polish logic stay as they are; a routed
   line is not merged into this tab's composer text.
 - **Never lose words:** a final the hub rejects (stale target, refused, no
-  answer in time) goes into this tab's own draft instead, marked "not sent to
-  example.org".
+  answer in time) goes into this tab's own draft instead, marked "delivery not confirmed" (未确认送达).
 
 ### 4. 随身Li (portable window; agy)
 
@@ -190,7 +189,7 @@ Authorization, the expected principal header compared on every call,
   queue and tells the source `{ type: "dictation-returned", finalIds, why }`
   for everything not acked (`why`: `target-changed` | `revoked` | `expired` |
   `gone`). The source moves those finals (from its own copy, not from the hub)
-  into **its own** draft, marked "not delivered", in order. If the source
+  into **its own** draft, marked "delivery not confirmed" (未确认送达; a lost ACK can mean the page did get it), in order. If the source
   itself is gone by then, its outbox persists in its tab's session storage
   and is returned to its draft when that tab comes back.
 - **Page side:** a stale, refused or timed-out delivery never clears or
