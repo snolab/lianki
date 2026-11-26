@@ -17,7 +17,7 @@ import type { D1Like } from "@/lib/d1/types";
  * and are not counted.
  */
 
-/** All file bytes, and the inbox part: the only kind with a per-account cap (INBOX.maxStoredBytes). */
+/** All file bytes, and the inbox part: the only kind with a per-account cap (INBOX.maxStoredBytes, config files.quotaBytes). */
 export type FileUsage = { bytes: number; inboxBytes: number };
 
 /** The slice of an R2 bucket the listing uses. */

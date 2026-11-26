@@ -114,6 +114,8 @@ export type PendingFile = {
   /** Bytes sent so far. */
   sent: number;
   state: "uploading" | "done" | "failed" | "too-big";
+  /** Why it failed, in words the host chose (e.g. a full file space, with the numbers). */
+  note?: string;
   ref?: AttachmentRef;
   /** A local object URL for an image's thumbnail, revoked when the chip goes. */
   thumb?: string;
@@ -159,12 +161,17 @@ export function createPendingFiles(deps: Deps) {
     if (!list.some((item) => item.key === key)) return;
     const ac = new AbortController();
     aborts.set(key, ac);
-    patch(key, { state: "uploading", sent: 0, ref: undefined });
+    patch(key, { state: "uploading", sent: 0, ref: undefined, note: undefined });
     if (aborts.get(key) !== ac) return;
-    const failed = () => {
+    const failed = (e?: unknown) => {
       if (aborts.get(key) !== ac) return;
       aborts.delete(key);
-      patch(key, { state: "failed" });
+      // The host's own words for why (an Error with a string `note`), shown as text.
+      const note = (e as { note?: unknown } | null | undefined)?.note;
+      patch(key, {
+        state: "failed",
+        ...(typeof note === "string" && note ? { note: note.slice(0, 300) } : {}),
+      });
     };
     try {
       host
@@ -187,8 +194,8 @@ export function createPendingFiles(deps: Deps) {
           aborts.delete(key);
           patch(key, { state: "done", sent: file.size, ref: { ...ref } });
         }, failed);
-    } catch {
-      failed();
+    } catch (e) {
+      failed(e);
     }
   };
   return {

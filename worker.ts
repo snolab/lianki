@@ -33,6 +33,7 @@ import { prepareChatTurn } from "./lib/chat-prepare";
 import { polishLines } from "./lib/chat-polish";
 import type { PartnerResult } from "./lib/partner-ai-config";
 import { type InboxAnswer, inboxOp } from "./lib/inbox/agent";
+import { type ThreadFilesAnswer, threadFilesOp } from "./lib/inbox/thread-files";
 import { type ChatTokenAnswer, type ChatTokenDb, chatTokenCheck } from "./lib/chat-token";
 import { type PlayCheckAnswer, type PlayCheckDb, playCheck } from "./lib/play-check";
 import { type EvalTokenAnswer, type EvalTokenDb, evalTokenCheck } from "./lib/eval-token";
@@ -174,6 +175,8 @@ type Env = { DB?: SessionDb } & Omit<PartnerEnv, "DB">;
 const allow = rateLimiter(60, 60_000);
 /** The agent's inbox ops (list / get a ticket / mark done): their own budget. */
 const allowInbox = rateLimiter(60, 60_000);
+/** Users' lines with files (the hub's ownership check, one per such line): their own budget. */
+const allowThreadFiles = rateLimiter(600, 60_000);
 /** The Learning Partner's AI replies: their own budget (the hub caps per user and per day). */
 const allowPartner = rateLimiter(120, 60_000);
 // `lianki chat` checks: each token is limited in D1 too (lib/chat-token.ts CHAT_LIMITS).
@@ -292,6 +295,16 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
   async inbox(req: unknown): Promise<InboxAnswer> {
     if (!allowInbox()) return { ok: false, error: "busy" };
     return inboxOp(this.env.DB as unknown as InboxDb, req);
+  }
+
+  /**
+   * Files on a line in a user's own thread (lib/inbox/thread-files.ts): of the
+   * ids the page sent, those that are this account's own stored files, as
+   * stored. The hub drops every other ref. "busy" over the rate limit.
+   */
+  async threadFiles(req: unknown): Promise<ThreadFilesAnswer> {
+    if (!allowThreadFiles()) return { ok: false, error: "busy" };
+    return threadFilesOp(this.env.DB as unknown as InboxDb, req);
   }
 
   /**

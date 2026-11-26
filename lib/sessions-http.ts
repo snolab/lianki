@@ -9,6 +9,7 @@ export const SESSION_METHODS = [
   "prepareChatTurn",
   "polishLines",
   "inbox",
+  "threadFiles",
   "chatToken",
   "playAudio",
   "evalToken",

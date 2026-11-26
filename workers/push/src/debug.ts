@@ -10,6 +10,8 @@ import { publicPageChatResult } from "../../../lib/page-chat-http-result";
 import { importTicketPublicKey } from "../../../lib/stt-ticket";
 import { HubWork } from "../../../lib/hub-work";
 import { boundedSessions } from "../../../lib/bounded-sessions";
+import { verifiedRefs } from "../../../lib/inbox/thread-files";
+import type { AttachmentRef } from "../../../packages/debug-chat/src/wire";
 /**
  * The remote-eval and chat hub (docs/monitoring.md, "Remote eval (owner
  * debug)", "Chat with the agent" and "Friends").
@@ -658,6 +660,8 @@ type SessionsRpc = {
   partnerReply?(req: PartnerRequest): Promise<unknown>;
   /** The chat inbox's agent ops (lib/inbox/agent.ts); an older main Worker has none. */
   inbox?(req: { op: string; id?: string }): Promise<unknown>;
+  /** Which of these ids are this account's own files (lib/inbox/thread-files.ts); an older main Worker has none: no files kept. */
+  threadFiles?(req: { userId: string; ids: string[] }): Promise<unknown>;
   /** An eval token's connect or use (lib/eval-token.ts); an older main Worker has none: refused. */
   evalToken?(req: {
     op: "connect" | "use";
@@ -4897,7 +4901,7 @@ export class DebugHub {
       );
       // A friend's line is always their own thread's: no node addressing there.
       // Its attachment (the page selection) stays on the sender's own thread.
-      // Files are the owner's only (the upload is owner-only): a friend's refs are dropped.
+      // A friend's files are kept only once checked as their account's own (friendChat).
       return this.deliverChat(ws, page.thread, m.id, async (accepted) => {
         // The repetition guard (stt-repeat.ts), for any client: a voice line that is a
         // decoding loop is cut back to its head, or accepted and never posted.
@@ -4934,6 +4938,7 @@ export class DebugHub {
             m.scene,
             m.source === "stt",
             accepted,
+            m.attachments,
           );
         const line = async (speaker: SpeakerTag | undefined) => {
           // An echo (his other phone, or Li read aloud and heard back): kept aside, not posted.
@@ -5111,6 +5116,7 @@ export class DebugHub {
     scene?: SttScene,
     spoken = false,
     accepted?: (seq?: number) => Promise<void>,
+    attachments?: AttachmentRef[],
   ) {
     const t = this.now();
     // A site's thread (lib/li-thread.ts) is its account's: blocks, the rate and the
@@ -5151,6 +5157,8 @@ export class DebugHub {
       console.log(JSON.stringify({ msg: "debug.friend-new", userId, email }));
       for (const l of this.listeners()) send(l.ws, { type: "friend-new", userId, email, at: t });
     }
+    // Files: only those the main Worker says are this account's own (no cross-account ids).
+    const files = attachments?.length ? await this.ownFiles(userId, attachments) : [];
     const seq = await this.post({
       id,
       from: "friend",
@@ -5161,6 +5169,7 @@ export class DebugHub {
       email,
       ...(page.sender ? { sender: page.sender } : {}),
       ...(context ? { context } : {}),
+      ...(files.length ? { attachments: files } : {}),
       ...(spoken ? { source: "stt", ...(scene ? { scene } : {}) } : {}),
     });
     await accepted?.(seq);
@@ -5170,6 +5179,28 @@ export class DebugHub {
     // The AI could not even be asked: the page says so, rather than leave the line unanswered.
     else if (ai === "unsure")
       for (const { ws } of this.pages(page.thread)) send(ws, { type: "ai-failed" });
+  }
+
+  /**
+   * Of the refs a user's page sent, those the main Worker vouches are that
+   * account's own stored files (DebugSessions.threadFiles), as stored. No
+   * binding, an older main Worker, an error or a refusal: none (fail closed;
+   * the line itself still goes). Ids counted in the log, never names.
+   */
+  private async ownFiles(userId: string, sent: AttachmentRef[]): Promise<AttachmentRef[]> {
+    const rpc = this.sessions?.threadFiles;
+    if (!rpc) return [];
+    try {
+      const kept = verifiedRefs(sent, await rpc({ userId, ids: sent.map((a) => a.id) }));
+      if (kept.length !== sent.length)
+        console.log(
+          JSON.stringify({ msg: "debug.files-dropped", sent: sent.length, kept: kept.length }),
+        );
+      return kept;
+    } catch (e) {
+      rpcFailed("threadFiles", e, "check");
+      return [];
+    }
   }
 
   /**

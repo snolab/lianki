@@ -3340,6 +3340,10 @@ export function DebugChat({
               className="tap-40 shrink-0 px-1.5 text-sm text-gray-500">×</button>
           </div>}
           {pendingFiles.length > 0 && <PendingFilesRow t={t} list={pendingFiles} onRemove={(key) => pending.remove(key)} />}
+          {/* The host's reason in full (a full file space, with the numbers): the chip has room for a few words only. */}
+          {pendingFiles.find((file) => file.state === "failed" && file.note)?.note && <div role="status"
+            data-testid="debug-chat-file-note" className="fs-11 leading-snug" style={{ color: "oklch(0.55 0.17 25)" }}>
+            {pendingFiles.find((file) => file.state === "failed" && file.note)!.note}</div>}
           {pendingFiles.some((file) => file.state === "failed") && <button type="button"
             data-testid="debug-chat-file-retry" onPointerDown={(e) => e.preventDefault()}
             onClick={() => { for (const file of pending.get()) if (file.state === "failed") pending.retry(file.key); }}

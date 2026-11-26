@@ -201,7 +201,8 @@ export type ChatMessage = {
    * Files sent with the line (the + menu's File / Photo, paste, drop): the
    * host's upload ids and what each is. Never the bytes: the host stores
    * them and says where to fetch them (ChatFiles.url). Checked by
-   * cleanAttachments. Owner lines only, as the host's upload is.
+   * cleanAttachments. Any signed-in account's line; on a non-owner thread the
+   * hub keeps only ids that account owns (lib/inbox/thread-files.ts).
    */
   attachments?: AttachmentRef[];
   /** Safe mini app references normalized from agent app attachments; HTML is never on a chat line. */

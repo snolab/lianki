@@ -2492,9 +2492,11 @@ widgets and the agent's single-use ticket downloads.
   No public URL: his session, or a single-use 60 s ticket.
 - **Caps** — live `cfg()` keys in `lib/config.ts`: `inbox.maxFileBytes`
   (public, also `publicCfg()` in the picker), `inbox.maxDayBytes`,
-  `inbox.maxStoredBytes`, `inbox.uploadsPerMinute`. Defaults: 20 MB per file,
-  200 MB per rolling 24 h per account, 2 GB stored per account (a safety cap,
-  not a plan limit), 30 uploads/min per account per isolate. Accounts do not
+  `files.quotaBytes`, `inbox.uploadsPerMinute`. Defaults: 20 MB per file,
+  200 MB per rolling 24 h per account, 5 GB stored per account (the account's
+  file space at /my/files, every source together; owner 2026-11-26), 30
+  uploads/min per account per isolate. Over the space, an upload answers 413
+  `storage-cap` with `used` and `max`, and the chat says both. Accounts do not
   spend each other's rate window. D1 checks stored/day caps atomically with
   the item/usage write, so concurrent uploads cannot bypass either cap.
   `0077_inbox_upload_log.sql` keeps only id/account/size/time: deleting a file

@@ -196,6 +196,8 @@ export type PartnerStrings = ChatStrings & {
   unavailable: string;
   /** The inbox's one-tap import of an Anki package (.apkg) as a deck (lib/inbox/client.ts). */
   importDeck: string;
+  /** An upload refused for a full file space, with {used} and {max} (lib/inbox/client.ts). */
+  storageFull?: string;
   /** The AI replies on a friend's thread (docs/partner-ai.md): empty-log hint, status, two warnings. */
   aiHint: string;
   aiStatus: string;
@@ -1546,9 +1548,11 @@ export function DebugEval({
       const wakeReason = wake ? mic?.wakeReason : undefined;
       // The page selection attached with the + menu (bounded as the hub bounds it).
       const context = cleanContext(opts?.context);
-      // Files from the owner's inbox (lib/inbox/client.ts): refs only, the bytes are in R2.
+      // Files from the signed-in account's own file space (lib/inbox/client.ts): refs
+      // only, the bytes are in R2. Every account (owner 2026-11-26); the hub keeps a
+      // non-owner's refs only after checking each id is that thread's account's own.
       const attachments =
-        owner && friend === null ? cleanAttachments(opts?.attachments) : undefined;
+        account || (owner && friend === null) ? cleanAttachments(opts?.attachments) : undefined;
       // Where a voice line was spoken (path, title, screen text): its polish draws on it.
       const scene = opts?.source === "stt" ? pageScene() : undefined;
       // When it was spoken on the hub's clock: the hub lines it up with what his devices read aloud.
@@ -1653,10 +1657,16 @@ export function DebugEval({
   }, [treeOn]);
   // The chat inbox's host side (lib/inbox/client.ts): an Anki package imports in one tap.
   const importDeck = strings?.importDeck ?? "Import as a deck";
+  const storageFull = strings?.storageFull;
   const accountFiles = useMemo(
     () =>
-      inboxFiles({ importDeck, go: (path) => router.push(path), account: account ?? undefined }),
-    [importDeck, router, account],
+      inboxFiles({
+        importDeck,
+        go: (path) => router.push(path),
+        account: account ?? undefined,
+        ...(storageFull ? { storageFull } : {}),
+      }),
+    [importDeck, router, account, storageFull],
   );
   if (!live && !toast && !chat) return null;
   return (

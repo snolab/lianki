@@ -64,9 +64,15 @@ async function account(d: InboxDeps) {
   return w?.id ? w : null;
 }
 
-/** Over the safety cap on what one user keeps stored (INBOX.maxStoredBytes)? Applies to everyone. */
+/**
+ * Over the account's file space (config files.quotaBytes, 5 GB by default)?
+ * Every source counts together, so chat images and /my/files share it.
+ */
 export const overCap = (stored: number, adding: number, max = INBOX.maxStoredBytes) =>
   stored + adding > max;
+
+/** The 413 for a full file space: what is used and the limit, for the friendly message. */
+const storageFull = (used: number, max: number) => json({ error: "storage-cap", used, max }, 413);
 
 /**
  * The storage cost accrued since the last settlement (bytes stored × time),
@@ -167,7 +173,7 @@ export async function storeUpload(
   if (day + len > limits.maxDayBytes)
     return json({ error: "day-cap", max: limits.maxDayBytes }, 413);
   if (overCap(usage.bytesStored, len, limits.maxStoredBytes))
-    return json({ error: "storage-cap", max: limits.maxStoredBytes }, 413);
+    return storageFull(usage.bytesStored, limits.maxStoredBytes);
   let name = "file";
   try {
     name = cleanFileName(decodeURIComponent(req.headers.get("x-file-name") ?? ""));
@@ -216,7 +222,7 @@ export async function storeUpload(
       await d.bucket().delete(key);
       const usage = await usageOf(db, who.id);
       return overCap(usage.bytesStored, len, limits.maxStoredBytes)
-        ? json({ error: "storage-cap", max: limits.maxStoredBytes }, 413)
+        ? storageFull(usage.bytesStored, limits.maxStoredBytes)
         : json({ error: "day-cap", max: limits.maxDayBytes }, 413);
     }
   } catch {

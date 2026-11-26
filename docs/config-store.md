@@ -84,6 +84,7 @@ here:
 | key                                                                                                                | removed    | why                                                                                                       |
 | ------------------------------------------------------------------------------------------------------------------ | ---------- | --------------------------------------------------------------------------------------------------------- |
 | `credits.ageBonus.day1Usd`, `credits.ageBonus.day7Usd`, `credits.ageBonus.day1Hours`, `credits.ageBonus.day7Hours` | 2026-11-14 | the account-age bonus was replaced by the login streak ([payments.md](payments.md), "Login-streak bonus") |
+| `inbox.maxStoredBytes`                                                                                             | 2026-11-26 | replaced by `files.quotaBytes` (5 GB per account, every file source together)                             |
 
 ## Migrated so far (first batch, 2026-11-10)
 

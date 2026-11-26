@@ -3,17 +3,51 @@
  * uploads to the signed-in account's own /api/my/inbox, with its session.
  * Guests never receive these capabilities.
  */
-import type { ChatFiles, InboxListing } from "@lianki/debug-chat/files";
+import { type ChatFiles, type InboxListing, formatSize } from "@lianki/debug-chat/files";
 import type { AttachmentRef } from "@lianki/debug-chat/wire";
 import { publicCfg } from "@/lib/config-client";
 
 const BASE = "/api/my/inbox";
+
+/** The English fallback of learning-partner.content.ts `storageFull`. */
+const STORAGE_FULL =
+  "Your file space is full: {used} of {max} used. Delete some files in My files to make room.";
+
+/**
+ * A refused upload's error. `note`: the friendly line the chat shows under
+ * the file (a full file space, with what is used and the limit).
+ */
+export class UploadRefused extends Error {
+  constructor(
+    readonly status: number,
+    readonly note?: string,
+  ) {
+    super(`HTTP ${status}`);
+  }
+}
+
+/** The friendly note for a refused upload's body, or undefined (the generic "failed"). */
+export function refusalNote(status: number, body: string, template = STORAGE_FULL) {
+  if (status !== 413) return undefined;
+  type Body = { error?: unknown; used?: unknown; max?: unknown } | null;
+  const b = ((): Body => {
+    try {
+      return JSON.parse(body) as Body;
+    } catch {
+      return null;
+    }
+  })();
+  if (b?.error !== "storage-cap" || typeof b.max !== "number") return undefined;
+  const used = typeof b.used === "number" ? b.used : b.max;
+  return template.replace("{used}", formatSize(used)).replace("{max}", formatSize(b.max));
+}
 
 /** One file up, with progress (XHR: fetch has no upload progress). */
 function upload(
   file: File,
   onProgress: (sent: number, total: number) => void,
   signal: AbortSignal,
+  storageFull?: string,
 ): Promise<AttachmentRef> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(new Error("aborted"));
@@ -23,7 +57,10 @@ function upload(
     x.setRequestHeader("content-type", file.type || "application/octet-stream");
     x.upload.onprogress = (e) => onProgress(e.loaded, e.total);
     x.onload = () => {
-      if (x.status !== 201) return reject(new Error(`HTTP ${x.status}`));
+      if (x.status !== 201)
+        return reject(
+          new UploadRefused(x.status, refusalNote(x.status, x.responseText, storageFull)),
+        );
       try {
         resolve(JSON.parse(x.responseText) as AttachmentRef);
       } catch (e) {
@@ -53,9 +90,11 @@ export const inboxFiles = (opts: {
   importDeck: string;
   go: (path: string) => void;
   account?: string;
+  /** Localized full-space note, with {used} and {max} (learning-partner.content.ts storageFull). */
+  storageFull?: string;
 }): ChatFiles => ({
   scope: opts.account,
-  upload,
+  upload: (file, onProgress, signal) => upload(file, onProgress, signal, opts.storageFull),
   actions: (ref) =>
     isAnkiPackage(ref.name)
       ? [
