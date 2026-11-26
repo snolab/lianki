@@ -14,7 +14,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.48
+// @version     2.24.49
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -5547,7 +5547,7 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
     d.report("partner-mode", `${isolated ? "isolated" : "page-realm"} ${host}`);
     const hideHere = () =>
       d.setValue(PARTNER_HIDDEN_KEY, JSON.stringify([...new Set([...hidden, host])]));
-    if (!isolated) return pageRealmNote(d.doc ?? document, d.origin, hideHere);
+    if (!isolated) return NOOP;
     const ticket = async () => {
       try {
         const r = await d.gmFetch(`${d.origin}/api/debug/partner-ticket`, {

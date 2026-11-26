@@ -406,7 +406,9 @@ rejection, controller isolation and exclusion of learning data. The extended
 isolated-world browser fixtures; it is not evidence of a real manager install.
 Actual ScriptCat/Tampermonkey-to-site chat remains a separate post-deploy check.
 
-## 随身Li: global consent and bundled CSP-independent chat (2.24.45, pending delivery)
+## 随身Li: global consent and bundled CSP-independent chat (2.24.46, pending delivery)
+
+No permanent chat-only/advanced-action banner is shown. The legacy page-realm startup also draws no status card; a real advanced capability denial can show a dismissible localized explanation and first-party link on demand.
 
 The automatic chat path uses a statically bundled shadow-DOM panel and
 `GM_xmlhttpRequest`, rather than relying on an iframe or the website's
@@ -462,6 +464,48 @@ so revoking permission or excluding a site cannot leave a second chat window.
   rate-limits each request, and one-use replay bookkeeping uses DO storage.
   User cancellation aborts the request; a message already accepted durably
   is not unsent. No microphone, playback or device access is part of this UI.
+
+### The chat window is the main site's DebugChat (2.24.49)
+
+Owner, 2026-11-26: 随身Li reuses the Li chat component, no second wheel, and
+looks exactly like the chat window on lianki.com. So the panel is
+`packages/debug-chat`'s `DebugChat` itself (bubbles, RichText, composer,
+avatars, light/dark), mounted by `mountPortable` in
+`packages/debug-chat/src/embed/partner-embed.tsx`:
+
+- **Where it comes from.** The Learning Partner build,
+  `public/partner-embed.js` (scripts/build-partner-embed.ts: its own React,
+  the widget's CSS, `localStorage`/network shadowed), ~1.2 MB. It is not in
+  `lianki.user.js` (~355 KB, unchanged in size): `src/portable-ui-loader.ts`
+  fetches it with `GM_xmlhttpRequest` the first time 随身Li shows on a page and
+  evaluates it in the manager's world, once per page. The dev loader's
+  `__LK_PARTNER_SRC__` points it at the dev server's build.
+- **Isolation.** A closed shadow root on a plain div (`embed/isolation.ts`):
+  the page's CSS never reaches in, every rem is px, so the window has a fixed
+  size whatever the page's `html { font-size }`. Keys typed in it stop at the
+  root.
+- **Transport unchanged.** `embed/portable-client.ts` drives DebugChat only
+  through the userscript's chat-only broker (`read`, `send`; same HTTP
+  contract, same 60 s single-use capability behind it). A long-poll read runs
+  while the page is visible; no timers.
+- **Advanced actions.** The window offers no + menu (`attach={false}`), no mic
+  (`embedded`). A line addressed to a node (`@/…`), page context or files is
+  refused locally, nothing is sent, and only then the hint shows: "去
+  lianki.com 为这个网站单独打开" with a link to `/chat?from=<origin>`
+  (`advancedHint`, intlayer `portable-li`). No standing notice.
+- **Hide on this website** is a row in the window's own menu (DebugChat
+  `menuItems`).
+- **Fallback.** In the page realm (the page could replace eval), with no eval
+  (a manager whose world follows the page CSP), offline, or with blocked
+  styles, the plain panel (`src/portable-li-panel.ts`, now oklch with the
+  seal accent) shows instead. Under Trusted Types, RichText falls back to
+  plain text.
+- **Language.** The window's own chrome (placeholder, menu) follows the
+  page's `<html lang>` as the partner does; the 随身Li strings follow the
+  mirrored Lianki language.
+
+QA: `bun scripts/qa/qa-portable-li-window.ts --shots <dir>` (normal and
+strict-CSP pages, light and dark, the build evaluated in an isolated world).
 
 ### Extension alternative — assessment only, not implemented
 

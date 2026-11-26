@@ -92,12 +92,12 @@ export async function startPartner(d: PartnerHostDeps): Promise<() => void> {
   if (!wanted) return NOOP;
   // In the page's own realm, the page could replace eval, WebSocket or any
   // global we touch: no ticket is asked for, nothing is evaluated, and no
-  // callback is handed out. Only the note, drawn by this (trusted) code.
+  // callback is handed out. Portable chat owns its UI; never draw an automatic status-only card.
   const isolated = isolatedWorld(d.info as Parameters<typeof isolatedWorld>[0]);
   d.report("partner-mode", `${isolated ? "isolated" : "page-realm"} ${host}`);
   const hideHere = () =>
     d.setValue(PARTNER_HIDDEN_KEY, JSON.stringify([...new Set([...hidden, host])]));
-  if (!isolated) return pageRealmNote(d.doc ?? document, d.origin, hideHere);
+  if (!isolated) return NOOP;
   // Owner only: the ticket route answers 404 to anyone else. Asked once up
   // front, so nothing is downloaded or drawn for a non-owner.
   const ticket = async (): Promise<string | null> => {
