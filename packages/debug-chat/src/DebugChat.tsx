@@ -253,16 +253,11 @@ import {
   type Fold,
   type FoldEvent,
   type FoldState,
-  HANDLE_SHAPE,
-  HANDLE_SIZE,
   floatSide,
   foldNext,
-  handleTop,
-  handleTouch,
   mirrorShift,
   mirrored,
   nearestEdge,
-  pushedAgainst,
 } from "./fold";
 import { DockResize } from "./DockResize";
 import {
@@ -293,6 +288,7 @@ import {
 import { FullScreenMenuItem } from "./FullScreenMenuItem";
 import { publicCfg } from "@/lib/config-client";
 import { SnapOverlay, type SnapOverlayState } from "./SnapOverlay";
+import { pressMenu } from "./press-menu";
 import {
   fullModeFor,
   pointerOffScreen,
@@ -1651,65 +1647,6 @@ export function DebugChat({
   // Re-placed when what it holds changes, after a drag, and on any resize
   // (window, rotation, the visual viewport, the box's own size). All events.
   useLayoutEffect(() => placeRef.current());
-  /**
-   * The tucked handle's top (fold.ts handleTop): level with the pill it
-   * stands in for (the slide is sideways only), measured on tucking and on
-   * any resize while tucked.
-   */
-  const [handleAt, setHandleAt] = useState<number | null>(null);
-  useLayoutEffect(() => {
-    if (!tucked) return;
-    const measure = () => {
-      const bar = barEl.current?.getBoundingClientRect();
-      if (!bar) return;
-      const top = handleTop({
-        centerY: (bar.top + bar.bottom) / 2,
-        height: HANDLE_SIZE[HANDLE_SHAPE].h,
-        vh: innerHeight,
-        // Clear of the notch and the home indicator, with the floating box's gutter.
-        safeTop: safeTop() + ANCHOR_GUTTER_PX,
-        safeBottom: safeInset("bottom") + ANCHOR_GUTTER_PX,
-      });
-      setHandleAt((cur) => (cur === top ? cur : top));
-    };
-    measure();
-    addEventListener("resize", measure);
-    return () => removeEventListener("resize", measure);
-  }, [tucked]);
-  /** The press on the handle became a drag (its click is not a tap). */
-  const handleDragged = useRef(false);
-  /**
-   * A press on the handle: moved past the slop, the pill comes back at once
-   * and follows the finger as a drag of the box (useDrag), so it can be
-   * carried anywhere, or to the other edge. A tap is the button's click.
-   */
-  const pressHandle = (e: React.PointerEvent<HTMLButtonElement>) => {
-    unlockSpeech();
-    handleDragged.current = false;
-    const sx = e.clientX;
-    const sy = e.clientY;
-    let started = false;
-    const move = (ev: PointerEvent) => {
-      if (!started) {
-        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
-        started = true;
-        handleDragged.current = true;
-        // Back where it was before the drag measures it: no slide.
-        flushSync(() => foldBy({ type: "handle" }, true));
-        begin(sx, sy);
-      }
-      moveTo(root.current, ev.clientX, ev.clientY);
-    };
-    const up = () => {
-      removeEventListener("pointermove", move);
-      removeEventListener("pointerup", up);
-      removeEventListener("pointercancel", up);
-      if (started) end();
-    };
-    addEventListener("pointermove", move);
-    addEventListener("pointerup", up);
-    addEventListener("pointercancel", up);
-  };
   /** The notch, px: measured on mount and on rotation, not per viewport event. */
   const notch = useRef(0);
   /**
@@ -2087,10 +2024,38 @@ export function DebugChat({
   gripGesture.current ??= createGripGesture({
     onSingle: () => gripAct.current.single(),
     onDouble: () => gripAct.current.double(),
-    onMenu: () => gripAct.current.menu(),
+    onMenu: (via) => {
+      gripAct.current.menu();
+      // A touch hold: the finger is still down, so the menu follows it (press-menu.ts).
+      if (via === "hold") followGripMenu.current();
+    },
     onHoldCancelDrag: () => gripAct.current.cancelDrag(),
     holdMs: () => gripAct.current.holdMs,
   });
+  /** The grip's latest press point (a hold or right-press menu follows from there). */
+  const gripPress = useRef<{ x: number; y: number; id: number } | null>(null);
+  /** The grip menu's press-drag-release follow (press-menu.ts), while one is under way. */
+  const gripFollow = useRef<{ end: () => void } | null>(null);
+  useEffect(() => () => gripFollow.current?.end(), []);
+  const followGripMenu = useRef(() => {});
+  followGripMenu.current = () => {
+    const p = gripPress.current;
+    const grip = gripEl.current;
+    if (!p || !grip) return;
+    gripFollow.current?.end();
+    gripFollow.current = pressMenu({
+      win: window,
+      menu: () =>
+        (grip.getRootNode() as Document | ShadowRoot).querySelector<HTMLElement>(
+          '[data-testid="debug-menu"]',
+        ),
+      opener: () => gripEl.current,
+      start: { x: p.x, y: p.y, pointerId: p.id },
+      close: () => setMenu(false),
+    });
+  };
+  /** A right-press opened the menu just now: the contextmenu that follows is the same press. */
+  const gripRightAt = useRef(0);
   useEffect(() => () => gripGesture.current?.cancel(), []);
   useEffect(() => { if (!menu) setGripMenuAt(null); }, [menu]);
   /** The chat session whose End was tapped once: a second tap within END_CONFIRM_MS ends it. */
@@ -4044,7 +4009,7 @@ export function DebugChat({
     // Minimize: the pill folds, then goes to its corner (the preview's rect).
     if (fullOn.current || fullHeldNow.current) setFull(false);
     setPanel("none");
-    foldBy({ type: "dropped", nearest: "right", against: null });
+    foldBy({ type: "dropped", nearest: "right" });
     foldBy({ type: "minimize" });
     const home = t.result;
     const place = () => {
@@ -4068,12 +4033,7 @@ export function DebugChat({
   };
   // A free drop: the box follows its nearest edge (no tuck: that level is removed).
   onDrop.current = (bar) => {
-    const vw = innerWidth;
-    foldBy({
-      type: "dropped",
-      nearest: nearestEdge(bar.boxLeft, bar.boxRight, vw),
-      against: pushedAgainst(bar.left, bar.right, vw),
-    });
+    foldBy({ type: "dropped", nearest: nearestEdge(bar.boxLeft, bar.boxRight, innerWidth) });
   };
   gripAct.current = {
     // Open: minimize into the pill. The pill: open it again.
@@ -4479,6 +4439,16 @@ export function DebugChat({
         {...handle}
         ref={gripEl}
         onPointerDown={(e) => {
+          gripPress.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
+          // A right-press opens the menu at once and follows the pointer: sliding
+          // onto a row and letting go picks it (press-menu.ts). Never a drag.
+          if (e.button === 2) {
+            e.preventDefault();
+            gripRightAt.current = Date.now();
+            gripAct.current.menu();
+            followGripMenu.current();
+            return;
+          }
           if (!gripGesture.current?.down({ pointerType:e.pointerType,button:e.button,x:e.clientX,y:e.clientY,id:e.pointerId })) return;
           unlockSpeech();
           // Capture begins immediately; only touch/pen hold-to-menu waits.
@@ -4492,7 +4462,12 @@ export function DebugChat({
         onPointerCancel={() => { gripGesture.current?.cancel(); handle.onPointerCancel(); }}
         onClick={() => gripGesture.current?.click(wasDrag())}
         onDoubleClick={(e) => e.preventDefault()}
-        onContextMenu={(e) => { e.preventDefault(); gripGesture.current?.context(); }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          // The right-press already opened it (and follows it); a touch hold too.
+          if (Date.now() - gripRightAt.current < 1500) return;
+          gripGesture.current?.context();
+        }}
         // The keyboard moves it too (docs/chat-drag-ux.md): arrows 16 px, Shift 48, kept on screen.
         onKeyDown={(e) => {
           const step = e.shiftKey ? 48 : 16;
@@ -4916,6 +4891,22 @@ export function DebugChat({
           onToggle={() => {
             setMenu(false);
             setFull(!full, true);
+          }}
+        />
+      )}
+      {/* Dock right without a drag (the right drop zone's keyboard and menu way):
+          the full-height sidebar, where the screen is wide enough for one. */}
+      {fullAllowed && !tucked && sidebar && (
+        <FullScreenMenuItem
+          testId="debug-menu-dock-right"
+          on={asSidebar}
+          label={t.dockRight}
+          onWord={ux.menuSwitchOn}
+          offWord={ux.menuSwitchOff}
+          onToggle={() => {
+            setMenu(false);
+            if (asSidebar) setFull(false, true);
+            else setFull(true, true, "side");
           }}
         />
       )}
@@ -5640,94 +5631,6 @@ export function DebugChat({
         {liveRows.map((r) => liveLine(r, "compact"))}
         {pendingLine("compact")}
       </div>
-    );
-  })();
-  /**
-   * Tucked (fold.ts): one big handle on the edge, and the newest line that
-   * arrived since peeking beside it for its dwell, a dot while any is
-   * unread. Its touch area starts TOUCH_INSET in from the edge, clear of
-   * Android's Back swipe: a tap, or a press-and-drag starting on it, brings
-   * the pill back (the drag carrying it along). Out of the box's transform.
-   */
-  const tuckEl = tucked && handleAt !== null && (() => {
-    const size = HANDLE_SIZE[HANDLE_SHAPE];
-    const touch = handleTouch(HANDLE_SHAPE);
-    const fromEdge = (px: number) => `calc(env(safe-area-inset-${edge}) + ${px}px)`;
-    const r = size.r;
-    const radius =
-      HANDLE_SHAPE === "square" ? r : edge === "right" ? `${r} 0 0 ${r}` : `0 ${r} ${r} 0`;
-    const peek = floats.at(-1);
-    return (
-      <>
-        <button
-          type="button"
-          data-testid="debug-chat-handle"
-          data-chat-restore
-          data-shape={HANDLE_SHAPE}
-          data-edge={edge}
-          aria-label={withNew(ui.untuckChat, unread)}
-          title={ui.untuckChat}
-          onPointerDown={pressHandle}
-          onClick={() => {
-            if (handleDragged.current) return void (handleDragged.current = false);
-            foldBy({ type: "handle" });
-          }}
-          // Right-click: bring the chat back with its menu open (settings from the handle).
-          onContextMenu={(e) => {
-            e.preventDefault();
-            foldBy({ type: "handle" });
-            setMenu(true);
-          }}
-          style={{
-            top: handleAt,
-            [edge]: fromEdge(touch.inset),
-            width: touch.width,
-            height: size.h,
-            touchAction: "none",
-          }}
-          className="pointer-events-auto fixed z-[var(--lk-z-chat,80)] cursor-pointer text-gray-600 dark:text-gray-300"
-        >
-          {/* The shape, out to the edge; only the touch area above takes the press. */}
-          <span
-            aria-hidden
-            data-testid="debug-chat-handle-shape"
-            style={{
-              [edge]: size.gap - touch.inset,
-              width: size.w,
-              height: size.h,
-              borderRadius: radius,
-              background: INPUT_BG,
-              ...(HANDLE_SHAPE === "half" ? { [edge === "right" ? "borderRight" : "borderLeft"]: "none" } : {}),
-            }}
-            className="pointer-events-none absolute top-0 flex items-center justify-center border border-current/25 backdrop-blur-md backdrop-saturate-150"
-          >
-            <LiagentMark size={26} />
-            {unread > 0 && (
-              <span
-                data-testid="debug-chat-handle-dot"
-                className="absolute top-2.5 size-3.5 rounded-full"
-                style={{ background: "oklch(0.6 0.2 22)", [edge === "right" ? "left" : "right"]: 6 }}
-              />
-            )}
-          </span>
-        </button>
-        {peek && (
-          // Text on the page with its halo, as the floating lines are: no box.
-          <ol
-            data-testid="debug-chat-peek"
-            aria-live="polite"
-            onClick={() => foldBy({ type: "handle" })}
-            style={{
-              top: handleAt + size.h / 2,
-              [edge]: fromEdge(size.gap + size.w + 8),
-              textAlign: edge,
-            }}
-            className="pointer-events-none fixed z-[var(--lk-z-chat,80)] flex w-max max-w-[min(20rem,calc(100vw-6rem))] -translate-y-1/2 cursor-pointer flex-col lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100"
-          >
-            {floatLine(peek, undefined)}
-          </ol>
-        )}
-      </>
     );
   })();
   /** The + menu or its file picker is up: in use, as the focused input is. */
@@ -6655,6 +6558,7 @@ export function DebugChat({
               attached={!!attached}
               selectable={!!pageSel.sel}
               onToggle={() => setAttachMenu((v) => !v)}
+              onClose={closeAttachMenu}
             />
           )}
           {/* The mic, after the + (open) or the pill's Li (folded): one place on screen. */}
@@ -6891,7 +6795,6 @@ export function DebugChat({
         </div>
       </div>
     </section>
-    {tuckEl}
     {/* The drag overlay (SnapOverlay.tsx): outside the section, whose
     transform would make it the box of a fixed child. */}
     <SnapOverlay

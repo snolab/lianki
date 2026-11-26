@@ -1423,7 +1423,17 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
   (18:26 JST). Inside 随身Li's lianki.com frame the chat does not drag
   (`movable={false}`): the userscript's shell (src/partner-frame.ts) moves it on
   the host page, with the same zones (only Minimize there). The grip also moves
-  by the keyboard: arrows 16 px, Shift 48. In full screen a drag on the grip
+  by the keyboard: arrows 16 px, Shift 48. The grip menu's **Dock right** row
+  (wide screens) docks it without a drag.
+- **Press, drag, release menus** (owner, 2026-11-27; press-menu.ts): pressing
+  the +, right-pressing the grip (or a touch hold on it), or right-pressing a
+  line (its details, where the browser opens a context menu on the press)
+  opens the menu at once and follows the pointer: sliding over a row
+  highlights it, letting go on it picks it (its own click), letting go
+  elsewhere closes the menu, Escape cancels. Without a slide it is a plain
+  tap or right-click: the menu stays for a separate click, and a + tap still
+  toggles. A menu press never starts a window move (unit/press-menu.test.ts,
+  unit/support/press-menu-mount.tsx). In full screen a drag on the grip
   or the bar's edge that goes `chat.fullLeavePx` (48 px) up leaves it
   (`dragLeavesFull`): the panel comes back, its own size, and follows the finger
   from there; a smaller wobble, sideways or down, stays. Without a drag (the

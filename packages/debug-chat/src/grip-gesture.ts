@@ -3,7 +3,8 @@ import { createTapper } from "./tap-gesture";
 export function createGripGesture(d: {
   onSingle: () => void;
   onDouble: () => void;
-  onMenu: () => void;
+  /** `hold`: a touch hold opened it, the finger still down (press-menu.ts follows it). */
+  onMenu: (via?: "hold" | "context") => void;
   onHoldCancelDrag: () => void;
   holdMs: () => number;
   setTimer?: (f: () => void, ms: number) => unknown;
@@ -44,7 +45,7 @@ export function createGripGesture(d: {
           held = true;
           tapper.cancel();
           d.onHoldCancelDrag();
-          d.onMenu();
+          d.onMenu("hold");
         }, d.holdMs());
       }
       return true;
@@ -72,7 +73,7 @@ export function createGripGesture(d: {
       cancel();
       if (!alreadyOpened) {
         d.onHoldCancelDrag();
-        d.onMenu();
+        d.onMenu("context");
       }
     },
   };

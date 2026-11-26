@@ -19,7 +19,10 @@ export function FullScreenMenuItem({
   onWord,
   offWord,
   onToggle,
+  testId = "debug-menu-fullscreen",
 }: {
+  /** The row's test id: the Dock right row reuses this switch (debug-menu-dock-right). */
+  testId?: string;
   on: boolean;
   /** The agent is changing it: outlined, one pulse. */
   cue?: boolean;
@@ -37,7 +40,7 @@ export function FullScreenMenuItem({
       ref={ref}
       type="button"
       role="menuitemcheckbox"
-      data-testid="debug-menu-fullscreen"
+      data-testid={testId}
       data-cue={cue || undefined}
       aria-checked={on}
       style={cue ? CUE_OUTLINE : undefined}

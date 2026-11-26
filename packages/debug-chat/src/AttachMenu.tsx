@@ -21,6 +21,7 @@ import {
 } from "./attach";
 import { selectionLocation } from "./selection-location";
 import { BAR_CONTROL } from "./bar-geometry";
+import { pressMenu } from "./press-menu";
 import { HistoryIcon, Icon, type IconName, TreeIcon } from "./icons";
 import type { ChatContext, ChatStrings } from "./wire";
 
@@ -123,6 +124,7 @@ export function AttachButton({
   attached = false,
   selectable = false,
   onToggle,
+  onClose,
   buttonRef,
 }: {
   t: ChatStrings;
@@ -133,9 +135,19 @@ export function AttachButton({
   /** A page selection could be attached (allowed, not attached yet): the dot dim. */
   selectable?: boolean;
   onToggle: () => void;
+  /** Close the menu (a press-drag released elsewhere, or Escape). */
+  onClose?: () => void;
   buttonRef?: RefObject<HTMLButtonElement | null>;
 }) {
   useEffect(() => (announce ? announceChatAttach() : undefined), [announce]);
+  /**
+   * Press, drag, release (press-menu.ts; owner, 2026-11-27): the press opens
+   * the menu at once and follows the pointer; letting go on an item picks it.
+   * The click that ends a press that opened it is not a second toggle.
+   */
+  const pressOpened = useRef(false);
+  const follow = useRef<{ end: () => void } | null>(null);
+  useEffect(() => () => follow.current?.end(), []);
   // Without its Add and Attach groups, the menu holds only the state tree.
   const label = announce ? t.attachOpen : t.attachTree;
   return (
@@ -148,8 +160,34 @@ export function AttachButton({
       title={label}
       aria-haspopup="menu"
       aria-expanded={open}
-      onPointerDown={keep}
-      onClick={onToggle}
+      onPointerDown={(e) => {
+        keep(e);
+        pressOpened.current = false;
+        if (e.button !== 0 || open) return;
+        pressOpened.current = true;
+        onToggle();
+        const btn = e.currentTarget;
+        follow.current?.end();
+        follow.current = pressMenu({
+          win: window,
+          menu: () =>
+            (btn.getRootNode() as Document | ShadowRoot).querySelector<HTMLElement>(
+              '[data-testid="debug-chat-attach-menu"]',
+            ),
+          opener: () => btn,
+          start: { x: e.clientX, y: e.clientY, pointerId: e.pointerId },
+          close: onClose ?? onToggle,
+        });
+      }}
+      onClick={(e) => {
+        // The press already opened it; a keyboard click (detail 0) always toggles.
+        if (pressOpened.current && e.detail !== 0) {
+          pressOpened.current = false;
+          return;
+        }
+        pressOpened.current = false;
+        onToggle();
+      }}
       // One line box high, as the bar's other controls (bar-geometry.ts).
       style={BAR_CONTROL}
       data-lk-tap
