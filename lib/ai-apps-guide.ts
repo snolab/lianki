@@ -10,9 +10,17 @@ export const AI_APPS_GUIDE_URL = `https://lianki.com${AI_APPS_GUIDE_PATH}`;
 
 /** The page's sections, in order; ids are the in-page anchors. Product names stay as is. */
 export const AI_APPS = [
-  { id: "chatgpt", name: "ChatGPT" },
-  { id: "claude", name: "Claude" },
-  { id: "gemini", name: "Gemini" },
+  {
+    id: "chatgpt",
+    name: "ChatGPT",
+    help: "https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt",
+  },
+  {
+    id: "claude",
+    name: "Claude",
+    help: "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp",
+  },
+  { id: "gemini", name: "Gemini", help: "https://support.google.com/gemini/answer/17209137" },
 ] as const;
 
 /** When the third-party menu names were last checked by hand (ISO, UTC). */
