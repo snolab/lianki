@@ -281,9 +281,18 @@ export async function renameToken(
   return r ? info(r, now) : null;
 }
 
-/** Rename the calling token itself via its authenticated identity:self bootstrap call. */
-export async function renameSelfToken(db: D1Like, id: string, name: string): Promise<void> {
-  await db.prepare("UPDATE api_tokens SET name = ?1 WHERE token_hash = ?2").bind(name, id).run();
+/**
+ * Atomically claim the calling untitled token's name via its identity:self bootstrap.
+ * Returns true only once (when name was NULL or empty); permanently closed afterward.
+ */
+export async function renameSelfToken(db: D1Like, id: string, name: string): Promise<boolean> {
+  const row = await db
+    .prepare(
+      "UPDATE api_tokens SET name = ?1 WHERE token_hash = ?2 AND (name IS NULL OR name = '') RETURNING token_hash",
+    )
+    .bind(name, id)
+    .first<{ token_hash: string }>();
+  return row !== null;
 }
 
 /** Revoke one of this account's tokens by id; another account's is "not found". */

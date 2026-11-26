@@ -1,6 +1,9 @@
 import type { D1Like } from "@/lib/d1/types";
 import { checkToken, cleanTokenName, renameSelfToken, tagOf } from "@/lib/api-tokens";
+import { defaultConfig } from "@/lib/config";
+import { loadConfig } from "@/lib/config-store";
 import { audit, type AuditDb } from "@/lib/security/audit-log";
+import { hit, type ThrottleDb } from "@/lib/security/throttle";
 
 export type IdentityApiDeps = {
   db: () => D1Like & AuditDb;
@@ -9,14 +12,17 @@ export type IdentityApiDeps = {
   now?: () => number;
 };
 
+const MIN = 60_000;
 const NO_STORE = { "cache-control": "no-store" };
-const json = (body: unknown, status = 200) => Response.json(body, { status, headers: NO_STORE });
+const json = (body: unknown, status = 200, extra?: Record<string, string>) =>
+  Response.json(body, { status, headers: { ...NO_STORE, ...extra } });
 
 /**
  * Self-identity endpoints (`GET` whoami, `POST` set-name) for an agent token
  * holding `identity:self`. Explicitly exempt from the name-before-use gate
  * (`allowUntitled: true`) so an untitled identity can inspect and name itself
- * on first connect, while still gated on `chat.agent-identities` + owner audience.
+ * on first connect, while gated on `chat.agent-identities` + owner audience,
+ * rate-limited via `chat.identityBootstrapCalls`, and atomically one-shot on `POST`.
  */
 export async function identityApi(req: Request, deps: IdentityApiDeps): Promise<Response> {
   if (req.method !== "GET" && req.method !== "POST")
@@ -35,6 +41,19 @@ export async function identityApi(req: Request, deps: IdentityApiDeps): Promise<
   }
   if (!(await deps.allowed(checked.user.id))) return json({ error: "forbidden" }, 403);
 
+  const config = await loadConfig(db).catch(defaultConfig);
+  const limit = await hit(
+    db as unknown as ThrottleDb,
+    `identity-bootstrap:${tagOf(checked.id)}`,
+    { max: config["chat.identityBootstrapCalls"], windowMs: 10 * MIN },
+    now,
+  );
+  if (!limit.allowed) {
+    return json({ error: "rate-limited" }, 429, {
+      "Retry-After": String(Math.max(1, Math.ceil(limit.retryAfterMs / 1000))),
+    });
+  }
+
   if (req.method === "GET") {
     return json({
       id: checked.id,
@@ -48,7 +67,8 @@ export async function identityApi(req: Request, deps: IdentityApiDeps): Promise<
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const name = cleanTokenName(body?.name);
   if (!name) return json({ error: "invalid-name" }, 400);
-  await renameSelfToken(db, checked.id, name);
+  const claimed = await renameSelfToken(db, checked.id, name);
+  if (!claimed) return json({ error: "already-named" }, 409);
   await audit(
     db,
     {

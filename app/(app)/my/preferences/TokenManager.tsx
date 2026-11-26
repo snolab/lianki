@@ -274,10 +274,7 @@ export default function TokenManager({
 
   const setupUrl =
     secret && agentIdentities && secret.untitled
-      ? (() => {
-          const base = agentGuideUrl(secret.scopes, String(locale));
-          return `${base}${base.includes("?") ? "&" : "?"}token=${encodeURIComponent(secret.token)}`;
-        })()
+      ? agentGuideUrl(secret.scopes, String(locale))
       : null;
 
   const setupPrompt =

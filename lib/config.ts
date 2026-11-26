@@ -1064,6 +1064,16 @@ export const CONFIG = {
     audience: "server",
     description: "聊天轻量整理每个API token的独立鉴权限流；不占用发送、提问或读取历史的额度。",
   }),
+  "chat.identityBootstrapCalls": int({
+    default: 10,
+    min: 1,
+    max: 120,
+    unit: "calls/10min",
+    group: "chat",
+    audience: "server",
+    description:
+      "每个 API token 调用 /api/my/identity 命名引导（whoami / set-name）的 10 分钟限流上限。",
+  }),
   "app.autoUpdateIdleMs": int({
     default: 15000,
     min: 3000,

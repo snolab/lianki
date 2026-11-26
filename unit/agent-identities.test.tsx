@@ -81,11 +81,47 @@ describe("agent identities backend gate & naming", () => {
     if (!bootstrap.ok) throw new Error("expected bootstrap ok");
     expect(bootstrap.id).toBe(id);
 
-    // Self-naming unlocks normal calls.
-    await renameSelfToken(db as unknown as D1Like, id, "Claude Desktop");
+    // Self-naming unlocks normal calls and permanently closes the bootstrap.
+    expect(await renameSelfToken(db as unknown as D1Like, id, "Claude Desktop")).toBe(true);
+    expect(await renameSelfToken(db as unknown as D1Like, id, "Second Name")).toBe(false);
     const unlocked = await checkToken(db as unknown as D1Like, token, "study", now);
     expect(unlocked.ok).toBe(true);
     if (unlocked.ok) expect(unlocked.name).toBe("Claude Desktop");
+  });
+
+  test("POST /api/my/identity is atomically one-shot under concurrency and rate-limited", async () => {
+    const minted = await tokenApi(
+      jsonReq("POST", { untitled: true, scopes: ["identity:self"], expiry: { days: 90 } }),
+      makeDeps(db, true),
+    );
+    const { token } = (await minted.json()) as { token: string };
+
+    const callSetName = (name: string) =>
+      identityApi(
+        new Request("https://lianki.com/api/my/identity", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ name }),
+        }),
+        { db: () => db as unknown as D1Like, allowed: async () => true, now: () => now },
+      );
+
+    // Concurrent calls: exactly one 200 and one 409; subsequent call is also 409.
+    const [r1, r2] = await Promise.all([callSetName("Alpha"), callSetName("Beta")]);
+    expect([r1.status, r2.status].sort()).toEqual([200, 409]);
+    const r3 = await callSetName("Gamma");
+    expect(r3.status).toBe(409);
+
+    // Rate limit (default 10 calls/10min): remaining calls hit 429.
+    let saw429 = false;
+    for (let i = 0; i < 12; i++) {
+      const res = await callSetName(`Extra${i}`);
+      if (res.status === 429) {
+        saw429 = true;
+        break;
+      }
+    }
+    expect(saw429).toBe(true);
   });
 
   test("Settings PATCH /api/token renames an untitled token and unlocks it", async () => {
@@ -323,9 +359,10 @@ describe("TokenManager Add My Agent UI", () => {
         scopes: ["identity:self"],
         expiry: { days: 90 },
       });
-      expect(host.querySelector('[data-testid="agent-setup-url"]')?.textContent).toContain(
-        "token=lk_",
-      );
+      const setupUrlText = host.querySelector('[data-testid="agent-setup-url"]')?.textContent ?? "";
+      expect(setupUrlText).toContain("/agent-guide.");
+      expect(setupUrlText).not.toContain("token=");
+      expect(host.innerHTML).not.toContain("token=");
       const promptText =
         host.querySelector('[data-testid="agent-setup-prompt"]')?.textContent ?? "";
       expect(promptText).toContain("/api/my/identity");
