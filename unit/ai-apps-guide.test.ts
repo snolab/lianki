@@ -91,6 +91,12 @@ describe("ai-apps guide", () => {
     // Gemini custom apps are English-only (Google's help page), said in every locale.
     for (const loc of LOCALES) expect(g.geminiNote.translation[loc]).toBeTruthy();
     expect(g.geminiNote.translation.en).toContain("only in English");
+    // ...and in Gemini's "Who can use it" line, every locale (Google's help page).
+    expect(g.availGemini.translation.en).toContain("only in English");
+    for (const loc of LOCALES)
+      expect(g.availGemini.translation[loc].length, loc).toBeGreaterThan(
+        g.availGemini.translation[loc].indexOf("Gemini") + 60,
+      );
     // No unconditional "about three minutes" promise in the intro.
     expect(g.intro.translation.en).not.toMatch(/minute/);
   });
