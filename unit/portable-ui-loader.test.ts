@@ -49,6 +49,25 @@ test("loads the partner build once, mounts with its CSS, keeps its storage in GM
   expect(mountedWith).toMatchObject({ principal: "p", css: ["a{}"] });
   gm!.set("lk:x", "1");
   expect(t.values.get(PORTABLE_STORE_PREFIX + "lk:x")).toBe("1");
+  const g = gm as unknown as { get(k: string): unknown; del(k: string): void; keys(): string[] };
+  expect(g.get("lk:x")).toBe("1");
+  g.del("lk:x");
+  expect(g.get("lk:x")).toBeNull();
+  expect(g.keys()).toEqual([]);
+});
+
+test("by default the build is evaluated as one function expression", async () => {
+  const t = deps({
+    gmFetch: async () => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        "(function (gm) { return { css: ['b{}'], api: { mountPortable: function (o) { return { destroy: function () {}, o: o } } } } })",
+    }),
+  });
+  const ui = await portableUiLoader(t.d)();
+  expect(ui).not.toBeNull();
+  expect(typeof ui!.mount({} as never).destroy).toBe("function");
 });
 
 test("null (the plain panel) when the build cannot be fetched, evaluated, or has no mountPortable", async () => {

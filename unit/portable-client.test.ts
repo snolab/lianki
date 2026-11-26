@@ -181,6 +181,37 @@ describe("createPortableClient", () => {
     c.stop();
   });
 
+  test("hidden stops the read and goes offline; visible reads again; subscribers hear changes until they leave", async () => {
+    const b = broker(range({ messages: [msg(1)], throughSeq: 1 }));
+    const d = doc();
+    const c = createPortableClient({
+      call: b.call,
+      principal: "acct",
+      doc: d,
+      busyLabel: "Li",
+      failedLabel: "failed",
+      onInvalidAccount() {},
+    });
+    let heard = 0;
+    const leave = c.subscribe(() => heard++);
+    await turn();
+    expect(heard).toBeGreaterThan(0);
+    d.visibilityState = "hidden";
+    d.fire();
+    expect(c.get().live).toBe(false);
+    const reads = b.seen.length;
+    d.visibilityState = "visible";
+    d.fire();
+    await turn();
+    expect(b.seen.length).toBeGreaterThan(reads);
+    leave();
+    const before = heard;
+    c.send("x");
+    expect(heard).toBe(before);
+    c.stop();
+    expect(c.send("after stop")).toBe(false);
+  });
+
   test("a read failure shows the warning and the next visibility change reads again", async () => {
     let n = 0;
     const call: PortableCall = async (_i, _p, signal) => {

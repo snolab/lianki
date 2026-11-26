@@ -217,6 +217,40 @@ test("the main site's chat window is mounted with the broker and the hint link; 
   } finally {
     f.finish();
   }
+  for (const broken of [
+    async () => {
+      throw new Error("load");
+    },
+    async () => ({
+      mount: () => {
+        throw new Error("styles blocked");
+      },
+    }),
+  ]) {
+    const h = fixture("https://github.com/", broken);
+    try {
+      await turn();
+      h.click("同意所有网站");
+      await turn();
+      expect(h.win.document.querySelector("lianki-portable-chat")).not.toBeNull();
+    } finally {
+      h.finish();
+    }
+  }
+  // Pill taps while the window is up, and an account change, go through the slot.
+  const k = fixture("https://github.com/", async () => ui);
+  try {
+    await turn();
+    k.click("同意所有网站");
+    await turn();
+    expect(await k.controller.open()).toBe("ready");
+    await turn();
+    mounts.at(-1)!.onInvalidAccount();
+    await turn();
+    expect(destroyed).toBe(2);
+  } finally {
+    k.finish();
+  }
   const g = fixture("https://github.com/", async () => null);
   try {
     await turn();
