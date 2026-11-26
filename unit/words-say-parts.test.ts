@@ -83,6 +83,12 @@ describe("sayParts", () => {
     ).toEqual([{ kind: "example", text: "I don't drink l'eau.", lang: "en" }]);
 
     expect(
+      sayParts({ term: "t", back: "", ex: "I don’t know." }, "en", false, "en").filter(
+        (p) => p.kind === "example",
+      ),
+    ).toEqual([{ kind: "example", text: "I don’t know.", lang: "en" }]);
+
+    expect(
       sayParts(
         { term: "t", back: "", ex: "Xin chào, tiếng Việt rất đẹp." },
         "vi",
@@ -90,6 +96,24 @@ describe("sayParts", () => {
         "en",
       ).filter((p) => p.kind === "example"),
     ).toEqual([{ kind: "example", text: "Xin chào, tiếng Việt rất đẹp.", lang: "vi" }]);
+
+    expect(
+      sayParts(
+        { term: "t", back: "", ex: "tie\u0302\u0301ng Vie\u0323\u0302t" },
+        "vi",
+        false,
+        "en",
+      ).filter((p) => p.kind === "example"),
+    ).toEqual([{ kind: "example", text: "tie\u0302\u0301ng Vie\u0323\u0302t", lang: "vi" }]);
+
+    expect(
+      sayParts({ term: "t", back: "", ex: "مرحبا hello" }, "ar", false, "en").filter(
+        (p) => p.kind === "example",
+      ),
+    ).toEqual([
+      { kind: "example", text: "مرحبا", lang: "ar" },
+      { kind: "example", text: "hello", lang: "en" },
+    ]);
 
     expect(
       sayParts({ term: "t", back: "", ex: "Say مرحبا العالم now." }, "en", false, "en").filter(
