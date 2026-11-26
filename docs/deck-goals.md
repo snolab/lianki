@@ -1,6 +1,8 @@
 # Deck Goals, Domain Grouping, and Exam Deadlines
 
-Design note extending the owner's request (2026-11-27 01:48–01:49 JST).
+Tree: /chat/card-decks
+
+Design note extending the owner's request (2026-11-27 01:48–01:49 JST). See also [calendar-plan.md](calendar-plan.md) and [roadmap-next.md](roadmap-next.md).
 
 ## Problem
 
@@ -39,11 +41,11 @@ Each deck can optionally set:
 From the remaining days until `deadline`, unseen card count, projected FSRS due reviews, and recent 7-day completion rate, the deck computes:
 
 - **Countdown**: Days remaining until the deadline.
-- **Required daily pace**: Estimated cards (or minutes) per day needed to finish on time.
+- **Required daily pace**: Predicted cards (or minutes) per day needed to finish on time — pace is a **prediction** based on recent 7-day throughput and projected FSRS review load, not a guarantee.
 - **Pace status** (3 states):
-  - **On track** (`🟢`): Current 7-day pace meets or exceeds required daily pace.
+  - **On track** (`🟢`): Current 7-day pace meets or exceeds predicted daily pace.
   - **Behind pace** (`🟡`): Shows the exact daily gap (e.g. "+N cards/day needed") and offers a one-tap boost to increase this deck's mix weight.
-  - **At risk / Exam sprint** (`🔴`): Close to the deadline with significant unseen or low-stability cards remaining; suggests switching to sprint priority (surface high-value / low-stability / unseen cards first, pause low-priority new cards from other decks).
+  - **At risk / Exam sprint** (`🔴`): Close to the deadline with significant unseen or low-stability cards remaining; suggests switching to sprint priority (surface high-value / low-stability / unseen cards first, pause low-priority new cards from other decks). Sprint priority **does not change FSRS** — it only adjusts queue selection and mix weight, never FSRS parameters, stability, or difficulty.
 
 ### 4. UI Surface (Minimal)
 
@@ -55,8 +57,8 @@ On each deck row/card, show only three primary signals:
 
 ### 5. Integration Points
 
-- **FSRS scheduler**: Uses existing card `due`, `stability`, and review history to estimate retention and review load.
-- **`/roadmap` & `/calendar`**: A deck with a deadline naturally maps to a dated milestone node in the study plan / Gantt timeline.
+- **FSRS scheduler**: Uses existing card `due`, `stability`, and review history to estimate retention and review load (read-only; sprint and mix weights never alter FSRS scheduling math).
+- **`/roadmap` & `/calendar`**: A deck with a deadline naturally maps to a dated milestone node in the study plan / Gantt timeline ([roadmap-next.md](roadmap-next.md), [calendar-plan.md](calendar-plan.md)).
 
 ## Non-Goals (v1)
 
