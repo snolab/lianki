@@ -46,6 +46,105 @@ export function meaningLang(text: string, uiLocale: string): string {
   return "en";
 }
 
+const LATIN_LANGS = new Set([
+  "en",
+  "fr",
+  "de",
+  "es",
+  "pt",
+  "it",
+  "id",
+  "sw",
+  "vi",
+  "nl",
+  "pl",
+  "tr",
+]);
+
+function charLang(ch: string, lang: string, uiLocale: string): string | null {
+  const baseLang = lang.toLowerCase().split(/[-_]/)[0];
+  if (/\p{Script=Hiragana}|\p{Script=Katakana}/u.test(ch)) return "ja";
+  if (/\p{Script=Hangul}/u.test(ch)) return "ko";
+  if (/\p{Script=Cyrillic}/u.test(ch)) return "ru";
+  if (/\p{Script=Arabic}/u.test(ch)) return "ar";
+  if (/\p{Script=Hebrew}/u.test(ch)) return "he";
+  if (/\p{Script=Han}/u.test(ch)) return baseLang === "ja" ? "ja" : meaningLang(ch, uiLocale);
+  if (/\p{Script=Latin}/u.test(ch)) return LATIN_LANGS.has(baseLang) ? lang : "en";
+  return null;
+}
+
+/**
+ * Split an example sentence at every script/language switch, attaching
+ * adjacent punctuation to its neighboring part, so mixed-language examples
+ * (e.g. `"Use 中文 then continue in English."` or `"I like it. (我喜欢它。)"`)
+ * have each segment voiced in its own language.
+ */
+export function exampleParts(ex: string, lang: string, uiLocale: string): SayPart[] {
+  const tokens: { text: string; lang: string | null }[] = [];
+  let prevLang: string | null = null;
+  for (const ch of ex) {
+    // Combining marks (e.g. Vietnamese / Arabic diacritics) belong to the preceding script.
+    const l: string | null = /\p{M}/u.test(ch) ? prevLang : charLang(ch, lang, uiLocale);
+    const prev = tokens[tokens.length - 1];
+    if (prev && prev.lang === l) prev.text += ch;
+    else tokens.push({ text: ch, lang: l });
+    if (l !== null) prevLang = l;
+  }
+
+  // Merge punctuation/whitespace into adjacent script runs without inserting extra spaces.
+  const runs: { text: string; lang: string }[] = [];
+  let pendingLead = "";
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i]!;
+    if (tok.lang === null) {
+      const prevRun = runs[runs.length - 1];
+      const nextTok = tokens[i + 1];
+      if (!prevRun) {
+        pendingLead += tok.text;
+        continue;
+      }
+      // Apostrophes (' / ’) stay attached inside words (don't, l'eau); only split at
+      // whitespace or opening brackets/quotes.
+      const splitIdx = tok.text.search(/\s|[(（[「『"“]/);
+      if (splitIdx < 0) {
+        prevRun.text += tok.text;
+      } else {
+        const toPrev = tok.text.slice(0, splitIdx);
+        const rest = tok.text.slice(splitIdx);
+        if (toPrev) prevRun.text += toPrev;
+        if (nextTok && rest) pendingLead += rest;
+        else if (rest.trim()) prevRun.text += rest;
+      }
+      continue;
+    }
+
+    // If a standalone parenthesized gloss like "(我们记录每个事件。)" starts with "("
+    // and ends with ")", strip the outer parens so TTS reads the inner text cleanly.
+    const nextTok = tokens[i + 1];
+    let lead = pendingLead;
+    if (
+      /^\s*[(（]$/.test(lead) &&
+      nextTok?.lang === null &&
+      /^[。！？!?,，、\s]*[)）]\s*$/.test(nextTok.text)
+    ) {
+      lead = "";
+      nextTok.text = nextTok.text.replace(/[)）](\s*)$/, "$1");
+    }
+    pendingLead = "";
+    const prevRun = runs[runs.length - 1];
+    if (prevRun && prevRun.lang === tok.lang) {
+      prevRun.text += lead + tok.text;
+    } else {
+      runs.push({ text: (lead + tok.text).trim(), lang: tok.lang });
+    }
+  }
+
+  const cleaned = runs
+    .map((r) => ({ kind: "example" as const, text: r.text.trim(), lang: r.lang }))
+    .filter((r) => r.text);
+  return cleaned.length ? cleaned : [{ kind: "example", text: ex, lang }];
+}
+
 /**
  * The word, then the back in the row's order (BACK_ORDER: example → meaning);
  * empty parts and repeats left out.
@@ -59,19 +158,18 @@ export function sayParts(
   const word = spokenText(it, lang, readingOnBack);
   const meaning = meaningText(it.back);
   const ex = it.ex?.trim() ?? "";
-  const back: Record<BackPart, SayPart | null> = {
+  const back: Record<BackPart, SayPart[]> = {
     meaning:
       meaning && meaning !== word
-        ? { kind: "meaning", text: meaning, lang: meaningLang(meaning, uiLocale) }
-        : null,
+        ? [{ kind: "meaning", text: meaning, lang: meaningLang(meaning, uiLocale) }]
+        : [],
     // Past the server's limit (400) a part is left to the browser's speech.
-    example: ex && ex !== word ? { kind: "example", text: ex, lang } : null,
+    example: ex && ex !== word ? exampleParts(ex, lang, uiLocale) : [],
   };
   const parts: SayPart[] = [];
   if (word) parts.push({ kind: "word", text: word, lang });
   for (const k of BACK_ORDER) {
-    const p = back[k];
-    if (p) parts.push(p);
+    parts.push(...back[k]);
   }
   return parts;
 }

@@ -29,6 +29,113 @@ describe("sayParts", () => {
     ]);
   });
 
+  test("mixed-language example splits runs at every script switch with adjacent punctuation", () => {
+    expect(
+      sayParts(
+        { term: "islog", back: "记录日志", ex: "We log each event. (我们记录每个事件。)" },
+        "en",
+        false,
+        "zh",
+      ),
+    ).toEqual([
+      { kind: "word", text: "islog", lang: "en" },
+      { kind: "example", text: "We log each event.", lang: "en" },
+      { kind: "example", text: "我们记录每个事件。", lang: "zh" },
+      { kind: "meaning", text: "记录日志", lang: "zh" },
+    ]);
+
+    expect(
+      sayParts(
+        { term: "t", back: "", ex: "Use 中文 then continue in English." },
+        "en",
+        false,
+        "zh",
+      ).filter((p) => p.kind === "example"),
+    ).toEqual([
+      { kind: "example", text: "Use", lang: "en" },
+      { kind: "example", text: "中文", lang: "zh" },
+      { kind: "example", text: "then continue in English.", lang: "en" },
+    ]);
+
+    expect(
+      sayParts({ term: "t", back: "", ex: "我喜欢它。 I like it." }, "zh", false, "zh").filter(
+        (p) => p.kind === "example",
+      ),
+    ).toEqual([
+      { kind: "example", text: "我喜欢它。", lang: "zh" },
+      { kind: "example", text: "I like it.", lang: "en" },
+    ]);
+
+    expect(
+      sayParts({ term: "t", back: "", ex: "Say (hello 世界) now." }, "en", false, "zh").filter(
+        (p) => p.kind === "example",
+      ),
+    ).toEqual([
+      { kind: "example", text: "Say (hello", lang: "en" },
+      { kind: "example", text: "世界)", lang: "zh" },
+      { kind: "example", text: "now.", lang: "en" },
+    ]);
+
+    expect(
+      sayParts({ term: "t", back: "", ex: "I don't drink l'eau." }, "en", false, "zh").filter(
+        (p) => p.kind === "example",
+      ),
+    ).toEqual([{ kind: "example", text: "I don't drink l'eau.", lang: "en" }]);
+
+    expect(
+      sayParts({ term: "t", back: "", ex: "I don’t know." }, "en", false, "en").filter(
+        (p) => p.kind === "example",
+      ),
+    ).toEqual([{ kind: "example", text: "I don’t know.", lang: "en" }]);
+
+    expect(
+      sayParts(
+        { term: "t", back: "", ex: "Xin chào, tiếng Việt rất đẹp." },
+        "vi",
+        false,
+        "en",
+      ).filter((p) => p.kind === "example"),
+    ).toEqual([{ kind: "example", text: "Xin chào, tiếng Việt rất đẹp.", lang: "vi" }]);
+
+    expect(
+      sayParts(
+        { term: "t", back: "", ex: "tie\u0302\u0301ng Vie\u0323\u0302t" },
+        "vi",
+        false,
+        "en",
+      ).filter((p) => p.kind === "example"),
+    ).toEqual([{ kind: "example", text: "tie\u0302\u0301ng Vie\u0323\u0302t", lang: "vi" }]);
+
+    expect(
+      sayParts({ term: "t", back: "", ex: "مرحبا hello" }, "ar", false, "en").filter(
+        (p) => p.kind === "example",
+      ),
+    ).toEqual([
+      { kind: "example", text: "مرحبا", lang: "ar" },
+      { kind: "example", text: "hello", lang: "en" },
+    ]);
+
+    expect(
+      sayParts({ term: "t", back: "", ex: "Say مرحبا العالم now." }, "en", false, "en").filter(
+        (p) => p.kind === "example",
+      ),
+    ).toEqual([
+      { kind: "example", text: "Say", lang: "en" },
+      { kind: "example", text: "مرحبا العالم", lang: "ar" },
+      { kind: "example", text: "now.", lang: "en" },
+    ]);
+
+    expect(
+      sayParts({ term: "t", back: "", ex: "Say שלום now." }, "en", false, "en").filter(
+        (p) => p.kind === "example",
+      ),
+    ).toEqual([
+      { kind: "example", text: "Say", lang: "en" },
+      { kind: "example", text: "שלום", lang: "he" },
+      { kind: "example", text: "now.", lang: "en" },
+    ]);
+  });
+
   test("readingOnBack: the kana reading is the word; the meaning still follows", () => {
     expect(
       sayParts(
