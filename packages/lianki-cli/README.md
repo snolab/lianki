@@ -281,7 +281,7 @@ lianki settings set --help
 | `chat avatar`   | `{ avatar, dropped }`: `avatar` the SHA-256 of the kept SVG, or null when cleared              |
 | `chat ask`      | `{ id, askId, lane, answer: null }`, or with `--wait` `{ id, askId, answer: { choices, labels, at } }` |
 | `chat read`     | `{ thread, lane, messages: [{ id, from, label, text, at, ask?, answer?, attachments? }] }`    |
-| `chat attachment get` | `{ id, name, type, size, file }`: only a file on a line of your own chat, owned by that chat's account; a single-use 60 s ticket, never printed |
+| `chat attachment get` | `{ id, name, type, size, file }`: only a file on a line of your own chat, owned by that chat's account; a single-use 60 s ticket, never printed; saved as `<id>-<name>` in `--out`, never over an existing file |
 | `progress`      | the hub's answer: `{ entry: { id, status, rev, etaAt?, doneKind? }, readers, told? }`          |
 | `progress batch`| `{ ok, changeId, at, results: [{ entry } \| { status, error }] }`                             |
 | `progress ack`  | `{ ok, id, task, etaAt }`                                                                      |

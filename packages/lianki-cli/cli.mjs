@@ -717,12 +717,19 @@ async function cmdChatAttachmentGet(c) {
   if (r.status !== 200) throw new CliError("refused", EXIT.refused, `${c.site} refused the download (${r.status})`);
   const bytes = new Uint8Array(await r.arrayBuffer());
   const item = data.item && typeof data.item === "object" ? data.item : {};
-  const file = join(String(c.argv.out ?? "."), safeFileName(item.name, id));
-  await (c.deps.writeFile ?? (async (f, b) => {
-    const { mkdir, writeFile } = await import("node:fs/promises");
-    await mkdir(String(c.argv.out ?? "."), { recursive: true });
-    await writeFile(f, b);
-  }))(file, bytes);
+  // The name is the sender's: prefixed with the id, and never written over an
+  // existing file ("wx"), so a file named package.json or .env cannot clobber one here.
+  const file = join(String(c.argv.out ?? "."), `${id}-${safeFileName(item.name, id)}`);
+  try {
+    await (c.deps.writeFile ?? (async (f, b) => {
+      const { mkdir, writeFile } = await import("node:fs/promises");
+      await mkdir(String(c.argv.out ?? "."), { recursive: true });
+      await writeFile(f, b, { flag: "wx" });
+    }))(file, bytes);
+  } catch (e) {
+    if (e?.code === "EEXIST") throw new CliError("exists", EXIT.refused, `${file} already exists; not overwritten (pick another --out)`);
+    throw e;
+  }
   emit(c, "chat attachment get", { id, name: item.name ?? null, type: item.type ?? null, size: bytes.length, file }, (d) => d.file);
 }
 
