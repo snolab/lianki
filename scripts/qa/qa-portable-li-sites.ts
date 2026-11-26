@@ -157,7 +157,7 @@ try {
         `${tag} the bundled DebugChat draws (${await drawn()})`,
       );
       check(
-        /^bundled frame:(blocked|incompatible|timeout|no-ticket)$/.test(await drawn()),
+        /^bundled( frame:(blocked|incompatible|timeout|no-ticket))?$/.test(await drawn()),
         `${tag} after the frame was refused or failed the handshake (${await drawn()})`,
       );
       check(

@@ -30,6 +30,12 @@ const trustedOrigins = new Set([
 ]);
 export type PortableWatch = (key: string, changed: () => void) => () => void;
 /**
+ * GM storage switch, default off: true puts the lianki.com frame before the
+ * bundled window (the 2.24.55–2.24.60 order). The owner prefers the bundled
+ * window everywhere (2026-11-27), so it is first unless this is set.
+ */
+export const PORTABLE_PREFER_FRAME_KEY = "lianki_portable_prefer_frame";
+/**
  * An error as a short reason for the debug line and the attribute: its name
  * and first words, letters, digits and spaces only, so no token, URL or page
  * text can ride along.
@@ -181,41 +187,44 @@ export function startPortableLi(d: {
     panel = slot;
     const live = () => !gone && !destroyed && generation === gen && panel === slot;
     const t = strings();
-    void (async () => {
-      // Why the window is what it is (or absent), for a real-browser check: a
-      // reason code, never a secret (portableWhy).
-      let frameWas = d.frame ? "" : "frame:none";
-      if (d.frame) {
-        try {
-          const f = d.frame({
-            principal,
-            onAccountMismatch: () => {
-              if (!live()) return;
-              mark("none frame:account-mismatch");
-              onInvalidAccount();
-            },
-          });
-          current = f;
-          const how = await f.result;
-          if (!live()) return f.destroy();
-          if (how === "ready") return mark("frame");
-          frameWas = `frame:${how}`;
+    // Which window: the bundled DebugChat first (the 2.24.55 glass, dragging
+    // over the whole page), the lianki.com frame only when it cannot draw.
+    // `preferFrame` (GM PORTABLE_PREFER_FRAME_KEY) flips the order back.
+    const tryFrame = async (): Promise<string> => {
+      if (!d.frame) return "frame:none";
+      try {
+        const f = d.frame({
+          principal,
+          onAccountMismatch: () => {
+            if (!live()) return;
+            mark("none frame:account-mismatch");
+            onInvalidAccount();
+          },
+        });
+        current = f;
+        const how = await f.result;
+        if (!live()) {
           f.destroy();
-          current = undefined;
-        } catch (e) {
-          frameWas = `frame:error ${portableWhy(e)}`;
-          current = undefined;
+          return "gone";
         }
+        if (how === "ready") return "frame";
+        f.destroy();
+        current = undefined;
+        return `frame:${how}`;
+      } catch (e) {
+        current = undefined;
+        return `frame:error ${portableWhy(e)}`;
       }
+    };
+    const tryBundled = async (): Promise<string> => {
       let ui: PortableUi | null = null;
       try {
         ui = d.ui ? await d.ui() : null;
       } catch (e) {
-        if (live()) mark(`none ${frameWas} bundle:error ${portableWhy(e)}`);
-        return;
+        return `bundle:error ${portableWhy(e)}`;
       }
-      if (!live()) return;
-      if (!ui) return mark(`none ${frameWas} bundle:absent`);
+      if (!live()) return "gone";
+      if (!ui) return "bundle:absent";
       try {
         current = ui.mount({
           doc: d.doc,
@@ -237,10 +246,22 @@ export function startPortableLi(d: {
           onExclude,
           onInvalidAccount,
         });
-        mark(`bundled ${frameWas}`);
+        return "bundled";
       } catch (e) {
-        mark(`none ${frameWas} mount:error ${portableWhy(e)}`);
+        return `mount:error ${portableWhy(e)}`;
       }
+    };
+    const preferFrame = d.gm.getValue(PORTABLE_PREFER_FRAME_KEY, false) === true;
+    void (async () => {
+      // Why the window is what it is (or absent), for a real-browser check: a
+      // reason code, never a secret (portableWhy).
+      const first = preferFrame ? await tryFrame() : await tryBundled();
+      if (first === "gone" || !live()) return;
+      if (first === "frame" || first === "bundled") return mark(first);
+      const second = preferFrame ? await tryBundled() : await tryFrame();
+      if (second === "gone" || !live()) return;
+      if (second === "frame" || second === "bundled") return mark(`${second} ${first}`);
+      mark(`none ${first} ${second}`);
     })();
   };
   /** One debug line and `data-lk-portable` on <html>: which window drew, or why none did. */

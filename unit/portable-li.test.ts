@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { Window } from "happy-dom";
 import { stubGlobals } from "./support/globals";
-import { startPortableLi, type PortableUi } from "../src/portable-li";
+import { PORTABLE_PREFER_FRAME_KEY, startPortableLi, type PortableUi } from "../src/portable-li";
 import { GLOBAL_CHAT_KEY, globalChatStore } from "../src/pill-chat-global";
 import { PILLCHAT_ON_KEY } from "../src/pill-chat-trust";
 import { PILL_UI_LANGUAGE_KEY } from "../src/pill-chat-language";
@@ -223,6 +223,7 @@ test("the lianki.com frame first; where it is refused, the bundled DebugChat wit
     frames++, { result: Promise.resolve("ready"), destroy: () => void framesGone++ }
   );
   const a = fixture("https://example.org/", async () => ui, ready);
+  a.gm.setValue(PORTABLE_PREFER_FRAME_KEY, true);
   try {
     await turn();
     a.click("同意所有网站");
@@ -242,6 +243,7 @@ test("the lianki.com frame first; where it is refused, the bundled DebugChat wit
     destroy: () => void blockedGone++,
   });
   const f = fixture("https://github.com/", async () => ui, blocked);
+  f.gm.setValue(PORTABLE_PREFER_FRAME_KEY, true);
   try {
     await turn();
     f.click("同意所有网站");
@@ -325,6 +327,7 @@ test("the lianki.com frame first; where it is refused, the bundled DebugChat wit
   });
   const before = mounts.length;
   const s = fixture("https://github.com/", async () => ui, slow);
+  s.gm.setValue(PORTABLE_PREFER_FRAME_KEY, true);
   try {
     await turn();
     s.click("同意所有网站");
@@ -677,7 +680,7 @@ test("why the window fell back is recorded as a reason code on <html>, with no s
     blocked.click("同意所有网站");
     await turn();
     expect(blocked.win.document.documentElement.getAttribute("data-lk-portable")).toBe(
-      "none frame:blocked bundle:absent",
+      "none bundle:absent frame:blocked",
     );
   } finally {
     blocked.finish();
@@ -687,9 +690,7 @@ test("why the window fell back is recorded as a reason code on <html>, with no s
     await turn();
     drawn.click("同意所有网站");
     await turn();
-    expect(drawn.win.document.documentElement.getAttribute("data-lk-portable")).toBe(
-      "bundled frame:none",
-    );
+    expect(drawn.win.document.documentElement.getAttribute("data-lk-portable")).toBe("bundled");
   } finally {
     drawn.finish();
   }
@@ -789,7 +790,10 @@ test("the pill wiring opens 随身Li in the lianki.com frame with a consented-ac
     expect(await shellDeps!.ticket()).toBe("tk");
     await turn();
     expect(asked).toEqual(["https://lianki.com/api/chat/page-ticket"]);
-    expect(win.document.documentElement.getAttribute("data-lk-portable")).toBe("frame");
+    // No bundled window in this wiring test: the frame is the fallback.
+    expect(win.document.documentElement.getAttribute("data-lk-portable")).toBe(
+      "frame bundle:absent",
+    );
     // The frame keeps the partner's dragged position, per device.
     expect(shellDeps!.pos.get()).toBeNull();
     shellDeps!.pos.set({ x: 1.4, y: 2.6 });
@@ -856,6 +860,7 @@ test("an old or unresponsive frame falls back to the bundled window, with the re
     async () => ({ mount: (o) => (mounts.push(o), { destroy() {} }) }),
     () => ({ result: Promise.resolve("incompatible" as const), destroy: () => void gone++ }),
   );
+  f.gm.setValue(PORTABLE_PREFER_FRAME_KEY, true);
   try {
     await turn();
     f.click("同意所有网站");
@@ -868,5 +873,43 @@ test("an old or unresponsive frame falls back to the bundled window, with the re
     );
   } finally {
     f.finish();
+  }
+});
+
+test("the bundled window is the default on every site; the frame is only its fallback", async () => {
+  const mounts: unknown[] = [];
+  let frames = 0;
+  const f = fixture(
+    "https://github.com/",
+    async () => ({ mount: (o) => (mounts.push(o), { destroy() {} }) }),
+    () => (frames++, { result: Promise.resolve("ready" as const), destroy() {} }),
+  );
+  try {
+    await turn();
+    f.click("同意所有网站");
+    await turn();
+    expect(mounts).toHaveLength(1);
+    expect(frames).toBe(0);
+    expect(f.win.document.documentElement.getAttribute("data-lk-portable")).toBe("bundled");
+  } finally {
+    f.finish();
+  }
+  // The bundled window cannot draw: the frame takes over.
+  let frames2 = 0;
+  const g = fixture(
+    "https://github.com/",
+    async () => null,
+    () => (frames2++, { result: Promise.resolve("ready" as const), destroy() {} }),
+  );
+  try {
+    await turn();
+    g.click("同意所有网站");
+    await turn();
+    expect(frames2).toBe(1);
+    expect(g.win.document.documentElement.getAttribute("data-lk-portable")).toBe(
+      "frame bundle:absent",
+    );
+  } finally {
+    g.finish();
   }
 });
