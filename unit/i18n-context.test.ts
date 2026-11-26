@@ -82,6 +82,7 @@ import appBadge from "@/app/components/app-badge.content";
 import languageSettings from "@/app/components/language-settings.content";
 import preferredLangs from "@/app/components/preferred-langs.content";
 import privacyPage from "@/app/(app)/privacy/privacy.content";
+import aiAppsGuide from "@/app/(app)/guides/ai-apps/ai-apps-guide.content";
 import myBoxes from "@/app/(app)/my/boxes/my-boxes.content";
 import apiTokens from "@/app/components/api-tokens.content";
 import connectedApps from "@/app/components/connected-apps.content";
@@ -221,6 +222,7 @@ describe.each([
   ["preferred-langs", preferredLangs],
   ["sign-in-errors", signInErrors],
   ["privacy-page", privacyPage],
+  ["ai-apps-guide", aiAppsGuide],
   ["api-tokens", apiTokens],
   ["connected-apps", connectedApps],
   ["my-boxes", myBoxes],

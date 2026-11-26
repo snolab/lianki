@@ -38,6 +38,8 @@ export const APP_ROUTES = [
   "data",
   "dev",
   "embed",
+  // /guides/<id>: public how-to pages (/guides/ai-apps, lib/ai-apps-guide.ts).
+  "guides",
   "home",
   "i",
   "import",

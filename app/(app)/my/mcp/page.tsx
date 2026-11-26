@@ -5,6 +5,7 @@ import { authUserOrNull, signInRedirect } from "@/app/signInEmail";
 import { appLocale } from "@/lib/app-locale.server";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
 import { MCP_REMOTE_URL } from "@/lib/agent-guide";
+import { AI_APPS_GUIDE_PATH } from "@/lib/ai-apps-guide";
 import TokenManager from "../preferences/TokenManager";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ export default async function MyMcpPage() {
       <h1 className="mb-2 text-3xl font-bold">{t.title}</h1>
       <p className="mb-4">{t.intro}</p>
       <code className="block break-all rounded border p-3">{MCP_REMOTE_URL}</code>
-      <Link href="/mcp" className="mt-3 inline-block text-primary underline">
+      <Link href={AI_APPS_GUIDE_PATH} className="mt-3 inline-block text-primary underline">
         {t.guide}
       </Link>
       <TokenManager />

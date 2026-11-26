@@ -62,6 +62,33 @@ signed-in user, never gated:
 The instructions are in the page's language and are built for that token: its
 permissions, its name and its expiry date.
 
+## The public guide: /guides/ai-apps
+
+Owner, 2026-11-27: "can u make sure all users can use those mcp or ai identity
+smoothly and be-guided". `https://lianki.com/guides/ai-apps` is a public page
+(no session read, signed out works) for ordinary users: what a connected AI
+app can do, step 1 on Lianki (make a token on `/my/mcp`, tick "Cards and
+settings", copy its MCP connection URL), step 2 per app (ChatGPT, Claude,
+Gemini, anchors `#chatgpt` `#claude` `#gemini`), staying in control, two
+common problems, and other tools.
+
+- Strings: `ai-apps-guide` (`app/(app)/guides/ai-apps/ai-apps-guide.content.ts`,
+  16 locales, a context line per key). Lianki's own labels (`{page}`,
+  `{tokens}`, `{study}`, `{create}`, `{copy}`, `{revoke}`) are filled at render
+  from the `my-mcp` and `api-tokens` dictionaries, so the guide always names
+  the buttons as the token page shows them. The other apps' menu names stay in
+  English in quotes, with a note and the date they were checked
+  (`AI_APPS_CHECKED_ON`, `lib/ai-apps-guide.ts`).
+- Text steps only. The drafts' screenshots and videos came from the owner's
+  account; they are not published.
+- It uses the `/mcp/<token>` address with "No authentication", which works for
+  every account today. OAuth (`mcp.oauth`, docs/mcp-oauth.md) is still off; when
+  it is on, the ChatGPT/Claude steps can switch to the plain `/mcp` address.
+- Linked from the API tokens section (`appsGuide`, on `/my/preferences` and
+  `/my/mcp`), the `/my/mcp` "Connection guide" link, the browser page at
+  `lianki.com/mcp` (`workers/mcp/src/guide.ts`) and the agent guide's MCP
+  section (`mcpApps`). Test: `unit/ai-apps-guide.test.ts`.
+
 ## One source
 
 `lib/agent-guide.ts` → `agentGuide({scopes, t, name?, expires?})` returns the
