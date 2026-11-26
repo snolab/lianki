@@ -7,8 +7,9 @@ Nothing is built. Flag **`portable.mic-route`**, default **off**, audience
 **owner** (lib/flags.ts), switched on for the owner when it ships.
 
 **Scope.** **v1:** dictated text is routed into the active page's 随身Li draft
-only, with **no selection chip**. It needs the same per-site consent as
-随身Li chat, the owner-only flag, no raw audio and no host-page mic. **v2**,
+only, with **no selection chip**. It **requires the per-origin
+`page.dictation` grant** (below; the 随身Li chat consent alone is not enough),
+the owner-only flag, no raw audio and no host-page mic. **v2**,
 after #1125 deploys: the page's selection is attached as below
 ("Selection"); page.read is its own grant, asked separately, never implied
 by the mic or the chat consent.
@@ -71,10 +72,29 @@ Authorization, the expected principal header compared on every call,
 `x-lianki-host-origin` = this page's origin.
 
 ```ts
-| { op: "route"; state: "on" | "beat" | "off"; bid: string; routeId: string; gen?: number }
+// Page broker ops (POST /api/chat/page-broker), complete:
+| { op: "hello" }                                                     // unchanged
+| { op: "send"; id: string; text: string }                            // unchanged
+| { op: "route"; state: "on"; bid: string; routeId: string }          // take a new lease
+| { op: "route"; state: "beat" | "off"; bid: string; routeId: string; gen: number }
 | { op: "read"; afterSeq?: number; wait: boolean;
-    dictation?: { routeId: string; gen: number; afterSeq?: number } }   // selector + receipt cursor
+    dictation?: { bid: string; routeId: string; gen: number; afterSeq?: number } }
+
+// Answers
+| { ok: true; kind: "route"; state: "listening" | "no-source" | "off"; gen: number }
+| { ok: true; kind: "history"; range: ChatReplayRange & {
+      dictation?: { routeId: string; gen: number; throughSeq: number;
+                    items: { seq: number; finalId: string; text: string; at: number }[] } } }
+| { ok: false; error: "no-grant" | "invalid" | "account-changed" | "signed-out" | "off" | /* existing */ string }
 ```
+
+Field rules: `bid` `[A-Za-z0-9_-]{16,64}`, `routeId` `[A-Za-z0-9_-]{8,64}`,
+`gen` / `seq` / `afterSeq` safe non-negative integers, `finalId`
+`[A-Za-z0-9_-]{8,64}`, unknown keys refused (as `parsePageChatHttpInput`
+does today). **ACK upper bound:** `dictation.afterSeq` must be ≤ the highest
+`seq` already delivered to that routeId + gen; anything higher is refused
+`invalid` and changes nothing, so an arbitrary cursor cannot erase items that
+were never delivered.
 
 - `routeId`: this 随身Li window (random per window, `[A-Za-z0-9_-]{8,64}`);
   two windows on the same site have different ids.
@@ -96,7 +116,7 @@ Authorization, the expected principal header compared on every call,
   or it lapsed. The window shows **off** at once and stops beating.
   `listening` / `no-source` come from the source's own report (below).
 - **Delivery with a receipt:** `read` carries the selector
-  `{routeId, gen, afterSeq}`; the answer's range gets
+  `{bid, routeId, gen, afterSeq}`; the answer's range gets
   `dictation: { routeId, gen, items: { seq, finalId, text, at }[], throughSeq }`, only
   for that exact routeId + gen. Items stay queued until a later `read` names
   `afterSeq ≥ seq` (the ACK). Never dropped on read: a lost response re-sends
@@ -108,9 +128,30 @@ Authorization, the expected principal header compared on every call,
 
 ### 2. Hub messages (DebugHub; coco)
 
+```ts
+// lianki.com tab → hub (its existing authenticated socket)
+| { type: "dictation-source"; bid: string; state: "on" | "off" }
+| { type: "chat-dictation"; bid: string; routeId: string; gen: number; sgen: number;
+    finalId: string; text: string; at: number }
+| { type: "dictation-stop"; bid: string }
+// hub → lianki.com tab
+| { type: "dictation-source-ok"; bid: string; sgen: number }          // answer to source "on": the lease
+| { type: "dictation-target"; bid: string; target: { origin: string; routeId: string; gen: number } | null }
+| { type: "dictation-acked"; finalIds: string[] }
+| { type: "dictation-returned"; finalIds: string[]; why: "rejected" | "target-changed" | "revoked" | "expired" | "gone" | "full" }
+| { type: "dictation-unconfirmed"; finalIds: string[]; why: "target-changed" | "revoked" | "expired" | "gone" }
+```
+
+`sgen` is handed out only in `dictation-source-ok`, the answer to that tab's
+`dictation-source on`; a `chat-dictation` with any other `sgen` is rejected.
+
+- **The source may capture in the background.** The lianki.com tab keeps
+  listening and routing while it is hidden (that is the point: he talks there
+  while he works in the site's tab). Only a hidden **target** page goes off at
+  once.
 - **Source presence (explicit, one lease):** a lianki.com tab reports its mic
   with `{ type: "dictation-source", bid, state: "on" | "off" }` when its chat
-  mic turns on or off, and `off` when it closes or hides its socket. `on`
+  mic turns on or off, and `off` when it closes its socket. `on`
   takes the **single source lease** for that account + bid (a source `sgen`;
   the newest tab wins, an older one gets `dictation-target: null`).
   `listening` in the `route` answer comes only from a live source lease,
@@ -139,8 +180,9 @@ Authorization, the expected principal header compared on every call,
   page's own "stop") clears the route for this tab: back to its own composer.
 - The read-aloud, wake word, merge and polish logic stay as they are; a routed
   line is not merged into this tab's composer text.
-- **Never lose words:** a final the hub rejects (stale target, refused, no
-  answer in time) goes into this tab's own draft instead, marked "delivery not confirmed" (未确认送达).
+- **Never lose words:** a final the hub returns goes into this tab's own
+  draft, marked "delivery not confirmed" (未确认送达); an unconfirmed one is
+  offered to restore (see "Delivery and ACK").
 
 ### 4. 随身Li (portable window; agy)
 
@@ -155,8 +197,8 @@ Authorization, the expected principal header compared on every call,
 - Tap: `route on` (and `beat` every 20 s while visible). Tap again, Escape,
   closing the window, hidden, `pagehide`: `route off` at once. A `route`
   answer of `off` turns the button off.
-- `read` carries the dictation selector `{routeId, gen, afterSeq}`; each
-  delivered item is appended once (by `seq`) and ACKed by the next `read`.
+- `read` carries the dictation selector `{bid, routeId, gen, afterSeq}`; each
+  delivered item is appended once (by `finalId`) and ACKed by the next `read`.
 - Each routed final is appended to the composer draft (a space between), never
   sent by itself. The draft scope stays `portable~<account>~<origin>`. A
   stale, refused or timed-out delivery never clears or rewrites what is
@@ -170,28 +212,40 @@ Authorization, the expected principal header compared on every call,
   account switch or a late arrival is rejected before consume and before
   attaching; nothing is attached on any failure.
 
-## Delivery and ACK (no word is ever lost)
+## Delivery and ACK (no word is ever lost, none appears twice)
 
 - **The source holds the copy.** The lianki.com tab that heard a final keeps
-  it in a local outbox `{finalId, routeId, gen, sgen, text, at}` from the
-  moment it sends `chat-dictation` until it learns the page has it.
-- **Hub states per final:** `queued` (accepted for the target) → `delivered`
-  (in a `read` answer) → `acked` (a later `read` from that routeId + gen names
-  `afterSeq ≥ seq`). On `acked` the hub tells the source
-  `{ type: "dictation-acked", finalIds }`, and only then does the source drop
-  its copy.
-- **Re-delivery is idempotent by `finalId`:** the hub re-sends unacked items
-  on every `read` of the same routeId + gen (a lost response loses nothing);
-  the page appends each `finalId` at most once (it keeps the ids it appended
-  for this lease) and ACKs by `seq`. A source that resends after a reconnect
-  uses the same `finalId`; the hub dedups it.
-- **Target change, revoke, expiry, disconnect:** the hub drops that target's
-  queue and tells the source `{ type: "dictation-returned", finalIds, why }`
-  for everything not acked (`why`: `target-changed` | `revoked` | `expired` |
-  `gone`). The source moves those finals (from its own copy, not from the hub)
-  into **its own** draft, marked "delivery not confirmed" (未确认送达; a lost ACK can mean the page did get it), in order. If the source
-  itself is gone by then, its outbox persists in its tab's session storage
-  and is returned to its draft when that tab comes back.
+  it in a local outbox `{finalId, routeId, gen, sgen, text, at}` (in its tab's
+  session storage) from the moment it sends `chat-dictation` until the hub
+  settles it.
+- **Hub states per final:** `queued` (accepted for the target, never yet in a
+  `read` answer) → `delivered` (sent in at least one `read` answer) → `acked`
+  (a later `read` from that bid + routeId + gen names `afterSeq ≥ seq`).
+  **Queued is not delivered:** only a `read` answer moves an item on.
+- **Re-delivery is idempotent by `finalId`:** the hub re-sends every
+  delivered-but-unacked item on each `read` of the same bid + routeId + gen
+  (a lost response loses nothing); the page appends each `finalId` at most
+  once for its lease and ACKs by `seq`. A source resending after a reconnect
+  reuses the same `finalId`; the hub dedups it.
+- **How a final is settled, exactly once:**
+  - `acked` → `dictation-acked`: the source drops its copy.
+  - Never delivered (still `queued`) when the target ends, is revoked,
+    expires (10 min), the queue is full (50) or the final is rejected →
+    `dictation-returned`: the page cannot have it, so the source puts its own
+    copy into **its own** draft, marked "delivery not confirmed" (未确认送达),
+    in order.
+  - Delivered but not acked when the target ends (the ACK may be lost: the
+    page may already have appended it) → `dictation-unconfirmed`: the source
+    does **not** put it into its draft by itself; it keeps the copy and shows
+    "N lines may not have arrived — restore" with one tap that restores them
+    into its draft. So a lost ACK never both appends to the target and
+    returns to the source, and no word is lost.
+  - The source returns or restores only on these explicit hub messages, never
+    on a timeout of its own.
+- **Privacy revoke:** revoking `page.dictation` makes the hub delete that
+  target's broker queue at once (`revoked`); the source's local copy may be
+  kept (returned or restorable into its own draft) but is **never re-sent to
+  that site**.
 - **Page side:** a stale, refused or timed-out delivery never clears or
   rewrites the page's existing draft; items for another `gen` are ignored.
 
@@ -235,6 +289,14 @@ Authorization, the expected principal header compared on every call,
   read the draft and the routed transcript (the grant page says so).
 
 ## Tests (planned)
+
+- Synthetic delivery scenarios (no audio): (a) accepted → the target ends
+  (change / revoke / disconnect) → returned to the source; (b) queue full →
+  `full` returned; (c) 10-minute expiry → returned; (d) a lost ACK: the page
+  appends once, the source gets `dictation-unconfirmed` (no automatic
+  return), so no double append and no double return; (e) `afterSeq` above
+  the delivered high-water mark → `invalid`, nothing erased; (f) privacy
+  revoke deletes the queue and nothing is re-sent to that site.
 
 - Broker: `route` parse/refuse, principal mismatch, one target per account +
   bid, newest wins and the old window gets `off`, hidden → off and gen bump,
