@@ -11,6 +11,78 @@ import { describeKeys } from "@/lib/i18n-context";
 const dictionary = {
   key: "api-tokens",
   content: {
+    rename: t({
+      en: "Rename",
+      zh: "改名",
+      hi: "नाम बदलें",
+      es: "Cambiar nombre",
+      fr: "Renommer",
+      ar: "إعادة تسمية",
+      bn: "নাম বদলান",
+      pt: "Renomear",
+      ru: "Переименовать",
+      ur: "نام بدلیں",
+      id: "Ganti nama",
+      de: "Umbenennen",
+      ja: "名前を変更",
+      sw: "Badili jina",
+      mr: "नाव बदला",
+      ko: "이름 변경",
+    }),
+    renameSave: t({
+      en: "Save name",
+      zh: "保存名称",
+      hi: "नाम सहेजें",
+      es: "Guardar nombre",
+      fr: "Enregistrer le nom",
+      ar: "حفظ الاسم",
+      bn: "নাম সংরক্ষণ করুন",
+      pt: "Salvar nome",
+      ru: "Сохранить имя",
+      ur: "نام محفوظ کریں",
+      id: "Simpan nama",
+      de: "Namen speichern",
+      ja: "名前を保存",
+      sw: "Hifadhi jina",
+      mr: "नाव जतन करा",
+      ko: "이름 저장",
+    }),
+    renameCancel: t({
+      en: "Keep current name",
+      zh: "保留原名",
+      hi: "मौजूदा नाम रखें",
+      es: "Conservar nombre actual",
+      fr: "Garder le nom actuel",
+      ar: "الاحتفاظ بالاسم الحالي",
+      bn: "বর্তমান নাম রাখুন",
+      pt: "Manter nome atual",
+      ru: "Оставить текущее имя",
+      ur: "موجودہ نام رکھیں",
+      id: "Pertahankan nama saat ini",
+      de: "Aktuellen Namen behalten",
+      ja: "現在の名前を維持",
+      sw: "Weka jina la sasa",
+      mr: "सध्याचे नाव ठेवा",
+      ko: "현재 이름 유지",
+    }),
+    renameHint: t({
+      en: "Only the name changes. New chat messages use it; earlier messages, the secret, permissions and expiry stay unchanged.",
+      zh: "只修改名称。新聊天消息使用新名称；历史消息、密钥、权限和有效期保持不变。",
+      hi: "केवल नाम बदलता है। नए चैट संदेश नया नाम दिखाते हैं; पुराने संदेश, गुप्त कुंजी, अनुमतियाँ और समाप्ति नहीं बदलते।",
+      es: "Solo cambia el nombre. Los mensajes nuevos lo usarán; los anteriores, la clave, los permisos y la caducidad no cambian.",
+      fr: "Seul le nom change. Les nouveaux messages l’utilisent ; les anciens messages, le secret, les permissions et l’expiration restent inchangés.",
+      ar: "يتغير الاسم فقط. تستخدمه رسائل الدردشة الجديدة؛ وتبقى الرسائل السابقة والمفتاح السري والأذونات وتاريخ الانتهاء كما هي.",
+      bn: "শুধু নাম বদলাবে। নতুন চ্যাট বার্তায় নতুন নাম থাকবে; আগের বার্তা, গোপন কী, অনুমতি ও মেয়াদ অপরিবর্তিত থাকবে।",
+      pt: "Só o nome muda. As novas mensagens o usarão; as anteriores, a chave, as permissões e a validade permanecem iguais.",
+      ru: "Меняется только имя. Оно появится в новых сообщениях; старые сообщения, секретный ключ, разрешения и срок действия не изменятся.",
+      ur: "صرف نام بدلے گا۔ نئے چیٹ پیغامات میں یہی نام آئے گا؛ پرانے پیغامات، خفیہ کلید، اجازتیں اور میعاد برقرار رہیں گی۔",
+      id: "Hanya nama yang berubah. Pesan chat baru memakainya; pesan lama, kunci rahasia, izin, dan masa berlaku tetap sama.",
+      de: "Nur der Name ändert sich. Neue Chatnachrichten verwenden ihn; frühere Nachrichten, Geheimschlüssel, Berechtigungen und Ablauf bleiben unverändert.",
+      ja: "変更されるのは名前だけです。新しいチャットメッセージに使われ、過去のメッセージ、秘密キー、権限、有効期限は変わりません。",
+      sw: "Jina pekee ndilo linalobadilika. Ujumbe mpya wa gumzo utalitumia; ujumbe wa awali, ufunguo wa siri, ruhusa na muda wa kuisha havibadiliki.",
+      mr: "फक्त नाव बदलते. नवीन चॅट संदेश ते वापरतात; जुने संदेश, गुप्त किल्ली, परवानग्या आणि मुदत बदलत नाहीत.",
+      ko: "이름만 바뀝니다. 새 채팅 메시지에 적용되며 이전 메시지, 비밀 키, 권한, 만료일은 그대로 유지됩니다.",
+    }),
     copyMcp: t({
       en: "Copy MCP connection URL",
       zh: "复制 MCP 连接地址",
@@ -1422,6 +1494,15 @@ const dictionary = {
 };
 
 const context: Record<keyof typeof dictionary.content, string> = {
+  rename:
+    "Button beside an existing API token in Settings; opens an inline editor for its display name without rotating the secret. Imperative verb.",
+  renameSave:
+    "Submit button in an existing API token name editor; persists only the edited name. Short action label, not token creation.",
+  renameCancel:
+    "Button in an API token name editor; discards the draft and preserves the existing name. Does not revoke the token.",
+  renameHint:
+    "Help below an API token name editor. Explains only future chat labels change, while historical messages, secret, scopes and expiry are preserved. Keep all distinctions.",
+
   copyMcp:
     "Button in the one-time newly-created API token box: copies the entire secret-bearing remote MCP URL to the clipboard, only on an explicit click. Keep MCP and URL.",
   mcpHint:
@@ -1572,7 +1653,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   errExpiry:
     "Error under the token form when no expiry was chosen, or the date is not between today and one year from today. Imperative, one sentence.",
   errFailed:
-    "Error when making or revoking a token failed (network or server): try again. Two short sentences.",
+    "Error when making, renaming or revoking a token failed (network or server): try again. Two short sentences.",
 };
 
 export default {

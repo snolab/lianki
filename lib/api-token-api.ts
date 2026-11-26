@@ -6,6 +6,7 @@
  *
  *   GET                                  → {account, scopes, expiryDays, maxExpiryDays, tokens}
  *   POST   {name, scopes, expiry}        → {token, id, …}  the secret, this once
+ *   PATCH  {id, name}                   → {ok, id, name}  same secret and permissions
  *   DELETE {id}                          → {ok}            one click on the page
  *
  * `expiry` is {days} (EXPIRY_DAYS) or {date}; there is no default. Writes are
@@ -32,6 +33,7 @@ import {
   parseExpiry,
   parseScopes,
   revokeToken,
+  renameToken,
   tagOf,
 } from "@/lib/api-tokens";
 import { type AuditDb, audit } from "@/lib/security/audit-log";
@@ -81,10 +83,26 @@ export async function tokenApi(req: Request, deps: TokenApiDeps): Promise<Respon
     });
   }
 
-  if (req.method !== "POST" && req.method !== "DELETE") return json({ error: "Method" }, 405);
+  if (req.method !== "POST" && req.method !== "DELETE" && req.method !== "PATCH")
+    return json({ error: "Method" }, 405);
   if (!jsonWrite(req)) return json({ error: "Forbidden" }, 403);
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return json({ error: "Expected JSON" }, 400);
+
+  if (req.method === "PATCH") {
+    if (Array.isArray(body) || Object.keys(body).some((key) => key !== "id" && key !== "name"))
+      return json({ error: "Only id and name may be changed" }, 400);
+    const name = cleanTokenName(body.name);
+    if (!name) return json({ error: "name: 1–40 characters" }, 400);
+    const renamed = await renameToken(db, owner, body.id, name);
+    if (!renamed) return json({ error: "Not found" }, 404);
+    await audit(
+      db,
+      { kind: "api-token.rename", actor: owner.userId, subject: tagOf(renamed.id) },
+      now,
+    );
+    return json({ ok: true, id: renamed.id, name: renamed.name });
+  }
 
   if (req.method === "DELETE") {
     const gone = await revokeToken(db, owner, body.id);

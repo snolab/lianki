@@ -26,6 +26,7 @@ import {
   parseScopes,
   revokeAllTokens,
   revokeToken,
+  renameToken,
   cleanTokenName,
   type ScopeId,
 } from "@/lib/api-tokens";
@@ -349,6 +350,27 @@ describe("the hub: a named MCP client reaches the audit log", () => {
 });
 
 describe("the hub: own thread only", () => {
+  it("uses a renamed token for future HTTP and existing socket lines without rewriting history", async () => {
+    const h = hubSetup();
+    const made = await mint(ALICE, "Fixture before");
+    const view = await h.page({ userId: ALICE.userId, email: ALICE.email, owner: false });
+    const socket = await h.listen(made.token);
+    expect((await h.http(made.token, { op: "say", text: "first" })).status).toBe(200);
+    const original = structuredClone(view.of("chat").at(-1)!.message);
+    await renameToken(db(), ALICE, made.id, "Fixture after");
+    expect((await h.http(made.token, { op: "say", text: "second" })).status).toBe(200);
+    expect(view.of("chat").at(-1)!.message).toMatchObject({
+      label: "Fixture after",
+      text: "【Fixture after】second",
+    });
+    await h.msg(socket, { type: "say", text: "third" });
+    expect(view.of("chat").at(-1)!.message).toMatchObject({
+      label: "Fixture after",
+      text: "【Fixture after】third",
+    });
+    expect(view.of("chat")[0]!.message).toEqual(original);
+  });
+
   it("friend voice source comes only from the authenticated page's validated chat message", async () => {
     const h = hubSetup();
     const token = await mint(ALICE, "reader");

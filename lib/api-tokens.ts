@@ -302,6 +302,23 @@ export async function revokeToken(
   return r ? info(r, Date.now()) : null;
 }
 
+/** Rename only a manually created token owned by this session; credentials and grants stay intact. */
+export async function renameToken(
+  db: D1Like,
+  owner: TokenOwner,
+  id: unknown,
+  name: string,
+): Promise<TokenInfo | null> {
+  if (typeof id !== "string" || !/^[0-9a-f]{64}$/.test(id)) return null;
+  const row = await db
+    .prepare(
+      `UPDATE api_tokens SET name = ?4 WHERE token_hash = ?3 AND ${MINE} AND ${OWN} RETURNING *`,
+    )
+    .bind(owner.userId, owner.email, id, name)
+    .first<Row>();
+  return row ? info(row, Date.now()) : null;
+}
+
 /** Every token of the account (a sign-out everywhere, the account deleted). Their ids. */
 export async function revokeAllTokens(db: D1Like, owner: TokenOwner): Promise<string[]> {
   // Connected OAuth apps end too (docs/mcp-oauth.md); their tokens go below.
