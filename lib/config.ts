@@ -1,6 +1,7 @@
 import { MCP_MONITOR_DEFAULTS } from "./mcp-metrics";
 import { MONITOR_BUDGET_DEFAULTS } from "./monitor-budget";
 import { HUB_RPC_LIMITS } from "./hub-rpc-config";
+import { DICTATION_POLICY_DEFAULTS } from "../packages/debug-chat/src/dictation-policy";
 import {
   CAP_WINDOW_HOURS,
   CAP_WINDOW_MAX,
@@ -2465,6 +2466,24 @@ export const CONFIG = {
     description:
       "药丸 Li 聊天：每个账号每分钟最多领几张聊天票据（POST /api/chat/li-ticket，每次连接一张，60 秒一次性）。超过 = 这一分钟里连不上，稍后自动再试。",
   }),
+  "chat.dictationPolicy": {
+    default: DICTATION_POLICY_DEFAULTS,
+    schema: z
+      .object({
+        beatMs: z.number().int().min(1000).max(20000),
+        leaseMs: z.number().int().min(60000).max(300000),
+        pendingMs: z.number().int().min(60000).max(600000),
+        maxQueued: z.number().int().min(1).max(50),
+        maxRoutes: z.number().int().min(1).max(128),
+        maxReceipts: z.number().int().min(50).max(4096),
+        requestsPerMinute: z.number().int().min(10).max(600),
+      })
+      .strict(),
+    group: "chat",
+    audience: "public",
+    description:
+      "随身Li共享语音文字路由：心跳/租约/待确认文字的有效期（毫秒），每个窗口的排队条数、并行浏览器数、重放回执和每分钟请求上限；不改变逐站听写权限，队列满则保留源草稿并拒收。",
+  },
   "chat.pillShareChars": int({
     default: 2000,
     min: 100,

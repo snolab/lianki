@@ -48,6 +48,11 @@ export const POST = (req: Request) =>
         windowMs: 60_000,
         max: await cfg("chat.pillTicketsPerMinute"),
       }).allowed,
+    allowDictation: async (userId) =>
+      checkRateLimit(`page-dictation-http:${userId}`, {
+        windowMs: 60_000,
+        max: (await cfg("chat.dictationPolicy")).requestsPerMinute,
+      }).allowed,
     threadKey: () => threadHashKeyFromJwk(process.env.STT_TICKET_KEY),
     key: async () => {
       const raw = process.env.STT_TICKET_KEY;

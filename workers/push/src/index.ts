@@ -1,4 +1,5 @@
 import { SITE_ACTION_PATH } from "../../../lib/site-permission-ticket";
+import { DICTATION_CLEAR_PATH } from "../../../lib/dictation-clear";
 import { PAGE_CHAT_HTTP_INTERNAL_PATH } from "../../../lib/page-chat-http-wire";
 /**
  * lianki-push — the new-version notice, event-driven end to end
@@ -534,6 +535,7 @@ export default {
     }
     if (
       (url.pathname === SITE_ACTION_PATH ||
+        url.pathname === DICTATION_CLEAR_PATH ||
         url.pathname === PAGE_CHAT_HTTP_INTERNAL_PATH ||
         url.pathname === "/internal/hub-diagnostics" ||
         url.pathname.startsWith("/internal/friends") ||

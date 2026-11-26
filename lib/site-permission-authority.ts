@@ -3,12 +3,14 @@ import {
   canonicalExactSiteOrigin,
   parseSitePermissionAction,
   SITE_PERMISSION_SCOPE,
+  isSitePermissionScope,
+  type SitePermissionScope,
   type SitePermissionAction,
   type SitePermissionSelection,
 } from "./site-permission-wire";
 export type SitePermissionGrant = {
   origin: string;
-  scope: typeof SITE_PERMISSION_SCOPE;
+  scope: SitePermissionScope;
   enabled: boolean;
   revision: number;
 };
@@ -53,18 +55,18 @@ function storedState(value: unknown): SitePermissionState | null {
     if (
       !object(entry) ||
       !canonicalExactSiteOrigin(entry.origin) ||
-      entry.scope !== SITE_PERMISSION_SCOPE ||
+      !isSitePermissionScope(entry.scope) ||
       typeof entry.enabled !== "boolean" ||
       !validRevision(entry.revision) ||
       entry.revision === 0 ||
       entry.revision > value.revision ||
-      origins.has(entry.origin as string)
+      origins.has(String(entry.origin) + "\n" + String(entry.scope))
     )
       return null;
-    origins.add(entry.origin as string);
+    origins.add(String(entry.origin) + "\n" + String(entry.scope));
     grants.push({
       origin: entry.origin as string,
-      scope: SITE_PERMISSION_SCOPE,
+      scope: entry.scope,
       enabled: entry.enabled,
       revision: entry.revision,
     });
@@ -89,8 +91,43 @@ export class SitePermissionAuthority {
   private pending: Promise<void> = Promise.resolve();
   constructor(
     private readonly storage: SitePermissionAuthorityStorage,
-    private readonly options: { now?: () => number } = {},
+    private readonly options: {
+      now?: () => number;
+      changed?: (sub: string, grant: SitePermissionGrant) => void;
+    } = {},
   ) {}
+  /** Internal, serialized action boundary. A read-only origin selector never grants private input. */
+  withGrant<T>(
+    sub: string,
+    origin: string,
+    scope: SitePermissionScope,
+    revision: number | undefined,
+    run: (grant: SitePermissionGrant) => T | Promise<T>,
+  ): Promise<{ ok: true; value: T } | { ok: false; error: "denied" | "unavailable" }> {
+    const result = this.pending.then(async () => {
+      try {
+        if (
+          !/^[A-Za-z0-9_-]{1,64}$/.test(sub) ||
+          !canonicalExactSiteOrigin(origin) ||
+          !isSitePermissionScope(scope)
+        )
+          return { ok: false as const, error: "denied" as const };
+        const state = storedState(await this.storage.get("siteperms:" + sub));
+        if (!state) return { ok: false as const, error: "unavailable" as const };
+        const granted = state.grants.find((g) => g.origin === origin && g.scope === scope);
+        if (!granted?.enabled || (revision !== undefined && granted.revision !== revision))
+          return { ok: false as const, error: "denied" as const };
+        return { ok: true as const, value: await run({ ...granted }) };
+      } catch {
+        return { ok: false as const, error: "unavailable" as const };
+      }
+    });
+    this.pending = result.then(
+      () => {},
+      () => {},
+    );
+    return result;
+  }
   execute(
     sub: string,
     action: SitePermissionAction,
@@ -138,8 +175,10 @@ export class SitePermissionAuthority {
       if (action.op === "list")
         result = { ok: true, kind: "list", grants: state.grants.map((grant) => ({ ...grant })) };
       else {
+        const scope =
+          action.op === "consume" ? SITE_PERMISSION_SCOPE : (action.scope ?? SITE_PERMISSION_SCOPE);
         const index = state.grants.findIndex(
-          (grant) => grant.origin === action.origin && grant.scope === SITE_PERMISSION_SCOPE,
+          (grant) => grant.origin === action.origin && grant.scope === scope,
         );
         const grant = state.grants[index];
         if (action.op === "inspect")
@@ -150,7 +189,7 @@ export class SitePermissionAuthority {
               ? { ...grant }
               : {
                   origin: action.origin,
-                  scope: SITE_PERMISSION_SCOPE,
+                  scope,
                   enabled: false,
                   revision: 0,
                 },
@@ -165,7 +204,7 @@ export class SitePermissionAuthority {
             state.revision++;
             const updated: SitePermissionGrant = {
               origin: action.origin,
-              scope: SITE_PERMISSION_SCOPE,
+              scope,
               enabled: action.enabled,
               revision: state.revision,
             };
@@ -185,6 +224,8 @@ export class SitePermissionAuthority {
       }
       // Single atomic put includes permission revisions and consumed receipt; never selection data.
       await this.storage.put(key, state);
+      if (action.op === "set" && result.ok && result.kind === "grant")
+        this.options.changed?.(sub, { ...result.grant });
       return result;
     } catch {
       return { ok: false, error: "unavailable" };

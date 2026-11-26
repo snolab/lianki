@@ -22,6 +22,8 @@
     "./dev-ui-locales": "./src/dev-ui-locales.ts",
     "./state-tree": "./src/state-tree.ts",
     "./debug-chat-tabs": "./src/debug-chat-tabs.ts",
+    "./dictation-wire": "./src/dictation-wire.ts",
+    "./dictation-policy": "./src/dictation-policy.ts",
     "./debug-chat-widget": "./src/debug-chat-widget.ts",
     "./debug-widget": "./src/debug-widget.ts",
     "./files": "./src/files.ts",

@@ -2,6 +2,7 @@
 import {
   canonicalExactSiteOrigin,
   SITE_PERMISSION_SCOPE,
+  isSitePermissionScope,
   parseSiteReadAction,
 } from "./site-permission-wire";
 import type {
@@ -14,7 +15,7 @@ function grant(v: unknown): SitePermissionGrant | null {
   if (
     !object(v) ||
     !canonicalExactSiteOrigin(v.origin) ||
-    v.scope !== SITE_PERMISSION_SCOPE ||
+    !isSitePermissionScope(v.scope) ||
     typeof v.enabled !== "boolean" ||
     !Number.isSafeInteger(v.revision) ||
     Number(v.revision) < 0
@@ -22,7 +23,7 @@ function grant(v: unknown): SitePermissionGrant | null {
     return null;
   return {
     origin: v.origin as string,
-    scope: SITE_PERMISSION_SCOPE,
+    scope: v.scope,
     enabled: v.enabled,
     revision: v.revision as number,
   };

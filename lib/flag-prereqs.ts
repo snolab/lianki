@@ -30,6 +30,8 @@ export interface PrereqContext {
   env: Env;
   /** D1, for checks that a migration ran; null fails those checks (closed). */
   d1: D1Like | null;
+  /** Clear transient microphone leases before re-enabling; missing binding fails closed. */
+  clearDictation?: () => Promise<boolean>;
 }
 
 export type CheckResult = { ok: true } | { ok: false; reason: PrereqReason };
@@ -138,11 +140,17 @@ export async function changeFlag(
       };
     }
   }
+  if (body.key === "portable.mic-route" && body.enabled === true) {
+    const cleared = await ctx.clearDictation?.().catch(() => false);
+    if (!cleared) return { ok: false, error: "Dictation routing is unavailable" };
+  }
   try {
     await setFlag(d1, body.key, body.enabled, by);
   } catch (e) {
     if (e instanceof FlagError) return { ok: false, error: e.message };
     throw e;
   }
+  if (body.key === "portable.mic-route" && body.enabled === false)
+    await ctx.clearDictation?.().catch(() => false);
   return { ok: true };
 }

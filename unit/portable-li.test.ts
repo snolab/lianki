@@ -91,6 +91,8 @@ function fixture(
         : { ok: true, kind: "hello", principal };
     }
     if (input.op === "send") return { ok: true, kind: "accepted", id: input.id, seq: 1 };
+    if (input.op === "route")
+      return { ok: true, kind: "route", state: "off", gen: "gen" in input ? input.gen : 0 };
     if (readError) return { ok: false, error: "account-changed" };
     if (input.afterSeq === undefined)
       return {

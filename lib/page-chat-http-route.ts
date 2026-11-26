@@ -1,5 +1,7 @@
 /** Cookie-authenticated, chat-only GM broker. No credential is returned to the host page. */
 import { publicPageChatResult } from "./page-chat-http-result";
+import { clearDictation } from "./dictation-clear";
+import { flagIn } from "./flags";
 import { DISPATCH_THREAD } from "./dev-eval";
 import { siteBinding } from "./li-thread";
 import type { LiTicketDeps } from "./li-ticket-route";
@@ -15,6 +17,7 @@ import {
 } from "./page-chat-http-wire";
 export type PageChatHttpDeps = LiTicketDeps & {
   push: () => { fetch: (request: Request) => Promise<Response> } | null;
+  allowDictation?: (sub: string) => Promise<boolean>;
 };
 const json = (body: PageChatHttpResult, status = 200) =>
   Response.json(body, {
@@ -33,10 +36,23 @@ export async function pageChatHttp(req: Request, deps: PageChatHttpDeps): Promis
     return json({ ok: false, error: action === "too-large" ? action : "invalid" }, 400);
   const access = await pillChatAccess(req, deps);
   if (!access || !isTicketSub(access.user.id)) return json({ ok: false, error: "signed-out" }, 403);
-  if (!(await deps.allow(access.user.id))) return json({ ok: false, error: "rate-limited" }, 429);
+  const dictation =
+    action.op === "route" || (action.op === "read" && action.dictation !== undefined);
+  if (
+    !(await (dictation && deps.allowDictation ? deps.allowDictation : deps.allow)(access.user.id))
+  )
+    return json({ ok: false, error: "rate-limited" }, 429);
   if (action.op === "hello") return json({ ok: true, kind: "hello", principal: access.user.id });
   if (req.headers.get(PAGE_CHAT_PRINCIPAL_HEADER) !== access.user.id)
     return json({ ok: false, error: "account-changed" }, 409);
+  if (
+    dictation &&
+    (access.ticket !== "owner" || !flagIn(await deps.flags(), "portable.mic-route"))
+  ) {
+    // The public off response must not leave an old live target behind the hub's flag cache.
+    if (access.ticket === "owner") await clearDictation(deps.push(), access.user.id);
+    return json({ ok: false, error: "off" }, 403);
+  }
   const owner = access.ticket === "owner";
   const site = await siteBinding(
     req,

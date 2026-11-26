@@ -2,6 +2,7 @@
 import type { ChatGmRequest } from "./page-chat-fetch";
 import {
   canonicalExactSiteOrigin,
+  SITE_PERMISSION_SCOPE,
   parseSitePageReadRequest,
   type SitePageReadRequest,
   type SitePermissionSelection,
@@ -98,6 +99,7 @@ export function sitePageReadBridge(d: {
         status.kind !== "grant" ||
         !status.accountBinding ||
         status.grant.origin !== site ||
+        status.grant.scope !== SITE_PERMISSION_SCOPE ||
         !status.grant.enabled
       )
         return failure("denied");

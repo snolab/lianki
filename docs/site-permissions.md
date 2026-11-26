@@ -2,6 +2,20 @@
 
 This change is under development, not an available execution or private-data capability.
 
+Shared dictation adds a separate `page.dictation` grant to this authority;
+see [the shared microphone contract](suishen-li-mic.md). Both scopes default
+off and are keyed by exact origin **and scope**. Inspect without a scope
+retains the original `page.read` default; a dictation inspect must explicitly
+name its scope. Only `page.read` supports selected-text `consume`, and its
+browser bridge rejects any other scope before reading the selection.
+
+The dictation route executes through the authority's internal `withGrant`
+queue, with the current grant revision checked before changing a lease,
+enqueuing a final or releasing text to a target. This is not a public API or
+an origin-attestation mechanism. A persisted grant change synchronously
+retires any dictation lease for that account and origin. No user data or
+audio is added to permission storage.
+
 `/chat/sites` manages the signed-in account's exact HTTPS origins. Every origin starts with `page.read` off. Adding an origin creates a disabled record; the normal first-party seal switch explicitly enables or revokes it. A domain's subdomains and similar spellings do not inherit permission. URL parameters preselect an origin only; they never authorize it.
 
 ## First-party management versus browser bridge

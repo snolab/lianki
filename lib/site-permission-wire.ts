@@ -1,16 +1,19 @@
 /** Browser-safe schemas only. Parsing never grants a capability or changes chat authority. */
 export const SITE_PERMISSION_SCOPE = "page.read" as const;
+export const SITE_DICTATION_SCOPE = "page.dictation" as const;
 export const SITE_PERMISSION_MAX_BYTES = 65536;
-export type SitePermissionScope = typeof SITE_PERMISSION_SCOPE;
+export type SitePermissionScope = typeof SITE_PERMISSION_SCOPE | typeof SITE_DICTATION_SCOPE;
+export const isSitePermissionScope = (v: unknown): v is SitePermissionScope =>
+  v === SITE_PERMISSION_SCOPE || v === SITE_DICTATION_SCOPE;
 export type SitePermissionManagementAction =
   | { op: "list" }
   | { op: "set"; origin: string; scope: SitePermissionScope; enabled: boolean }
-  | { op: "inspect"; origin: string };
+  | { op: "inspect"; origin: string; scope?: SitePermissionScope };
 export type SitePermissionSelection = { text: string; title: string; url: string };
 export type SitePermissionConsumeAction = {
   op: "consume";
   origin: string;
-  scope: SitePermissionScope;
+  scope: typeof SITE_PERMISSION_SCOPE;
   revision: number;
   requestId: string;
   selection: SitePermissionSelection;
@@ -56,14 +59,18 @@ export function parseSitePermissionManagementInput(
     const origin = canonicalExactSiteOrigin(value.origin);
     if (!origin) return null;
     if (value.op === "inspect")
-      return exactKeys(value, ["op", "origin"]) ? { op: "inspect", origin } : null;
+      return exactKeys(value, ["op", "origin"])
+        ? { op: "inspect", origin }
+        : exactKeys(value, ["op", "origin", "scope"]) && isSitePermissionScope(value.scope)
+          ? { op: "inspect", origin, scope: value.scope }
+          : null;
     if (
       value.op === "set" &&
       exactKeys(value, ["op", "origin", "scope", "enabled"]) &&
-      value.scope === SITE_PERMISSION_SCOPE &&
+      isSitePermissionScope(value.scope) &&
       typeof value.enabled === "boolean"
     )
-      return { op: "set", origin, scope: SITE_PERMISSION_SCOPE, enabled: value.enabled };
+      return { op: "set", origin, scope: value.scope, enabled: value.enabled };
     return null;
   } catch {
     return null;

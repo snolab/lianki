@@ -1,6 +1,7 @@
 /** Copy the narrow public response instead of forwarding arbitrary internal fields. */
 import type { ChatMessage, ChatReplayRange } from "../packages/debug-chat/src/wire";
 import type { PageChatHttpResult } from "./page-chat-http-wire";
+import { dictationInteger, publicDictationRange } from "../packages/debug-chat/src/dictation-wire";
 const errors = new Set([
   "invalid",
   "too-large",
@@ -13,13 +14,30 @@ const errors = new Set([
   "unavailable",
   "cancelled",
   "id-conflict",
+  "no-grant",
+  "stale",
 ]);
 export function publicPageChatResult(value: unknown): PageChatHttpResult | null {
   if (!value || typeof value !== "object") return null;
   const v = value as Record<string, unknown>;
   if (v.ok === false && typeof v.error === "string" && errors.has(v.error))
-    return { ok: false, error: v.error as Extract<PageChatHttpResult, { ok: false }>["error"] };
+    return {
+      ok: false,
+      error: v.error as Extract<PageChatHttpResult, { ok: false }>["error"],
+      ...(dictationInteger(v.gen) ? { gen: v.gen } : {}),
+    };
   if (v.ok !== true) return null;
+  if (
+    v.kind === "route" &&
+    ["listening", "no-source", "off"].includes(String(v.state)) &&
+    dictationInteger(v.gen)
+  )
+    return {
+      ok: true,
+      kind: "route",
+      state: v.state as "listening" | "no-source" | "off",
+      gen: v.gen,
+    };
   if (
     v.kind === "accepted" &&
     typeof v.id === "string" &&
@@ -30,6 +48,9 @@ export function publicPageChatResult(value: unknown): PageChatHttpResult | null 
     return { ok: true, kind: "accepted", id: v.id, seq: v.seq as number };
   if (v.kind === "history" && v.range && typeof v.range === "object") {
     const r = v.range as ChatReplayRange;
+    const rawDictation = (v.range as Record<string, unknown>).dictation;
+    const dictation = rawDictation === undefined ? undefined : publicDictationRange(rawDictation);
+    if (dictation === null) return null;
     if (
       r.type !== "history" ||
       typeof r.thread !== "string" ||
@@ -103,6 +124,7 @@ export function publicPageChatResult(value: unknown): PageChatHttpResult | null 
         throughSeq: r.throughSeq,
         headSeq: r.headSeq,
         prunedThroughSeq: r.prunedThroughSeq,
+        ...(dictation === undefined ? {} : { dictation }),
       },
       ...(typeof v.pending === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(v.pending)
         ? { pending: v.pending }

@@ -59,6 +59,120 @@ const grant = (site: string, revision: number, enabled = true): SitePermissionGr
   enabled,
   revision,
 });
+
+describe("independent dictation grants and serialized private actions", () => {
+  it("page.read never authorizes dictation; inspecting and revoking either scope leaves the other intact", async () => {
+    const { authority } = fixture();
+    await authority.execute(sub, set(true), receipt(1));
+    expect(
+      await authority.withGrant(sub, origin, "page.dictation", undefined, () => "private input"),
+    ).toEqual({ ok: false, error: "denied" });
+    expect(
+      await authority.execute(sub, { op: "inspect", origin, scope: "page.dictation" }, receipt(2)),
+    ).toMatchObject({
+      ok: true,
+      kind: "grant",
+      grant: { enabled: false, scope: "page.dictation" },
+    });
+    const changed = await authority.execute(
+      sub,
+      { op: "set", origin, scope: "page.dictation", enabled: true },
+      receipt(3),
+    );
+    expect(changed).toMatchObject({
+      ok: true,
+      kind: "grant",
+      grant: { scope: "page.dictation", revision: 2 },
+    });
+    expect(await authority.withGrant(sub, origin, "page.dictation", 2, (g) => g.revision)).toEqual({
+      ok: true,
+      value: 2,
+    });
+    await authority.execute(
+      sub,
+      { op: "set", origin, scope: "page.dictation", enabled: false },
+      receipt(4),
+    );
+    expect(
+      await authority.withGrant(sub, origin, "page.dictation", 2, () => "must not run"),
+    ).toEqual({ ok: false, error: "denied" });
+    expect(
+      await authority.withGrant(sub, origin, "page.read", 1, () => "selection still allowed"),
+    ).toEqual({ ok: true, value: "selection still allowed" });
+    expect(await authority.execute(sub, { op: "list" }, receipt(5))).toMatchObject({
+      ok: true,
+      grants: [
+        { scope: "page.read", enabled: true },
+        { scope: "page.dictation", enabled: false },
+      ],
+    });
+  });
+
+  it("holds the authority queue across a private action, so a confirmed revoke defeats every subsequent action", async () => {
+    const { authority } = fixture();
+    await authority.execute(
+      sub,
+      { op: "set", origin, scope: "page.dictation", enabled: true },
+      receipt(1),
+    );
+    let release!: () => void;
+    const pending = new Promise<void>((r) => {
+      release = r;
+    });
+    let entered!: () => void;
+    const started = new Promise<void>((r) => {
+      entered = r;
+    });
+    const first = authority.withGrant(sub, origin, "page.dictation", 1, async () => {
+      entered();
+      await pending;
+      return "authorized before revoke";
+    });
+    await started;
+    const revoke = authority.execute(
+      sub,
+      { op: "set", origin, scope: "page.dictation", enabled: false },
+      receipt(2),
+    );
+    const late = authority.withGrant(sub, origin, "page.dictation", 1, () => "must not run");
+    release();
+    expect(await first).toEqual({ ok: true, value: "authorized before revoke" });
+    expect(await revoke).toMatchObject({ ok: true, kind: "grant", grant: { enabled: false } });
+    expect(await late).toEqual({ ok: false, error: "denied" });
+  });
+
+  it("announces a dictation grant change only after persistence; storage failure cannot grant access", async () => {
+    const storage = new Memory();
+    const changes: SitePermissionGrant[] = [];
+    const authority = new SitePermissionAuthority(storage, {
+      now: () => now,
+      changed: (_sub, g) => changes.push(g),
+    });
+    storage.failPut = true;
+    expect(
+      await authority.execute(
+        sub,
+        { op: "set", origin, scope: "page.dictation", enabled: true },
+        receipt(1),
+      ),
+    ).toEqual({ ok: false, error: "unavailable" });
+    expect(changes).toHaveLength(0);
+    expect(await authority.withGrant(sub, origin, "page.dictation", undefined, () => true)).toEqual(
+      { ok: false, error: "denied" },
+    );
+    storage.failPut = false;
+    await authority.execute(
+      sub,
+      { op: "set", origin, scope: "page.dictation", enabled: true },
+      receipt(2),
+    );
+    expect(changes).toHaveLength(1);
+    storage.failGet = true;
+    expect(await authority.withGrant(sub, origin, "page.dictation", undefined, () => true)).toEqual(
+      { ok: false, error: "unavailable" },
+    );
+  });
+});
 describe("serialized exact-site page.read authority", () => {
   it("defaults to deny, inspects missing grants without creating one and lists only the caller", async () => {
     const { storage, authority } = fixture();

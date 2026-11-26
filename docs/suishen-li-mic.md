@@ -139,7 +139,7 @@ were never delivered.
     finalId: string; text: string; at: number }
 | { type: "dictation-stop"; bid: string }
 // hub → lianki.com tab
-| { type: "dictation-source-ok"; bid: string; sgen: number }          // answer to source "on": the lease
+| { type: "dictation-source-ok"; bid: string; sgen: number; principal: string } // verified session identity
 | { type: "dictation-target"; bid: string; target: { origin: string; routeId: string; gen: number } | null }
 | { type: "dictation-acked"; finalIds: string[] }
 | { type: "dictation-returned"; finalIds: string[]; why: "rejected" | "target-changed" | "revoked" | "expired" | "gone" | "full" }

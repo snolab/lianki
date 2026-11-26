@@ -1,16 +1,33 @@
 import { SitePermissionAuthority } from "../../../lib/site-permission-authority";
+import { DICTATION_CLEAR_PATH, readDictationClear } from "../../../lib/dictation-clear";
+import { SharedDictationRouter } from "../../../lib/shared-dictation-router";
+import {
+  dictationPolicy,
+  DICTATION_POLICY_DEFAULTS,
+} from "../../../packages/debug-chat/src/dictation-policy";
+import {
+  parseDictationPageMessage,
+  type DictationPageMessage,
+  type DictationSelector,
+  type DictationRange,
+} from "../../../packages/debug-chat/src/dictation-wire";
 import {
   SITE_ACTION_PATH,
   SITE_ACTION_HEADER,
   verifySiteAction,
 } from "../../../lib/site-permission-ticket";
-import { readSitePermissionAuthorityInput } from "../../../lib/site-permission-wire";
+import {
+  readSitePermissionAuthorityInput,
+  SITE_DICTATION_SCOPE,
+} from "../../../lib/site-permission-wire";
 import {
   PAGE_CHAT_HTTP_INTERNAL_PATH,
   PAGE_CHAT_HTTP_HEADER,
   PAGE_CHAT_HTTP_WAIT_MS,
+  PAGE_CHAT_HTTP_MAX_BYTES,
   readPageChatHttpInput,
   type PageChatHttpResult,
+  type PageChatHttpError,
 } from "../../../lib/page-chat-http-wire";
 import { verifyPageChatHttpTicket } from "../../../lib/page-chat-http-ticket";
 import { publicPageChatResult } from "../../../lib/page-chat-http-result";
@@ -516,6 +533,8 @@ type PageAtt = {
   sessionUntil?: number;
   /** The owner's user id, kept with the session (the main Worker's lookup key). */
   user?: string;
+  /** Non-authorizing browser isolation selector for first-party dictation only. */
+  dictationBid?: string;
   /** The page said it is going (pagehide): it no longer holds its session open. */
   leaving?: boolean;
   /**
@@ -1107,6 +1126,14 @@ export class DebugHub {
   /** `lianki chat`: API-token sockets and calls, each in its account's own thread (token-chat.ts). */
   private tokens: TokenChat;
   private sitePermissionAuthority?: SitePermissionAuthority;
+  private dictation?: SharedDictationRouter;
+  private dictationPolicy = { ...DICTATION_POLICY_DEFAULTS };
+  private dictationEpochGate: Promise<unknown> = Promise.resolve();
+  private dictationReset = {};
+  private dictationThreads = new Map<
+    string,
+    { account: string; bid: string; origin: string; thread: string }
+  >();
   private pageHttpPublic?: string;
   private pageHttpGate: Promise<unknown> = Promise.resolve();
   private pageHttpPending = new Map<
@@ -2982,6 +3009,186 @@ export class DebugHub {
     return { done, cancel };
   }
 
+  private siteAuthority() {
+    return (this.sitePermissionAuthority ??= new SitePermissionAuthority(this.ctx.storage, {
+      now: () => this.now(),
+      changed: (account, grant) => {
+        if (grant.scope === SITE_DICTATION_SCOPE) this.dictation?.revoke(account, grant.origin);
+      },
+    }));
+  }
+
+  private dictationRouter() {
+    return (this.dictation ??= new SharedDictationRouter({
+      now: () => this.now(),
+      policy: () => this.dictationPolicy,
+      send: (account, bid, source, event) => {
+        const pages = this.sockets("page").filter(
+          ({ a }) =>
+            a.user === account &&
+            a.dictationBid === bid &&
+            !a.embed &&
+            !a.box &&
+            !a.boxEval &&
+            a.session &&
+            (a.sessionUntil ?? 0) > this.now(),
+        );
+        const original = pages.find(({ a }) => a.id === source);
+        if (original) send(original.ws, event);
+        else if (
+          event.type === "dictation-acked" ||
+          event.type === "dictation-returned" ||
+          event.type === "dictation-unconfirmed"
+        ) {
+          // A reloaded source has a new socket id but retains its own scoped
+          // outbox. Settlement ids contain no text; each UI matches its ids.
+          for (const p of pages) send(p.ws, event);
+        }
+      },
+      wake: (account, origin) => {
+        for (const item of this.dictationThreads.values())
+          if (item.account === account && item.origin === origin) this.wakePageHttp(item.thread);
+      },
+    }));
+  }
+
+  /** Persist only an increasing metadata counter; never dictated text. */
+  private nextDictationEpoch(): Promise<number> {
+    const next = this.dictationEpochGate.then(async () => {
+      const old = (await this.ctx.storage.get<number>("dictation:epoch")) ?? 0;
+      if (!Number.isSafeInteger(old) || old < 0 || old >= Number.MAX_SAFE_INTEGER)
+        throw Error("dictation epoch unavailable");
+      await this.ctx.storage.put("dictation:epoch", old + 1);
+      return old + 1;
+    });
+    this.dictationEpochGate = next.then(
+      () => {},
+      () => {},
+    );
+    return next;
+  }
+
+  private async dictationReady(): Promise<boolean> {
+    if ((await this.flagValue("portable.mic-route")) !== true) return false;
+    this.dictationPolicy = dictationPolicy(await this.sessions?.config?.("chat.dictationPolicy"));
+    return true;
+  }
+
+  private async dictationAlarm() {
+    this.dictation?.sweep();
+    const at = this.dictation?.nextExpiry();
+    if (at !== undefined && at !== null) await this.schedule(at);
+  }
+
+  private rememberDictationThread(account: string, bid: string, origin: string, thread: string) {
+    for (const [key, value] of this.dictationThreads)
+      if (!this.dictationRouter().target(value.account, value.bid))
+        this.dictationThreads.delete(key);
+    if (
+      this.dictationThreads.size < this.dictationPolicy.maxRoutes ||
+      this.dictationThreads.has(account + ":" + bid)
+    )
+      this.dictationThreads.set(account + ":" + bid, { account, bid, origin, thread });
+  }
+
+  private async readDictation(
+    account: string,
+    owner: boolean,
+    origin: string,
+    selector: DictationSelector,
+  ): Promise<{ ok: true; range: DictationRange } | { ok: false; error: PageChatHttpError }> {
+    const router = this.dictationRouter();
+    const reset = this.dictationReset;
+    try {
+      if (!owner || !(await this.dictationReady())) {
+        router.disable(account);
+        return { ok: false, error: "off" };
+      }
+      const target = router.target(account, selector.bid);
+      const result = await this.siteAuthority().withGrant(
+        account,
+        origin,
+        SITE_DICTATION_SCOPE,
+        target?.origin === origin ? target.revision : undefined,
+        (grant) =>
+          reset === this.dictationReset
+            ? router.read(account, origin, selector, grant)
+            : { ok: false as const, error: "off" as const },
+      );
+      if (!result.ok) {
+        router.revoke(account, origin);
+        return { ok: false, error: result.error === "denied" ? "no-grant" : "unavailable" };
+      }
+      return result.value;
+    } catch {
+      return { ok: false, error: "unavailable" };
+    }
+  }
+
+  private async dictationFromPage(ws: Socket, page: PageAtt, message: DictationPageMessage) {
+    const reset = this.dictationReset;
+    // Only the authenticated first-party owner session; never embed tickets,
+    // API tokens, controllers, boxes, or a caller-supplied account id.
+    if (
+      page.thread !== OWNER_THREAD ||
+      page.embed ||
+      page.box ||
+      page.boxEval ||
+      !page.user ||
+      !page.id ||
+      !page.session ||
+      !page.sessionUntil ||
+      page.sessionUntil <= this.now()
+    )
+      return;
+    if (page.dictationBid && page.dictationBid !== message.bid) return;
+    const router = this.dictationRouter();
+    const live = await this.sessions?.live(page.user, page.session);
+    if (live !== "live") {
+      router.sourceOff(page.user, page.id, message.bid);
+      send(ws, { type: "dictation-target", bid: message.bid, target: null });
+      if (live === "gone") close(ws, 1008, "sign-in session ended");
+      return;
+    }
+    if (!(await this.dictationReady())) {
+      router.disable(page.user);
+      send(ws, { type: "dictation-target", bid: message.bid, target: null });
+      if (message.type === "chat-dictation") router.final(page.user, page.id, message, null);
+      return;
+    }
+    if (!page.dictationBid)
+      ws.serializeAttachment({ ...page, dictationBid: message.bid } satisfies PageAtt);
+    if (message.type === "dictation-source") {
+      if (message.state === "off") router.sourceOff(page.user, page.id, message.bid);
+      else {
+        const source = router.source(page.user, message.bid);
+        const epoch = source?.id === page.id ? source.sgen : await this.nextDictationEpoch();
+        if (reset !== this.dictationReset) return;
+        router.sourceOn(page.user, message.bid, page.id, epoch);
+      }
+    } else if (message.type === "dictation-stop") router.stop(page.user, message.bid, page.id);
+    else {
+      const target = router.target(page.user, message.bid);
+      if (!target) router.final(page.user, page.id, message, null);
+      else {
+        const result = await this.siteAuthority().withGrant(
+          page.user,
+          target.origin,
+          SITE_DICTATION_SCOPE,
+          target.revision,
+          (grant) => {
+            if (reset === this.dictationReset) router.final(page.user!, page.id!, message, grant);
+          },
+        );
+        if (!result.ok) {
+          router.revoke(page.user, target.origin);
+          router.final(page.user, page.id, message, null);
+        }
+      }
+    }
+    await this.dictationAlarm();
+  }
+
   /** The binding-only route accepts a signed single-use operation, never page-selected authority. */
   private async sitePermissions(req: Request): Promise<Response> {
     const json = (body: unknown, status = 200) =>
@@ -3002,11 +3209,8 @@ export class DebugHub {
         this.now(),
       );
       if (!claims) return json({ ok: false, error: "invalid" }, 403);
-      this.sitePermissionAuthority ??= new SitePermissionAuthority(this.ctx.storage, {
-        now: () => this.now(),
-      });
       return json(
-        await this.sitePermissionAuthority.execute(claims.sub, action, {
+        await this.siteAuthority().execute(claims.sub, action, {
           jti: claims.jti,
           exp: claims.exp,
         }),
@@ -3017,6 +3221,7 @@ export class DebugHub {
   }
 
   private async pageChatHttp(req: Request): Promise<Response> {
+    const reset = this.dictationReset;
     const json = (body: PageChatHttpResult, status = 200) =>
       Response.json(body, {
         status,
@@ -3070,20 +3275,69 @@ export class DebugHub {
     const thread = bound.thread;
     if ((await this.ctx.storage.get<FriendRecord>(friendKey(claims.sub)))?.blocked)
       return json({ ok: false, error: "blocked" }, 403);
+    if (action.op === "route") {
+      const router = this.dictationRouter();
+      try {
+        if (!claims.own || !(await this.dictationReady())) {
+          router.disable(claims.sub);
+          return json({ ok: false, error: "off" }, 403);
+        }
+        const epoch = action.state === "on" ? await this.nextDictationEpoch() : undefined;
+        const target = router.target(claims.sub, action.bid);
+        const result = await this.siteAuthority().withGrant(
+          claims.sub,
+          claims.ho,
+          SITE_DICTATION_SCOPE,
+          action.state !== "on" && target?.origin === claims.ho ? target.revision : undefined,
+          (grant) =>
+            reset === this.dictationReset
+              ? router.route(claims.sub, claims.ho, action, grant, epoch)
+              : { ok: false as const, error: "off" as const },
+        );
+        if (!result.ok) {
+          router.revoke(claims.sub, claims.ho);
+          return json(
+            { ok: false, error: result.error === "denied" ? "no-grant" : "unavailable" },
+            403,
+          );
+        }
+        if (result.value.ok && result.value.state !== "off")
+          this.rememberDictationThread(claims.sub, action.bid, claims.ho, thread);
+        await this.dictationAlarm();
+        return json(result.value);
+      } catch {
+        return json({ ok: false, error: "unavailable" }, 503);
+      }
+    }
     if (action.op === "read") {
       const waiter = action.wait ? this.waitPageHttp(thread, req.signal) : null;
       if (action.wait && !waiter) return json({ ok: false, error: "busy" }, 429);
       try {
         let range = await this.replay(thread, action.afterSeq);
-        if (waiter && range.throughSeq === range.headSeq && action.afterSeq === range.headSeq) {
+        let dictation = action.dictation
+          ? await this.readDictation(claims.sub, claims.own === true, claims.ho, action.dictation)
+          : undefined;
+        if (dictation && !dictation.ok)
+          return json(dictation, dictation.error === "invalid" ? 400 : 403);
+        if (
+          waiter &&
+          range.throughSeq === range.headSeq &&
+          action.afterSeq === range.headSeq &&
+          !dictation?.range.items.length
+        ) {
           await waiter.done;
           if (req.signal.aborted) return json({ ok: false, error: "cancelled" }, 499);
           range = await this.replay(thread, action.afterSeq);
+          dictation = action.dictation
+            ? await this.readDictation(claims.sub, claims.own === true, claims.ho, action.dictation)
+            : undefined;
+          if (dictation && !dictation.ok)
+            return json(dictation, dictation.error === "invalid" ? 400 : 403);
         }
         const body = publicPageChatResult({
           ok: true,
           kind: "history",
-          range,
+          range: { ...range, ...(dictation?.ok ? { dictation: dictation.range } : {}) },
           ...(this.pageHttpPending.get(thread)
             ? { pending: this.pageHttpPending.get(thread)!.id }
             : {}),
@@ -3171,6 +3425,18 @@ export class DebugHub {
         { headers: { "cache-control": "no-store" } },
       );
     this.work.touch();
+    if (url.pathname === DICTATION_CLEAR_PATH) {
+      const input = await readDictationClear(req);
+      if (!input) return Response.json({ ok: false }, { status: 403 });
+      // Invalidate operations suspended at an authority/storage await as well as live leases.
+      this.dictationReset = {};
+      this.dictation?.disable(input.account);
+      if (input.account === undefined) this.dictationThreads.clear();
+      else
+        for (const [key, item] of this.dictationThreads)
+          if (item.account === input.account) this.dictationThreads.delete(key);
+      return Response.json({ ok: true }, { headers: { "cache-control": "no-store" } });
+    }
     if (url.pathname === SITE_ACTION_PATH) return this.sitePermissions(req);
     if (url.pathname === PAGE_CHAT_HTTP_INTERNAL_PATH) return this.pageChatHttp(req);
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
@@ -4653,6 +4919,7 @@ export class DebugHub {
   async alarm() {
     this.work.touch();
     this.sweep();
+    await this.dictationAlarm();
     await this.checkIdle();
     await this.clipsSweep();
     await this.proofSweep();
@@ -4833,6 +5100,13 @@ export class DebugHub {
   }
 
   private fromPageChecked(ws: Socket, page: PageAtt, raw: unknown): void | Promise<void> {
+    let dictationInput: unknown;
+    try {
+      if (typeof raw === "string" && raw.length <= PAGE_CHAT_HTTP_MAX_BYTES)
+        dictationInput = JSON.parse(raw);
+    } catch {}
+    const dictation = parseDictationPageMessage(dictationInput);
+    if (dictation) return this.dictationFromPage(ws, page, dictation);
     const pm = participantMessage(raw);
     if (pm) return this.participantFromPage(ws, page, pm);
     const cm = clipsParse(raw, parseClipsPageMessage);
@@ -6509,6 +6783,8 @@ export class DebugHub {
 
   webSocketClose(ws: Socket, code: number): void | Promise<void> {
     const a = att(ws);
+    if (a?.role === "page" && a.user && a.id)
+      this.dictation?.sourceOff(a.user, a.id, a.dictationBid);
     const ta = tokenAtt(ws);
     close(ws, code === 1005 ? 1000 : code, "");
     // A token's listening socket closed: it may have left the thread, and its lane may turn reader.

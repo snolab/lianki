@@ -130,6 +130,39 @@ describe("checks", () => {
 });
 
 describe("the API's change", () => {
+  test("microphone enable requires a successful lease reset; OFF still writes when the hub is down", async () => {
+    const d1 = db();
+    const body = { key: "portable.mic-route", enabled: true };
+    expect((await changeFlag(d1, body, BY, ctx({}, d1))).ok).toBe(false);
+    expect(
+      (await changeFlag(d1, body, BY, { ...ctx({}, d1), clearDictation: async () => false })).ok,
+    ).toBe(false);
+    expect(
+      (
+        await changeFlag(d1, body, BY, {
+          ...ctx({}, d1),
+          clearDictation: async () => {
+            throw Error("offline");
+          },
+        })
+      ).ok,
+    ).toBe(false);
+    expect(
+      (await changeFlag(d1, body, BY, { ...ctx({}, d1), clearDictation: async () => true })).ok,
+    ).toBe(true);
+    expect((await loadFlags(d1))["portable.mic-route"]).toBe(true);
+    expect(
+      (
+        await changeFlag(d1, { ...body, enabled: false }, BY, {
+          ...ctx({}, d1),
+          clearDictation: async () => {
+            throw Error("offline");
+          },
+        })
+      ).ok,
+    ).toBe(true);
+    expect((await loadFlags(d1))["portable.mic-route"]).toBe(false);
+  });
   test("an unmet prerequisite refuses ON, with the reason, and writes nothing", async () => {
     const d1 = db();
     const r = await changeFlag(d1, { key: "payments.komoju.live", enabled: true }, BY, ctx({}, d1));

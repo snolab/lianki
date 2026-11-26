@@ -6,6 +6,8 @@ import type { D1Like } from "@/lib/d1/types";
 import { FLAG_CACHE_MS, flagLog, listFlags, type D1WithBatch } from "@/lib/flags-store";
 import { allFailedPrereqs, changeFlag, type PrereqContext } from "@/lib/flag-prereqs";
 import { sameOriginJsonPost } from "@/lib/security/same-origin";
+import { clearDictation, type DictationPush } from "@/lib/dictation-clear";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 /**
  * Owner-only feature flags (404 for anyone else; under /api/dev/ so Cloudflare
@@ -30,6 +32,15 @@ async function owner() {
 const prereqContext = (): PrereqContext => ({
   env: process.env,
   d1: getD1() as unknown as D1Like,
+  clearDictation: async () => {
+    try {
+      return await clearDictation(
+        (getCloudflareContext().env as unknown as { PUSH?: DictationPush }).PUSH ?? null,
+      );
+    } catch {
+      return false;
+    }
+  },
 });
 
 async function state() {

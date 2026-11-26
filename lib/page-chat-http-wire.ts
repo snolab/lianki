@@ -1,5 +1,12 @@
 /** Browser-safe wire contract. No API token or ticket is ever part of a client response. */
 import { MAX_CHAT, type ChatReplayRange } from "../packages/debug-chat/src/wire";
+import {
+  parseDictationRoute,
+  parseDictationSelector,
+  type DictationRoute,
+  type DictationSelector,
+  type DictationRange,
+} from "../packages/debug-chat/src/dictation-wire";
 export const PAGE_CHAT_HTTP_PATH = "/api/chat/page-broker";
 export const PAGE_CHAT_HTTP_INTERNAL_PATH = "/internal/page-chat";
 export const PAGE_CHAT_HTTP_HEADER = "x-lianki-page-chat-capability";
@@ -8,7 +15,8 @@ export const PAGE_CHAT_HTTP_MAX_BYTES = 32768;
 export const PAGE_CHAT_HTTP_WAIT_MS = 20000;
 export type PageChatHttpInput =
   | { op: "hello" }
-  | { op: "read"; afterSeq?: number; wait: boolean }
+  | { op: "read"; afterSeq?: number; wait: boolean; dictation?: DictationSelector }
+  | DictationRoute
   | { op: "send"; id: string; text: string };
 export type PageChatHttpAction = Exclude<PageChatHttpInput, { op: "hello" }>;
 export type PageChatHttpError =
@@ -22,15 +30,18 @@ export type PageChatHttpError =
   | "busy"
   | "unavailable"
   | "cancelled"
-  | "id-conflict";
+  | "id-conflict"
+  | "no-grant"
+  | "stale";
 export type PageChatHttpResult =
-  | { ok: false; error: PageChatHttpError }
+  | { ok: false; error: PageChatHttpError; gen?: number }
   | { ok: true; kind: "hello"; principal: string }
   | { ok: true; kind: "accepted"; id: string; seq: number }
+  | { ok: true; kind: "route"; state: "listening" | "no-source" | "off"; gen: number }
   | {
       ok: true;
       kind: "history";
-      range: ChatReplayRange;
+      range: ChatReplayRange & { dictation?: DictationRange };
       pending?: string;
       warning?: "no-reply" | "limit";
     };
@@ -42,9 +53,13 @@ const exactKeys = (v: Record<string, unknown>, keys: string[]) =>
 export function parsePageChatHttpInput(value: unknown): PageChatHttpInput | null {
   if (!object(value)) return null;
   if (value.op === "hello") return exactKeys(value, ["op"]) ? { op: "hello" } : null;
+  if (value.op === "route") return parseDictationRoute(value);
   if (value.op === "read") {
+    const dictation =
+      value.dictation === undefined ? undefined : parseDictationSelector(value.dictation);
     if (
-      !exactKeys(value, ["op", "afterSeq", "wait"]) ||
+      !exactKeys(value, ["op", "afterSeq", "wait", "dictation"]) ||
+      dictation === null ||
       (value.afterSeq !== undefined &&
         (!Number.isSafeInteger(value.afterSeq) || Number(value.afterSeq) < 0)) ||
       (value.wait !== undefined && typeof value.wait !== "boolean")
@@ -54,6 +69,7 @@ export function parsePageChatHttpInput(value: unknown): PageChatHttpInput | null
       op: "read",
       ...(value.afterSeq === undefined ? {} : { afterSeq: value.afterSeq as number }),
       wait: value.wait === true,
+      ...(dictation === undefined ? {} : { dictation }),
     };
   }
   if (value.op === "send") {

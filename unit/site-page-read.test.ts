@@ -1,7 +1,14 @@
 import { test, expect } from "bun:test";
 import { sitePageReadBridge } from "../src/site-page-read";
 import type { ChatGmRequest } from "../src/page-chat-fetch";
-function fixture(opts: { enabled?: boolean; text?: string; consumeError?: boolean } = {}) {
+function fixture(
+  opts: {
+    enabled?: boolean;
+    text?: string;
+    consumeError?: boolean;
+    scope?: "page.read" | "page.dictation";
+  } = {},
+) {
   let selections = 0;
   const calls: Parameters<ChatGmRequest>[0][] = [];
   const doc = {
@@ -22,7 +29,7 @@ function fixture(opts: { enabled?: boolean; text?: string; consumeError?: boolea
             kind: "grant",
             grant: {
               origin: "https://example.test",
-              scope: "page.read",
+              scope: opts.scope ?? "page.read",
               enabled: opts.enabled !== false,
               revision: 5,
             },
@@ -41,6 +48,17 @@ function fixture(opts: { enabled?: boolean; text?: string; consumeError?: boolea
   };
   return { doc, request, calls, selections: () => selections };
 }
+test("dictation permission never stands in for page.read before selection access", async () => {
+  const f = fixture({ scope: "page.dictation" });
+  const bridge = sitePageReadBridge({
+    appOrigin: "https://lianki.com",
+    doc: f.doc,
+    request: f.request,
+  });
+  expect(await bridge.readSelection()).toMatchObject({ ok: false, error: "denied" });
+  expect(f.selections()).toBe(0);
+  expect(f.calls).toHaveLength(1);
+});
 test("does nothing until explicit invocation, checks current exact-site permission before reading, and never sends automatically", async () => {
   const f = fixture(),
     bridge = sitePageReadBridge({

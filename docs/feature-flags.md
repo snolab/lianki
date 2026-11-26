@@ -89,6 +89,15 @@ stay on the folded row, because they say why the switch does nothing.
 
 ## Flags now
 
+`portable.mic-route` is default off and owner-only. Its normal `/api/dev/flags`
+change path clears transient source and target leases before enabling; if PUSH
+is unavailable, enabling fails closed. Disabling still writes the flag even
+when cleanup is unavailable. The cookie broker also clears the authenticated
+account's leases when it observes the flag off. A source retains its scoped
+outbox; cleared delivered items are unconfirmed, never automatically appended
+again. Do not enable this flag with a direct database write that bypasses
+`changeFlag`.
+
 | key                       | on means                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `payments.stripe.live`    | Stripe takes real money (also needs an `sk_live_` key)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |

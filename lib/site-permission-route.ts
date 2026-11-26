@@ -10,6 +10,7 @@ import {
 import {
   readSitePermissionManagementInput,
   readSitePageReadRequest,
+  SITE_PERMISSION_SCOPE,
   type SitePermissionAction,
 } from "./site-permission-wire";
 export type SitePermissionRouteDeps = {
@@ -92,9 +93,20 @@ export async function consumeSitePageRead(
   // Origin here selects the grant, not proof of host-page identity. This initial scope
   // processes only caller-supplied selected text; no account/private data or execution is exposed.
   const response = await forward(user.id, authorityAction, deps);
-  if (action.op !== "status" || !response.ok) return response;
+  if (!response.ok) return response;
   const body = publicSitePermissionResult(await response.json());
-  return body?.ok && body.kind === "grant"
+  if (action.op === "consume") {
+    if (!body?.ok) return json(body ?? { ok: false, error: "unavailable" });
+    return body.kind === "selection" &&
+      body.revision === action.revision &&
+      new URL(body.selection.url).origin === action.origin
+      ? json(body)
+      : json({ ok: false, error: "unavailable" }, 503);
+  }
+  return body?.ok &&
+    body.kind === "grant" &&
+    body.grant.scope === SITE_PERMISSION_SCOPE &&
+    body.grant.origin === action.origin
     ? json({ ...body, accountBinding })
     : json(body ?? { ok: false, error: "unavailable" });
 }
