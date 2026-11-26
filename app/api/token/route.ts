@@ -30,3 +30,4 @@ async function handle(req: Request) {
 export const GET = handle;
 export const POST = handle;
 export const DELETE = handle;
+export const PATCH = handle;

@@ -10,6 +10,7 @@ import {
   textOf,
   type Expiry,
 } from "@/app/components/TokenPickers";
+import { TokenRename } from "./TokenRename";
 import { RevokeConfirm } from "./RevokeConfirm";
 import ConnectedApps from "./ConnectedApps";
 import { AgentGuide, CopyGuideButton, useAgentGuide, useAgentGuidePointer } from "./AgentGuide";
@@ -322,6 +323,31 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
                   : s("neverUsed")}
               </div>
             </div>
+            <TokenRename
+              id={t.id}
+              name={t.name}
+              labels={{
+                rename: s("rename"),
+                save: s("renameSave"),
+                cancel: s("renameCancel"),
+                name: s("name"),
+                hint: s("renameHint"),
+                invalid: s("errName"),
+                failed: s("errFailed"),
+              }}
+              onRenamed={(name) =>
+                setList((current) =>
+                  current
+                    ? {
+                        ...current,
+                        tokens: current.tokens.map((row) =>
+                          row.id === t.id ? { ...row, name } : row,
+                        ),
+                      }
+                    : current,
+                )
+              }
+            />
             <RevokeConfirm
               id={t.id}
               name={t.name}
