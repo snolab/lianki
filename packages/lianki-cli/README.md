@@ -89,7 +89,7 @@ shows each token's permissions, expiry and last use, with one-click Revoke.
 | permission   | lets the token                                              |
 | ------------ | ----------------------------------------------------------- |
 | `study`      | review, add and change cards; read and change your settings |
-| `chat:read`  | read and follow your own chat (`chat read`, `chat listen`)  |
+| `chat:read`  | read and follow your own chat (`chat read`, `chat listen`, `chat attachment get`) |
 | `chat:write` | post in your own chat (`chat say`, `chat avatar`)           |
 | `chat:ask`   | post question cards in your own chat (`chat ask`)           |
 | `progress`   | report your work to the task list (`progress`); site owners' tokens only |
@@ -111,6 +111,7 @@ lianki chat ask --q "Review now?" --opt Yes --opt Later --recommend 1 --wait
 lianki chat read --limit 20
 lianki chat read --after-seq 120 --through-seq 160 --json # recover a covered range
 lianki chat seen --seq 160       # explicitly acknowledge messages actually consumed
+lianki chat attachment get <id> --out /tmp/li   # a file on a line of your chat (attachments[].id)
 lianki chat listen --json        # one JSON line an event, until Ctrl-C
 lianki chat avatar me.svg        # your picture in the chat (plain SVG, ≤ 4 KB)
 lianki chat avatar --clear       # back to the generated one
@@ -279,7 +280,8 @@ lianki settings set --help
 | `chat say`      | `{ id, lane }`                                                                                 |
 | `chat avatar`   | `{ avatar, dropped }`: `avatar` the SHA-256 of the kept SVG, or null when cleared              |
 | `chat ask`      | `{ id, askId, lane, answer: null }`, or with `--wait` `{ id, askId, answer: { choices, labels, at } }` |
-| `chat read`     | `{ thread, lane, messages: [{ id, from, label, text, at, ask?, answer? }] }`                  |
+| `chat read`     | `{ thread, lane, messages: [{ id, from, label, text, at, ask?, answer?, attachments? }] }`    |
+| `chat attachment get` | `{ id, name, type, size, file }`: only a file on a line of your own chat, owned by that chat's account; a single-use 60 s ticket, never printed |
 | `progress`      | the hub's answer: `{ entry: { id, status, rev, etaAt?, doneKind? }, readers, told? }`          |
 | `progress batch`| `{ ok, changeId, at, results: [{ entry } \| { status, error }] }`                             |
 | `progress ack`  | `{ ok, id, task, etaAt }`                                                                      |

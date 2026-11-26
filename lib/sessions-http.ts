@@ -10,6 +10,7 @@ export const SESSION_METHODS = [
   "polishLines",
   "inbox",
   "threadFiles",
+  "threadTicket",
   "chatToken",
   "playAudio",
   "evalToken",

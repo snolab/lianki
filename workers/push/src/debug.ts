@@ -662,6 +662,8 @@ type SessionsRpc = {
   inbox?(req: { op: string; id?: string }): Promise<unknown>;
   /** Which of these ids are this account's own files (lib/inbox/thread-files.ts); an older main Worker has none: no files kept. */
   threadFiles?(req: { userId: string; ids: string[] }): Promise<unknown>;
+  /** A chat token's single-use ticket for a file in its thread (lib/inbox/thread-ticket.ts). */
+  threadTicket?(req: { userId: string; owner: boolean; id: string }): Promise<unknown>;
   /** An eval token's connect or use (lib/eval-token.ts); an older main Worker has none: refused. */
   evalToken?(req: {
     op: "connect" | "use";

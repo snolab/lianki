@@ -12,6 +12,9 @@ import { cleanAppRefs, miniAppsIn } from "../../../packages/debug-chat/src/mini-
  *        {op:"read-ack", lastReadSeq}              → {ok, thread, lastReadSeq} explicit consumption only
  *        {op:"avatar", svg: "<svg…>" | null}     → {ok, avatar, dropped}  (chat:write)
  *        {op:"lane", state: "reader" | "left"}   → {ok, lane, state}    (chat:read; lane-registry.ts)
+ *        {op:"attachment", id}                   → {ok, item, ticket, exp, path, header}  (chat:read)
+ *                                                  a file on a line of this thread, its account's own;
+ *                                                  the ticket is single use, 60 s (lib/inbox/thread-ticket.ts)
  *        {op:"lane", busy: boolean, stuck?}      → {ok, lane, state, busy}  the lanes manager: its agent
  *                                                  is mid-task (the page's turning ring)
  *   GET  /api/version/chat  (WebSocket) first message {type:"auth", token, history?, mode?, scope?};
@@ -30,7 +33,8 @@ import { cleanAppRefs, miniAppsIn } from "../../../packages/debug-chat/src/mini-
  * names the one thread the token may use: its account's own (the owner's
  * thread for the owner's account, else that user's Learning Partner thread).
  * Nothing in a request can name a thread, a node, a page or another user.
- * There is no eval, pairing, grant, inbox, clips or answer here: a token
+ * There is no eval, pairing, grant, inbox listing, clips or answer here (op
+ * "attachment" reads one file already on a line of the thread): a token
  * socket is not a controller and none of the controller's messages reach it.
  *
  * Lines. A token's line is an agent line (`from: "agent"`, never the owner's
@@ -105,6 +109,8 @@ const MAX_BODY = 16_384;
 export const TOKEN_REFUSED = 4401;
 export const TOKEN_REPLACED = 4409;
 const TOKEN_RE = /^lk_[0-9a-f]{64}$/;
+/** A stored file's id (lib/inbox/keys.ts newInboxId). */
+const ATTACHMENT_ID = /^[0-9a-f]{20}$/;
 
 export type TokenSocket = {
   send(data: string): void;
@@ -167,6 +173,8 @@ export type ChatTokenRpc = {
   }): Promise<unknown>;
   /** `say --play` (lib/play-check.ts): chat:play, the flag, deny list, rate; audited. */
   playAudio?(req: Record<string, unknown>): Promise<unknown>;
+  /** op "attachment" (lib/inbox/thread-ticket.ts): a single-use ticket for a file of the thread's account. */
+  threadTicket?(req: { userId: string; owner: boolean; id: string }): Promise<unknown>;
 };
 
 export interface TokenHost {
@@ -528,12 +536,18 @@ export class TokenChat {
       op !== "read-ack" &&
       op !== "prepare" &&
       op !== "avatar" &&
-      op !== "lane"
+      op !== "lane" &&
+      op !== "attachment"
     )
       return json(
-        { ok: false, error: 'op must be "say", "ask", "read", "read-ack", "avatar" or "lane"' },
+        {
+          ok: false,
+          error: 'op must be "say", "ask", "read", "read-ack", "avatar", "lane" or "attachment"',
+        },
         400,
       );
+    if (op === "attachment" && !ATTACHMENT_ID.test(String(body.id ?? "")))
+      return json({ ok: false, error: "attachment: id must be a file id from a line" }, 400);
     if (
       (op === "read-ack" && !validSeq(body.lastReadSeq)) ||
       (op === "read" && !validReadWindow(body.afterSeq, body.throughSeq))
@@ -553,8 +567,9 @@ export class TokenChat {
     // `lianki mcp` names itself (x-lianki-client) for the audit log; the main
     // Worker keeps it only in its one known shape (lib/api-token-client.ts).
     const client = req.headers.get("x-lianki-client")?.slice(0, 100) || undefined;
+    // op "attachment" reads the thread: chat:read, as read/listen (never eval).
     const v = await this.check(
-      op === "lane" || op === "read-ack" ? "read" : op,
+      op === "lane" || op === "read-ack" || op === "attachment" ? "read" : op,
       { token: m[1] },
       client,
     );
@@ -563,6 +578,7 @@ export class TokenChat {
     if (!thread) return json({ ok: false, error: "blocked" }, 403);
     if (busyOp) return this.laneBusy(v, thread, body.busy as boolean, body.stuck === true);
     if (op === "lane") return this.laneOp(v, thread, body.state as "reader" | "left");
+    if (op === "attachment") return this.attachment(v, thread, String(body.id));
     if (op === "prepare") {
       const rpc = this.host.rpc();
       if (!rpc?.prepareChatTurn) return json({ ok: false, error: "unavailable" }, 503);
@@ -645,6 +661,53 @@ export class TokenChat {
         "status" in out ? out.status : 400,
       );
     return json({ ok: true, lane: v.lane, ...out });
+  }
+
+  /**
+   * op "attachment" (`lianki chat attachment get <id>`): a single-use download
+   * ticket (60 s) for one file posted in the token's own thread. Only an id on
+   * a line of that thread (no listing, no other ids), and the main Worker
+   * checks the file is that thread's account's (lib/inbox/thread-ticket.ts).
+   * Every refusal reads the same, so it tells nothing about other ids.
+   */
+  private async attachment(v: Verified, thread: string, id: string): Promise<Response> {
+    const rpc = this.host.rpc();
+    if (!rpc?.threadTicket) return json({ ok: false, error: "unavailable" }, 503);
+    const none = () => json({ ok: false, error: "no such attachment in this chat" }, 404);
+    const lines = await this.host.history(thread);
+    if (!lines.some((l) => l.attachments?.some((a) => a.id === id))) return none();
+    let a: Record<string, unknown> | null;
+    try {
+      a = (await rpc.threadTicket({
+        userId: v.userId,
+        owner: thread === OWNER_THREAD,
+        id,
+      })) as Record<string, unknown> | null;
+    } catch (e) {
+      console.error(
+        JSON.stringify({ msg: "debug.token-attachment-failed", error: String(e).slice(0, 200) }),
+      );
+      return json({ ok: false, error: "unavailable" }, 503);
+    }
+    if (a?.ok !== true || typeof a.ticket !== "string")
+      return a?.error === "busy" ? json({ ok: false, error: "busy" }, 503) : none();
+    // Ids and the lane only: never the ticket, never a name.
+    console.log(
+      JSON.stringify({
+        msg: "debug.token-attachment",
+        lane: v.lane,
+        owner: thread === OWNER_THREAD,
+      }),
+    );
+    return json({
+      ok: true,
+      item: a.item,
+      ticket: a.ticket,
+      exp: a.exp,
+      // Fetch it here with the ticket in this header (never in the URL: URLs are logged).
+      path: `/api/my/inbox/${id}`,
+      header: "x-inbox-ticket",
+    });
   }
 
   /**

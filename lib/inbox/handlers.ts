@@ -22,6 +22,7 @@ import {
   listItems,
   settleTo,
   spendTicket,
+  THREAD_TICKET,
   uploadedSince,
   usageOf,
 } from "./store";
@@ -307,14 +308,19 @@ export async function download(req: Request, id: string, d: InboxDeps): Promise<
   const who = await account(d);
   const ticket = req.headers.get(TICKET_HEADER);
   const mine = !!who && who.id === it.ownerId;
-  // Tickets remain restricted to the dev accounts the agent can read.
+  // Two kinds of ticket. An approved agent's (lib/inbox/agent.ts) stays restricted
+  // to the dev accounts it can read. A chat token's (lib/inbox/thread-ticket.ts,
+  // scope "thread") was minted for a file on a line of the token's own thread,
+  // owned by that thread's account.
+  const at = (d.now ?? Date.now)();
   if (
     !mine &&
     !(
       ticket &&
       it.source === "chat" &&
-      (await holderIds(db, "dev")).includes(it.ownerId) &&
-      (await spendTicket(db, id, ticket, (d.now ?? Date.now)()))
+      ((await spendTicket(db, id, ticket, at, THREAD_TICKET)) ||
+        ((await holderIds(db, "dev")).includes(it.ownerId) &&
+          (await spendTicket(db, id, ticket, at))))
     )
   )
     return notFound();

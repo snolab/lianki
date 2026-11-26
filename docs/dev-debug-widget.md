@@ -2472,12 +2472,25 @@ closes the old inbox and ignores late callbacks. No other `/api/dev` gate change
 The old `/api/dev/inbox/**` URLs are exact thin forwards, preserving existing
 widgets and the agent's single-use ticket downloads.
 
+**Every user's lines carry their files** (owner, 2026-11-26). The page sends
+`attachments` for every signed-in account. On a non-owner thread the hub keeps
+a ref only after the main Worker (`DebugSessions.threadFiles`,
+`lib/inbox/thread-files.ts`) confirms the id is that thread's account's own
+stored file, with name, type and size from the row; another account's id, an
+unknown one or no answer is dropped (the line still goes). A lane token
+(`chat:read`, never eval) can read a file on a line of its own thread with
+`lianki chat attachment get <id>`: the hub checks the id is on a line of the
+token's thread, the main Worker (`DebugSessions.threadTicket`,
+`lib/inbox/thread-ticket.ts`) checks the file is that thread's account's and
+mints a single-use 60 s ticket (scope `thread`, hashed apart from an agent's).
+No listing of a user's other files.
+
 | route                       | what                                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `POST /api/my/inbox`        | raw body, `x-file-name` (URI-encoded), `content-length` required; streamed to R2 (hashed on the way) |
 | `GET /api/my/inbox`         | his files and usage (settles accrued storage cost)                                                   |
 | `PATCH /api/my/inbox`       | `{ids, line}`: the chat line they were sent with                                                     |
-| `GET /api/my/inbox/<id>`    | the file: his session, or an agent's ticket in `x-inbox-ticket`                                      |
+| `GET /api/my/inbox/<id>`    | the file: his session, or an agent's or a chat token's ticket in `x-inbox-ticket`                    |
 | `DELETE /api/my/inbox/<id>` | his own session only; the object and the row go                                                      |
 
 - **Keys**: `inbox/<user id>/<yyyy>/<mm>/<id>` (`lib/inbox/keys.ts`); the name

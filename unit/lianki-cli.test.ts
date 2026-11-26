@@ -1118,3 +1118,56 @@ test("publish scope refusals carry only a public approval link", async () => {
     }
   }
 });
+
+describe("chat attachment get", () => {
+  const ID = "0123456789abcdef0123";
+  const TICKET = "ab".repeat(32);
+  test("asks for a ticket, downloads with it in a header, saves under the file's own name, never prints it", async () => {
+    const h = harness({
+      env,
+      server: {
+        "POST /api/version/chat": (c) =>
+          c.body.op === "attachment" && c.body.id === ID
+            ? json({
+                ok: true,
+                item: { id: ID, name: "../photo.png", type: "image/png", size: 3 },
+                ticket: TICKET,
+                exp: 1,
+                path: `/api/my/inbox/${ID}`,
+                header: "x-inbox-ticket",
+              })
+            : json({ ok: false, error: "no such attachment in this chat" }, 404),
+        [`GET /api/my/inbox/${ID}`]: () => new Response(new Uint8Array([1, 2, 3])),
+      },
+    });
+    const sentHeaders: Record<string, string>[] = [];
+    const inner = h.deps.fetch;
+    h.deps.fetch = async (u: URL, init: any = {}) => {
+      if (String(u).includes("/api/my/inbox/")) sentHeaders.push(init.headers ?? {});
+      return inner(u, init);
+    };
+    const written: { file: string; bytes: Uint8Array }[] = [];
+    (h.deps as any).writeFile = async (file: string, bytes: Uint8Array) =>
+      void written.push({ file, bytes });
+    const r = await h.run("chat", "attachment", "get", ID, "--out", "/tmp/li", "--json");
+    expect(r.code).toBe(0);
+    expect(sentHeaders).toEqual([{ "x-inbox-ticket": TICKET }]);
+    // No folders from the server's name: "../photo.png" stays inside --out.
+    expect(written).toEqual([{ file: "/tmp/li/_photo.png", bytes: new Uint8Array([1, 2, 3]) }]);
+    expect(envelope(r.out).data).toMatchObject({ id: ID, type: "image/png", size: 3 });
+    expect(r.out + r.err).not.toContain(TICKET);
+  });
+
+  test("a bad id never reaches the server; a refusal is an error", async () => {
+    const h = harness({
+      env,
+      server: {
+        "POST /api/version/chat": () =>
+          json({ ok: false, error: "no such attachment in this chat" }, 404),
+      },
+    });
+    expect((await h.run("chat", "attachment", "get", "../x")).code).not.toBe(0);
+    expect(h.calls).toHaveLength(0);
+    expect((await h.run("chat", "attachment", "get", ID)).code).not.toBe(0);
+  });
+});

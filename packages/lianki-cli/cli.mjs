@@ -686,6 +686,46 @@ async function cmdChatRead(c) {
   );
 }
 
+/** A stored file's name as a plain file name here: no folders, no control characters. */
+const safeFileName = (name, id) =>
+  String(name ?? "")
+    .replace(/[\u0000-\u001f\u007f/\\]/g, "_")
+    .replace(/^\.+/, "")
+    .slice(0, 200) || `${id}.bin`;
+
+/**
+ * `chat attachment get <id>`: one file posted in this token's own thread
+ * (chat:read). The server hands a single-use 60 s ticket; it rides in a
+ * header, never the URL, and is never printed.
+ */
+async function cmdChatAttachmentGet(c) {
+  const id = String(c.argv.id ?? "");
+  if (!/^[0-9a-f]{20}$/.test(id)) throw usage("the id is the 20-character file id on a chat line");
+  const token = await needToken(c);
+  const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body: { op: "attachment", id } });
+  const path = typeof data.path === "string" && data.path.startsWith("/api/my/inbox/") ? data.path : null;
+  if (!path || typeof data.ticket !== "string") throw new CliError("server", EXIT.server, `${c.site} did not hand a ticket`);
+  let r;
+  try {
+    r = await c.deps.fetch(new URL(path, c.base + "/"), {
+      headers: { [String(data.header || "x-inbox-ticket")]: data.ticket },
+      redirect: "manual",
+    });
+  } catch (e) {
+    throw new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`);
+  }
+  if (r.status !== 200) throw new CliError("refused", EXIT.refused, `${c.site} refused the download (${r.status})`);
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  const item = data.item && typeof data.item === "object" ? data.item : {};
+  const file = join(String(c.argv.out ?? "."), safeFileName(item.name, id));
+  await (c.deps.writeFile ?? (async (f, b) => {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    await mkdir(String(c.argv.out ?? "."), { recursive: true });
+    await writeFile(f, b);
+  }))(file, bytes);
+  emit(c, "chat attachment get", { id, name: item.name ?? null, type: item.type ?? null, size: bytes.length, file }, (d) => d.file);
+}
+
 async function cmdChatSeen(c) {
   const token = await needToken(c);
   const body = readAckBody(c.argv.seq);
@@ -1171,6 +1211,24 @@ function build(args, deps, box) {
             "Explicitly acknowledge the last sequence you actually read",
             (y) => y.option("seq", { type: "number", demandOption: true, describe: "Last sequence actually consumed; passive listening does not count" }),
             act(cmdChatSeen),
+          )
+          .command(
+            "attachment",
+            "A file posted in your own chat",
+            (y) =>
+              y
+                .command(
+                  "get <id>",
+                  "Download one file from a line of your chat (single-use ticket)",
+                  (z) =>
+                    examples(
+                      z.positional("id", { type: "string", describe: "The file id on the chat line (attachments[].id)" })
+                        .option("out", { type: "string", default: ".", describe: "Folder to save it in" }),
+                      [["lianki chat attachment get 0123456789abcdef0123 --out /tmp/li", "saves it under its own name"]],
+                    ),
+                  act(cmdChatAttachmentGet),
+                )
+                .demandCommand(1),
           )
           .command(
             "listen",

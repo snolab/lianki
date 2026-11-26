@@ -34,6 +34,7 @@ import { polishLines } from "./lib/chat-polish";
 import type { PartnerResult } from "./lib/partner-ai-config";
 import { type InboxAnswer, inboxOp } from "./lib/inbox/agent";
 import { type ThreadFilesAnswer, threadFilesOp } from "./lib/inbox/thread-files";
+import { type ThreadTicketAnswer, threadTicketOp } from "./lib/inbox/thread-ticket";
 import { type ChatTokenAnswer, type ChatTokenDb, chatTokenCheck } from "./lib/chat-token";
 import { type PlayCheckAnswer, type PlayCheckDb, playCheck } from "./lib/play-check";
 import { type EvalTokenAnswer, type EvalTokenDb, evalTokenCheck } from "./lib/eval-token";
@@ -305,6 +306,17 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
   async threadFiles(req: unknown): Promise<ThreadFilesAnswer> {
     if (!allowThreadFiles()) return { ok: false, error: "busy" };
     return threadFilesOp(this.env.DB as unknown as InboxDb, req);
+  }
+
+  /**
+   * `lianki chat attachment get` (lib/inbox/thread-ticket.ts): the hub has
+   * checked the token (chat:read) and that the id is on a line of its thread;
+   * this checks the file is that thread's account's and mints a single-use
+   * 60 s ticket. No listing. "busy" over the rate limit.
+   */
+  async threadTicket(req: unknown): Promise<ThreadTicketAnswer> {
+    if (!allowInbox()) return { ok: false, error: "busy" };
+    return threadTicketOp(this.env.DB as unknown as InboxDb, req);
   }
 
   /**
