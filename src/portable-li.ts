@@ -66,6 +66,8 @@ export type PortableUi = {
       failed: string;
       advancedHint: string;
       excludeHere: string;
+      collapse: string;
+      expand: string;
     };
     advancedHref: string;
     onExclude(): void;
@@ -228,6 +230,8 @@ export function startPortableLi(d: {
             failed: t.failed,
             advancedHint: t.advancedHint,
             excludeHere: t.excludeHere,
+            collapse: t.collapse,
+            expand: t.expand,
           },
           advancedHref: d.origin + portableChatPath(d.hostOrigin),
           onExclude,

@@ -49,12 +49,20 @@ test("the bundled window runs only when first needed, once, and mounts with its 
   expect(mountedWith!.chatStrings).toEqual({ message: "给{name}发消息…" });
   a!.mount({ principal: "p", locale: "xx" } as never);
   expect(mountedWith!.chatStrings).toEqual({ message: "Message your {name}…" });
-  gm!.set("lk:x", "1");
-  expect(t.values.get(PORTABLE_STORE_PREFIX + "lk:x")).toBe("1");
-  expect(gm!.get("lk:x")).toBe("1");
-  gm!.del("lk:x");
-  expect(gm!.get("lk:x")).toBeNull();
-  expect(gm!.keys()).toEqual([]);
+  // A scoped draft is kept in GM storage under the prefix…
+  const draft = "lk:ui:chat:portable~p~https://x.test";
+  gm!.set(draft, "1");
+  expect(t.values.get(PORTABLE_STORE_PREFIX + draft)).toBe("1");
+  expect(gm!.get(draft)).toBe("1");
+  gm!.del(draft);
+  expect(gm!.get(draft)).toBeNull();
+  // …but fold, dock and position stay in memory: every page starts from the defaults.
+  gm!.set("lk:pref:chat-fold", '{"tucked":true}');
+  expect(t.values.has(PORTABLE_STORE_PREFIX + "lk:pref:chat-fold")).toBe(false);
+  expect(gm!.get("lk:pref:chat-fold")).toBe('{"tucked":true}');
+  expect(gm!.keys()).toEqual(["lk:pref:chat-fold"]);
+  gm!.del("lk:pref:chat-fold");
+  expect(gm!.get("lk:pref:chat-fold")).toBeNull();
 });
 
 test("null without the bundle, a throwing build, or one without mountPortable", async () => {

@@ -14,6 +14,8 @@ import type { PortableUi } from "./portable-li";
 import type { PortableWindowFactory } from "./portable-window";
 
 export const PORTABLE_STORE_PREFIX = "lianki_portable_ls:";
+/** The widget's storage keys kept across pages: the account- and site-scoped drafts only. */
+export const keptPortableKey = (k: string) => k.includes("portable~");
 
 export function portableUiBundled(d: {
   /** src/portable-window.ts's default export: null in a build without the plugin. */
@@ -29,11 +31,17 @@ export function portableUiBundled(d: {
   const make = (): PortableUi | null => {
     if (!d.factory) return null;
     try {
+      // Only the composer's drafts (scoped `portable~<account>~<site>`) are kept;
+      // every other widget preference (fold, dock, position, compact) lives in
+      // memory for this page, so the window always starts from 随身Li's defaults,
+      // never from a main-site float position or a minimized state.
+      const mem = new Map<string, string>();
+      const kept = (k: string) => keptPortableKey(k);
       const built = d.factory({
-        get: (k) => d.getValue(PORTABLE_STORE_PREFIX + k, null),
-        set: (k, v) => d.setValue(PORTABLE_STORE_PREFIX + k, v),
-        del: (k) => d.deleteValue(PORTABLE_STORE_PREFIX + k),
-        keys: () => [],
+        get: (k) => (kept(k) ? d.getValue(PORTABLE_STORE_PREFIX + k, null) : (mem.get(k) ?? null)),
+        set: (k, v) => (kept(k) ? d.setValue(PORTABLE_STORE_PREFIX + k, v) : void mem.set(k, v)),
+        del: (k) => (kept(k) ? d.deleteValue(PORTABLE_STORE_PREFIX + k) : void mem.delete(k)),
+        keys: () => [...mem.keys()],
       });
       const mount = built?.api?.mountPortable;
       if (typeof mount !== "function" || !Array.isArray(built.css)) {

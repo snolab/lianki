@@ -34,6 +34,8 @@ const pick = (arg("--sites") ?? "github,zhihu,example").split(",");
  * reject it ("incompatible") and the bundled window draw.
  */
 const LIVE_FRAME = Bun.argv.includes("--live-frame");
+/** --desktop: a wide window (1600×1000), where the chat must still be a bottom-right panel. */
+const DESKTOP = Bun.argv.includes("--desktop");
 const CODE = readFileSync("public/lianki.user.js", "utf8");
 
 /** GM stubs + a synthetic broker: hello/read/send with the real contract's shapes. */
@@ -107,7 +109,7 @@ try {
     for (const scheme of ["light", "dark"] as const) {
       const tag = `[${site} ${scheme}]`;
       const ctx = await newSilentContext(browser, {
-        viewport: { width: 390, height: 780 },
+        viewport: DESKTOP ? { width: 1600, height: 1000 } : { width: 390, height: 780 },
         colorScheme: scheme,
         locale: "zh-CN",
       });
@@ -203,9 +205,64 @@ try {
         return { input: r, vw: innerWidth, vh: innerHeight };
       });
       check(size.input && size.input.x > 40, `${tag} the window is full size, not a clipped box`);
+      // The window: a solid panel at the bottom right, at the fixed size, over the page's own content.
+      const panel = await p.evaluate(() => {
+        for (const r of (globalThis as any).__qa.roots as ShadowRoot[]) {
+          const el = r.querySelector("[data-lk-portable-panel]") as HTMLElement | null;
+          if (!el) continue;
+          const b = el.getBoundingClientRect();
+          const bg = getComputedStyle(el).backgroundColor;
+          return {
+            x: b.x,
+            y: b.y,
+            w: b.width,
+            h: b.height,
+            right: innerWidth - b.right,
+            bottom: innerHeight - b.bottom,
+            bg,
+            vw: innerWidth,
+            vh: innerHeight,
+            toggle: !!r.querySelector("[data-lk-portable-toggle]"),
+          };
+        }
+        return null;
+      });
+      const wantW = Math.min(420, (panel?.vw ?? 0) - 16);
+      const wantH = Math.min(560, (panel?.vh ?? 0) - 24);
+      check(
+        panel && Math.abs(panel.w - wantW) < 2 && Math.abs(panel.h - wantH) < 2,
+        `${tag} panel is ${Math.round(panel?.w ?? 0)}×${Math.round(panel?.h ?? 0)} (want ${wantW}×${wantH})`,
+      );
+      check(
+        panel && Math.abs(panel.right - 16) < 2 && Math.abs(panel.bottom - 16) < 2,
+        `${tag} panel anchored bottom-right, 16 px`,
+      );
+      check(
+        panel && !/\/\s*0?\.\d|transparent|rgba\(.*,\s*0?\.\d+\)$/.test(panel.bg),
+        `${tag} panel background is opaque (${panel?.bg})`,
+      );
+      check(panel?.toggle, `${tag} a data-lk-portable-toggle control is there`);
+      // Minimize to the Li button and back.
+      const close = await p.evaluate(() =>
+        (globalThis as any).__qa.rect('[data-lk-portable-toggle="close"]'),
+      );
+      if (close) await p.mouse.click(close.x, close.y);
+      const reopen = await p.evaluate(() =>
+        (globalThis as any).__qa.rect('[data-lk-portable-toggle="open"]'),
+      );
+      check(reopen, `${tag} minimize leaves the Li button`);
+      if (reopen) await p.mouse.click(reopen.x, reopen.y);
+      check(
+        await until(
+          async () =>
+            !!(await p.evaluate(() => (globalThis as any).__qa.rect("[data-debug-chat]"))),
+        ),
+        `${tag} the Li button opens the window again`,
+      );
+      await p.waitForTimeout(500);
       if (SHOTS)
         await p.screenshot({
-          path: `${SHOTS}/portable-li-${site}-${scheme}${LIVE_FRAME ? "-liveframe" : ""}.png`,
+          path: `${SHOTS}/portable-li-${site}-${scheme}${LIVE_FRAME ? "-liveframe" : ""}${DESKTOP ? "-desktop" : ""}.png`,
         });
       console.log(`· ${tag} page errors: ${errors.length}`);
       await ctx.close();
