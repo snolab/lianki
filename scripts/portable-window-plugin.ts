@@ -48,12 +48,36 @@ export function windowModule(code: string): string {
   return `export default ${fn.replace(/^function\s*\(/, "function portableWindow(")}\n`;
 }
 
-export function portableWindowPlugin(build: PartnerBuild): BunPlugin {
-  const contents = windowModule(build.code);
+/**
+ * The chat's own strings (placeholder, status, hints) in the app's 16 locales,
+ * from the same intlayer dictionary lianki.com uses (`learning-partner`), so
+ * the bundled window speaks his Lianki language, not the page's or French.
+ */
+export async function chatStringsTable(): Promise<Record<string, Record<string, string>>> {
+  const mod = await import("../app/components/learning-partner.content");
+  const content = (mod.default as { content: Record<string, unknown> }).content;
+  const table: Record<string, Record<string, string>> = {};
+  for (const [key, node] of Object.entries(content)) {
+    const tr = (node as { translation?: Record<string, unknown> })?.translation;
+    if (!tr) continue;
+    for (const [locale, text] of Object.entries(tr))
+      if (typeof text === "string") (table[locale] ??= {})[key] = text;
+  }
+  return table;
+}
+
+export function portableWindowPlugin(
+  build: PartnerBuild,
+  strings: () => Promise<Record<string, Record<string, string>>> = chatStringsTable,
+): BunPlugin {
+  const fn = windowModule(build.code);
   return {
     name: "lianki-portable-window",
     setup(b) {
-      b.onLoad({ filter: /[\\/]src[\\/]portable-window\.ts$/ }, () => ({ contents, loader: "js" }));
+      b.onLoad({ filter: /[\\/]src[\\/]portable-window\.ts$/ }, async () => ({
+        contents: `${fn}export const portableChatStrings = ${JSON.stringify(await strings())};\n`,
+        loader: "js",
+      }));
     },
   };
 }

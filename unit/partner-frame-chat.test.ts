@@ -88,16 +88,43 @@ describe("the portable window plugin", () => {
     expect(builds).toBe(2);
     // The plugin answers only for src/portable-window.ts, with the window module.
     let filter: RegExp | undefined;
-    let load: (() => { contents: string; loader: string }) | undefined;
-    portableWindowPlugin(c).setup({
-      onLoad: (o: { filter: RegExp }, fn: () => { contents: string; loader: string }) => {
+    let load: (() => Promise<{ contents: string; loader: string }>) | undefined;
+    portableWindowPlugin(c, async () => ({ zh: { message: "给{name}发消息…" } })).setup({
+      onLoad: (o: { filter: RegExp }, fn: () => Promise<{ contents: string; loader: string }>) => {
         filter = o.filter;
         load = fn;
       },
     } as never);
     expect(filter!.test("/repo/src/portable-window.ts")).toBe(true);
     expect(filter!.test("/repo/src/portable-window.tsx")).toBe(false);
-    expect(load!().contents.startsWith("export default function portableWindow(gm)")).toBe(true);
-    expect(load!().loader).toBe("js");
+    const out = await load!();
+    expect(out.contents.startsWith("export default function portableWindow(gm)")).toBe(true);
+    expect(out.contents).toContain(
+      'export const portableChatStrings = {"zh":{"message":"给{name}发消息…"}}',
+    );
+    expect(out.loader).toBe("js");
+  });
+});
+
+describe("the frame's language and capability", () => {
+  test("the frame URL carries his Lianki language; a ready says what the frame can do", async () => {
+    const { frameUrl, portMsg, PORTABLE_CAP } =
+      await import("../packages/debug-chat/src/embed/frame-protocol");
+    expect(frameUrl("https://lianki.com", "zh")).toBe("https://lianki.com/embed/partner?lang=zh");
+    expect(frameUrl("https://lianki.com", "zh-CN&x=1")).toBe("https://lianki.com/embed/partner");
+    expect(frameUrl("https://lianki.com")).toBe("https://lianki.com/embed/partner");
+    expect(portMsg({ type: "ready" })).toEqual({ type: "ready" });
+    expect(portMsg({ type: "ready", caps: [PORTABLE_CAP, 3, "x".repeat(40)] })).toEqual({
+      type: "ready",
+      caps: [PORTABLE_CAP],
+    });
+  });
+
+  test("the chat strings table comes from the learning-partner dictionary, 16 locales", async () => {
+    const { chatStringsTable } = await import("../scripts/portable-window-plugin");
+    const t = await chatStringsTable();
+    expect(Object.keys(t).length).toBe(16);
+    expect(t.zh!.message).toContain("{name}");
+    expect(t.fr!.message).not.toBe(t.zh!.message);
   });
 });

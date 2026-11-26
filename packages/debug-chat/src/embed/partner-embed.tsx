@@ -14,7 +14,7 @@ import { useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { DebugChat } from "../DebugChat";
 import { EMBED_NAME, EMBED_STRINGS, embedLang } from "../ui-strings";
-import { CHAT_STRINGS_EN } from "../wire";
+import { CHAT_STRINGS_EN, type ChatStrings } from "../wire";
 import { type Blocker, blockerText, cspBlocker } from "./guard";
 import { createShadowHost } from "./isolation";
 import { type PartnerClient, type PartnerDeps, createPartnerClient, pageLabel } from "./partner-client";
@@ -171,6 +171,8 @@ export type PortableMountOptions = {
   draftScope: string;
   /** From the userscript's tables (src/portable-li-strings.ts, intlayer `portable-li`). */
   strings: { name: string; connecting: string; failed: string; advancedHint: string; excludeHere: string };
+  /** The chat's own strings in his Lianki language (intlayer `learning-partner`), bundled by the userscript. */
+  chatStrings?: Record<string, string>;
   /** lianki.com's chat for this website (lib/portable-chat-url.ts), shown with the advanced hint. */
   advancedHref: string;
   onExclude: () => void;
@@ -201,7 +203,7 @@ function Portable({ client, o, portal }: { client: PortableClient; o: PortableMo
         ? { warningHref: { href: o.advancedHref, label: "lianki.com ↗", newTab: true as const } }
         : {})}
       agentAvatar={`${o.appOrigin}/icon-192.png`}
-      strings={{ name: o.strings.name }}
+      strings={{ ...(o.chatStrings as Partial<ChatStrings> | undefined), name: o.strings.name }}
       menuItems={[{ id: "exclude", label: o.strings.excludeHere, onSelect: o.onExclude }]}
     />
   );

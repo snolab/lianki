@@ -5,6 +5,10 @@ import type { PortableWindowFactory } from "../src/portable-window";
 import portableWindowStub from "../src/portable-window";
 
 const deps = (factory: PortableWindowFactory | null) => {
+  const chatStrings = {
+    en: { message: "Message your {name}…" },
+    zh: { message: "给{name}发消息…" },
+  };
   const values = new Map<string, unknown>();
   const reports: string[] = [];
   return {
@@ -12,6 +16,7 @@ const deps = (factory: PortableWindowFactory | null) => {
     reports,
     d: {
       factory,
+      chatStrings,
       getValue: (k: string, dflt?: unknown) => values.get(k) ?? dflt,
       setValue: (k: string, v: unknown) => void values.set(k, v),
       deleteValue: (k: string) => void values.delete(k),
@@ -39,8 +44,11 @@ test("the bundled window runs only when first needed, once, and mounts with its 
   const [a, b] = await Promise.all([load(), load()]);
   expect(a).toBe(b);
   expect(runs).toBe(1);
-  a!.mount({ principal: "p", draftScope: "portable~p~https://x.test" } as never);
+  a!.mount({ principal: "p", draftScope: "portable~p~https://x.test", locale: "zh" } as never);
   expect(mountedWith).toMatchObject({ principal: "p", css: ["a{}"] });
+  expect(mountedWith!.chatStrings).toEqual({ message: "给{name}发消息…" });
+  a!.mount({ principal: "p", locale: "xx" } as never);
+  expect(mountedWith!.chatStrings).toEqual({ message: "Message your {name}…" });
   gm!.set("lk:x", "1");
   expect(t.values.get(PORTABLE_STORE_PREFIX + "lk:x")).toBe("1");
   expect(gm!.get("lk:x")).toBe("1");
@@ -71,5 +79,5 @@ test("no remote code path: the userscript neither fetches nor evaluates the chat
   expect(loader).not.toMatch(/\beval\b|gmFetch|GM_xmlhttpRequest|new Function/);
   expect(main).not.toMatch(/portableUiLoader|portableUi:\s*portableUiLoader/);
   // The window is part of the script, the same build the release step bundles.
-  expect(main).toContain('import portableWindow from "./portable-window"');
+  expect(main).toContain('import portableWindow, { portableChatStrings } from "./portable-window"');
 });

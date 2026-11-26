@@ -3,6 +3,7 @@ import { appLocale } from "@/lib/app-locale.server";
 import { cfg } from "@/lib/config-store";
 import type { ChatStrings } from "@lianki/debug-chat/wire";
 import { PartnerFrame } from "./PartnerFrame";
+import { PILL_CHAT_LOCALES } from "@/src/pill-chat-strings";
 
 /**
  * /embed/partner: the Learning Partner as a frame for the userscript on
@@ -13,8 +14,18 @@ import { PartnerFrame } from "./PartnerFrame";
  */
 export const metadata = { title: "Lianki", robots: { index: false } };
 
-export default async function PartnerFramePage() {
-  const locale = await appLocale();
+export default async function PartnerFramePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  // A third-party frame has no Lianki cookie: the userscript passes his Lianki
+  // language (?lang=, mirrored from lianki.com) so it is not the browser's.
+  const asked = (await searchParams).lang;
+  const locale =
+    typeof asked === "string" && (PILL_CHAT_LOCALES as readonly string[]).includes(asked)
+      ? asked
+      : await appLocale();
   const strings = Object.fromEntries(
     Object.entries(getIntlayer("learning-partner", locale as never)).map(([k, v]) => [
       k,

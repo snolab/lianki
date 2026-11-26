@@ -58,6 +58,8 @@ export type PortableUi = {
     principal: string;
     /** `portable~<principal>~<site origin>`: drafts never cross accounts or sites. */
     draftScope: string;
+    /** His Lianki language (mirrored from lianki.com), else the browser's: the window's language. */
+    locale: string;
     strings: {
       name: string;
       connecting: string;
@@ -91,7 +93,11 @@ export function startPortableLi(d: {
     principal: string;
     /** The ticket was for someone else (or refused as such): close and ask again. */
     onAccountMismatch: () => void;
-  }) => { result: Promise<"ready" | "blocked">; destroy(): void };
+  }) => {
+    /** "ready" only after the full handshake and a ticket (pill-chat.ts gatedFrameResult). */
+    result: Promise<"ready" | "blocked" | "incompatible" | "no-ticket" | "timeout">;
+    destroy(): void;
+  };
   /** The bundled copy of the same window, where the frame is refused. */
   ui?: () => Promise<PortableUi | null>;
   /** The userscript's debug reporter: which window drew, or why none did (reason codes only). */
@@ -191,7 +197,7 @@ export function startPortableLi(d: {
           const how = await f.result;
           if (!live()) return f.destroy();
           if (how === "ready") return mark("frame");
-          frameWas = "frame:blocked";
+          frameWas = `frame:${how}`;
           f.destroy();
           current = undefined;
         } catch (e) {
@@ -215,6 +221,7 @@ export function startPortableLi(d: {
           call: d.call,
           principal,
           draftScope: `portable~${principal}~${d.hostOrigin}`,
+          locale: readPortableUiLanguage(d.gm, d.win.navigator.language),
           strings: {
             name: t.title,
             connecting: t.connecting,

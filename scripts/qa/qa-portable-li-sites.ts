@@ -28,6 +28,12 @@ const SITES: Record<string, string> = {
   example: "https://example.com/",
 };
 const pick = (arg("--sites") ?? "github,zhihu,example").split(",");
+/**
+ * --live-frame: let the frame reach the real lianki.com. Before the new
+ * /embed/partner is deployed, that is the old embed: the handshake gate must
+ * reject it ("incompatible") and the bundled window draw.
+ */
+const LIVE_FRAME = Bun.argv.includes("--live-frame");
 const CODE = readFileSync("public/lianki.user.js", "utf8");
 
 /** GM stubs + a synthetic broker: hello/read/send with the real contract's shapes. */
@@ -106,7 +112,7 @@ try {
         locale: "zh-CN",
       });
       // No request reaches lianki.com from this QA: the frame is refused here.
-      await ctx.route(/^https:\/\/(www\.)?lianki\.com\//, (r) => r.abort());
+      if (!LIVE_FRAME) await ctx.route(/^https:\/\/(www\.)?lianki\.com\//, (r) => r.abort());
       const p = await ctx.newPage();
       const errors: string[] = [];
       p.on("pageerror", (e) => errors.push(String(e).slice(0, 200)));
@@ -147,7 +153,10 @@ try {
         await until(async () => (await drawn()).startsWith("bundled")),
         `${tag} the bundled DebugChat draws (${await drawn()})`,
       );
-      check((await drawn()) === "bundled frame:blocked", `${tag} after the frame was refused`);
+      check(
+        /^bundled frame:(blocked|incompatible|timeout|no-ticket)$/.test(await drawn()),
+        `${tag} after the frame was refused or failed the handshake (${await drawn()})`,
+      );
       check(
         await p.evaluate(() => !document.querySelector("lianki-portable-chat")),
         `${tag} no plain panel`,
@@ -189,7 +198,15 @@ try {
         seen.filter((s) => s.op).every((s) => ["hello", "read", "send"].includes(s.op)),
         `${tag} only hello/read/send reach the broker`,
       );
-      if (SHOTS) await p.screenshot({ path: `${SHOTS}/portable-li-${site}-${scheme}.png` });
+      const size = await p.evaluate(() => {
+        const r = (globalThis as any).__qa.rect('[data-testid="debug-chat-input"]');
+        return { input: r, vw: innerWidth, vh: innerHeight };
+      });
+      check(size.input && size.input.x > 40, `${tag} the window is full size, not a clipped box`);
+      if (SHOTS)
+        await p.screenshot({
+          path: `${SHOTS}/portable-li-${site}-${scheme}${LIVE_FRAME ? "-liveframe" : ""}.png`,
+        });
       console.log(`· ${tag} page errors: ${errors.length}`);
       await ctx.close();
     }

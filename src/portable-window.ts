@@ -23,3 +23,5 @@ export type PortableWindowFactory = (gm: PortableWindowStore | null) => {
 };
 const portableWindow: PortableWindowFactory | null = null;
 export default portableWindow;
+/** The chat's strings per locale (intlayer `learning-partner`), filled with the window. */
+export const portableChatStrings: Record<string, Record<string, string>> | null = null;

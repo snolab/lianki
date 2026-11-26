@@ -53,11 +53,20 @@ export type FrameShellDeps = {
   pos?: { get(): Pos | null; set(p: Pos): void };
   readyMs?: number;
   capMs?: number;
+  /** The frame's UI language (frame-protocol.ts frameUrl, ?lang=): his Lianki language, not the browser's. */
+  locale?: string;
+  /**
+   * A fixed size (CSS lengths) instead of following the frame's reported size:
+   * 随身Li's window is as big as the bundled one, never content-sized or clipped.
+   */
+  fixedSize?: { w: string; h: string };
   Channel?: typeof MessageChannel;
 };
 
 export type FrameShell = {
   result: Promise<FrameResult>;
+  /** What the frame said it can do in its "ready" (frame-protocol.ts PORTABLE_CAP); [] before. */
+  caps(): string[];
   iframe: HTMLIFrameElement;
   host: HTMLElement;
   destroy(): void;
@@ -105,15 +114,15 @@ export function frameShell(d: FrameShellDeps): FrameShell {
     ["touch-action", "none"],
   ]);
   const iframe = doc.createElement("iframe");
-  iframe.src = frameUrl(origin);
+  iframe.src = frameUrl(origin, d.locale);
   iframe.referrerPolicy = "no-referrer";
   iframe.setAttribute("title", d.gripLabel);
   css(iframe, [
     ["all", "initial"],
     ["display", "block"],
     ["border", "0"],
-    ["width", `${MIN_W}px`],
-    ["height", `${MIN_H}px`],
+    ["width", d.fixedSize?.w ?? `${MIN_W}px`],
+    ["height", d.fixedSize?.h ?? `${MIN_H}px`],
     ["background", "transparent"],
     ["color-scheme", "normal"],
   ]);
@@ -136,6 +145,7 @@ export function frameShell(d: FrameShellDeps): FrameShell {
   );
 
   let port: MessagePort | null = null;
+  let caps: string[] = [];
   const onMessage = (e: MessageEvent) => {
     if (port || !isFrameUp(e, iframe.contentWindow, origin)) return;
     const ch = new (d.Channel ?? MessageChannel)();
@@ -143,8 +153,10 @@ export function frameShell(d: FrameShellDeps): FrameShell {
     port.onmessage = (m) => {
       const msg = portMsg(m.data);
       if (!msg) return;
-      if (msg.type === "ready") settle("ready");
-      else if (msg.type === "need-ticket")
+      if (msg.type === "ready") {
+        caps = msg.caps ?? [];
+        settle("ready");
+      } else if (msg.type === "need-ticket")
         void d.ticket().then(
           (ticket) => port?.postMessage({ type: "ticket", ticket }),
           () => port?.postMessage({ type: "ticket", ticket: null }),
@@ -155,7 +167,7 @@ export function frameShell(d: FrameShellDeps): FrameShell {
           share = d.share?.(msg.what) ?? null;
         } catch {}
         port?.postMessage({ type: "share", what: msg.what, share });
-      } else if (msg.type === "size")
+      } else if (msg.type === "size" && !d.fixedSize)
         css(iframe, [
           ["width", `${msg.w}px`],
           ["height", `${msg.h}px`],
@@ -195,6 +207,7 @@ export function frameShell(d: FrameShellDeps): FrameShell {
   (doc.documentElement ?? doc.body).append(host);
   return {
     result,
+    caps: () => caps,
     iframe,
     host,
     destroy() {

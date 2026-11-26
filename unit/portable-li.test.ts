@@ -40,7 +40,7 @@ function markerUi(win: Window): PortableUi {
   };
 }
 type FrameDep = (o: { principal: string; onAccountMismatch: () => void }) => {
-  result: Promise<"ready" | "blocked">;
+  result: Promise<"ready" | "blocked" | "incompatible" | "no-ticket" | "timeout">;
   destroy(): void;
 };
 function fixture(
@@ -764,6 +764,7 @@ test("the pill wiring opens 随身Li in the lianki.com frame with a consented-ac
         shellDeps = deps;
         return {
           result: Promise.resolve("ready" as const),
+          caps: () => ["portable-v1"],
           iframe,
           host: win.document.createElement("div"),
           destroy: () => void destroyed++,
@@ -780,7 +781,13 @@ test("the pill wiring opens 随身Li in the lianki.com frame with a consented-ac
       await turn();
     }
     expect(shellDeps?.label).toBe("example.org/a");
+    // His Lianki language, and the bundled window's fixed size.
+    expect((shellDeps as unknown as { locale: string }).locale).toBe("zh");
+    expect((shellDeps as unknown as { fixedSize: { w: string } }).fixedSize.w).toContain("420px");
+    // "frame" only after the frame took its first ticket.
+    expect(win.document.documentElement.getAttribute("data-lk-portable")).toBeNull();
     expect(await shellDeps!.ticket()).toBe("tk");
+    await turn();
     expect(asked).toEqual(["https://lianki.com/api/chat/page-ticket"]);
     expect(win.document.documentElement.getAttribute("data-lk-portable")).toBe("frame");
     // The frame keeps the partner's dragged position, per device.
@@ -796,5 +803,70 @@ test("the pill wiring opens 随身Li in the lianki.com frame with a consented-ac
     win.HTMLElement.prototype.attachShadow = original;
     restore();
     await win.happyDOM.abort();
+  }
+});
+
+test("an old or unresponsive frame falls back to the bundled window, with the reason", async () => {
+  const { gatedFrameResult } = await import("../src/pill-chat");
+  const now = (r: "ready" | "blocked") => Promise.resolve(r);
+  const never = new Promise<boolean>(() => {});
+  let fire: () => void = () => {};
+  const later = (fn: () => void) => void (fire = fn);
+  // Refused by CSP, or no handshake at all.
+  expect(
+    await gatedFrameResult({ result: now("blocked"), caps: () => [], firstTicket: never }),
+  ).toBe("blocked");
+  // The deployed /embed/partner from before 随身Li: ready, but without the capability.
+  expect(await gatedFrameResult({ result: now("ready"), caps: () => [], firstTicket: never })).toBe(
+    "incompatible",
+  );
+  // Ready and capable, but no ticket taken in time.
+  const waiting = gatedFrameResult({
+    result: now("ready"),
+    caps: () => ["portable-v1"],
+    firstTicket: never,
+    later,
+  });
+  await turn();
+  fire();
+  expect(await waiting).toBe("timeout");
+  // A refused ticket (another account, signed out, old issuer).
+  expect(
+    await gatedFrameResult({
+      result: now("ready"),
+      caps: () => ["portable-v1"],
+      firstTicket: Promise.resolve(false),
+      later,
+    }),
+  ).toBe("no-ticket");
+  expect(
+    await gatedFrameResult({
+      result: now("ready"),
+      caps: () => ["portable-v1"],
+      firstTicket: Promise.resolve(true),
+      later,
+    }),
+  ).toBe("ready");
+
+  // In the window: an incompatible frame is torn down and the bundled one draws.
+  const mounts: unknown[] = [];
+  let gone = 0;
+  const f = fixture(
+    "https://www.zhihu.com/",
+    async () => ({ mount: (o) => (mounts.push(o), { destroy() {} }) }),
+    () => ({ result: Promise.resolve("incompatible" as const), destroy: () => void gone++ }),
+  );
+  try {
+    await turn();
+    f.click("同意所有网站");
+    await turn();
+    expect(gone).toBe(1);
+    expect(mounts).toHaveLength(1);
+    expect((mounts[0] as { locale: string }).locale).toBe("zh");
+    expect(f.win.document.documentElement.getAttribute("data-lk-portable")).toBe(
+      "bundled frame:incompatible",
+    );
+  } finally {
+    f.finish();
   }
 });

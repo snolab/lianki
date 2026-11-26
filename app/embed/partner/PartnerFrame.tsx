@@ -5,6 +5,7 @@ import { portableChatPath } from "@/lib/portable-chat-url";
 import { DebugChat } from "@lianki/debug-chat/DebugChat";
 import { CHAT_STRINGS_EN, type ChatStrings } from "@lianki/debug-chat/wire";
 import { type Guest, startFrameGuest } from "@lianki/debug-chat/embed/frame-guest";
+import { PORTABLE_CAP } from "@lianki/debug-chat/embed/frame-protocol";
 import { type PartnerClient, createPartnerClient } from "@lianki/debug-chat/embed/partner-client";
 import { frameDraftScope, frameWarning, isAdvancedSend } from "@/lib/partner-frame-chat";
 
@@ -34,21 +35,27 @@ export function PartnerFrame({
   useEffect(() => {
     document.documentElement.dataset.partnerFrame = "";
     let c: PartnerClient | null = null;
-    const stop = startFrameGuest(window, (g) => {
-      guest.current = g;
-      c = createPartnerClient({
-        url: `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug`,
-        ticket: g.ticket,
-        open: (u, p) => new WebSocket(u, p) as never,
-        label: () => g.label || "embedded",
-        // The parent origin the browser stamped on the hello: a per-site ticket
-        // opens only where it was minted for (lib/li-thread.ts, auth.ts ticketSite).
-        ...(g.origin ? { query: `&ho=${encodeURIComponent(g.origin)}` } : {}),
-        doc: document,
-      });
-      setShell(g);
-      setClient(c);
-    });
+    const stop = startFrameGuest(
+      window,
+      (g) => {
+        guest.current = g;
+        c = createPartnerClient({
+          url: `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/version/debug`,
+          ticket: g.ticket,
+          open: (u, p) => new WebSocket(u, p) as never,
+          label: () => g.label || "embedded",
+          // The parent origin the browser stamped on the hello: a per-site ticket
+          // opens only where it was minted for (lib/li-thread.ts, auth.ts ticketSite).
+          ...(g.origin ? { query: `&ho=${encodeURIComponent(g.origin)}` } : {}),
+          doc: document,
+        });
+        setShell(g);
+        setClient(c);
+        // This frame is 随身Li-ready: no standing notice, drafts per account and site.
+      },
+      undefined,
+      [PORTABLE_CAP],
+    );
     return () => {
       stop();
       c?.stop();

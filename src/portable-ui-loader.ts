@@ -18,6 +18,8 @@ export const PORTABLE_STORE_PREFIX = "lianki_portable_ls:";
 export function portableUiBundled(d: {
   /** src/portable-window.ts's default export: null in a build without the plugin. */
   factory: PortableWindowFactory | null;
+  /** The chat's strings per locale (portable-window.ts portableChatStrings). */
+  chatStrings?: Record<string, Record<string, string>> | null;
   getValue: (k: string, d?: any) => any;
   setValue: (k: string, v: any) => void;
   deleteValue: (k: string) => void;
@@ -39,7 +41,15 @@ export function portableUiBundled(d: {
         return null;
       }
       const css = built.css;
-      return { mount: (o) => mount({ ...o, css, report: d.report }) };
+      return {
+        mount: (o) =>
+          mount({
+            ...o,
+            css,
+            report: d.report,
+            chatStrings: d.chatStrings?.[o.locale] ?? d.chatStrings?.en,
+          }),
+      };
     } catch (e) {
       d.report("portable-window", String((e as Error)?.message ?? e));
       return null;

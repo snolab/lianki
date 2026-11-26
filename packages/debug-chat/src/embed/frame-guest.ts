@@ -39,6 +39,8 @@ export function startFrameGuest(
   win: WinLike,
   onGuest: (g: Guest) => void,
   waitMs = 8000,
+  /** Said in "ready" (frame-protocol.ts PORTABLE_CAP): what this frame can do. */
+  caps: string[] = [],
 ): () => void {
   let taken = false;
   let port: PortLike | null = null;
@@ -59,7 +61,7 @@ export function startFrameGuest(
       }
     };
     port.start?.();
-    port.postMessage({ type: "ready" });
+    port.postMessage(caps.length ? { type: "ready", caps } : { type: "ready" });
     onGuest({
       label: h.label,
       origin: h.origin,

@@ -465,7 +465,7 @@ so revoking permission or excluding a site cannot leave a second chat window.
   User cancellation aborts the request; a message already accepted durably
   is not unsent. No microphone, playback or device access is part of this UI.
 
-### The chat window is the main site's DebugChat (2.24.54)
+### The chat window is the main site's DebugChat (2.24.55)
 
 Owner, 2026-11-26: 随身Li reuses the Li chat component, no second wheel, and
 looks exactly like the chat window on lianki.com, everywhere (his sites
@@ -493,6 +493,18 @@ zhihu.com and github.com refuse frames). So there is one chat UI,
    eval, no remote code: the window's code is one function inside the
    script, run only when chat opens.
 
+- **The frame counts only after the full handshake** (2.24.55, after the
+  zhihu check drew the old prod embed as a 120 px box in French): it must say
+  `portable-v1` in its "ready" (frame-protocol.ts `PORTABLE_CAP`; the embed
+  deployed before this change does not) and take a ticket for the consented
+  account within 6 s (`gatedFrameResult`). Otherwise it is torn down and the
+  bundled window draws: `bundled frame:incompatible | frame:timeout |
+  frame:no-ticket | frame:blocked`. So a dev build never shows an old embed.
+  The frame has the bundled window's fixed size (`PORTABLE_FRAME_SIZE`,
+  min(420 px, 100vw−16) × min(560 px, 100vh−24)), and its URL carries
+  `?lang=` = his Lianki language (middleware reads it). The bundled window
+  gets the chat's strings for that language from the same `learning-partner`
+  dictionary, built in by the plugin (`portableChatStrings`).
 - **No other chat UI.** The hand-built plain panel is gone; `portable-li-panel.ts`
   keeps only the consent prompt's styles.
 - **Drafts per account and site.** `draftScope` =

@@ -31,6 +31,8 @@ import { isolatedWorld } from "../packages/debug-chat/src/embed/guard";
 import { EMBED_STRINGS, embedLang } from "../packages/debug-chat/src/ui-strings";
 import { readShare } from "../packages/debug-chat/src/embed/share";
 import { frameShell } from "./partner-frame";
+import { PORTABLE_CAP } from "../packages/debug-chat/src/embed/frame-protocol";
+import { readPortableUiLanguage } from "./pill-chat-language";
 import { PARTNER_POS_KEY, pageRealmNote } from "./partner";
 import { pillChatStrings, type PillChatStrings } from "./pill-chat-strings";
 import {
@@ -87,6 +89,40 @@ export async function consentedFrameTicket(o: {
   } catch {
     return null;
   }
+}
+
+/** 随身Li's frame size: the bundled window's, fixed (CSS lengths). */
+export const PORTABLE_FRAME_SIZE = {
+  w: "min(420px, calc(100vw - 16px))",
+  h: "min(560px, calc(100vh - 24px))",
+};
+/** How long a ready frame has to take its first ticket before the bundled window draws instead. */
+export const FRAME_TICKET_MS = 6000;
+
+export type GatedFrameResult = "ready" | "blocked" | "incompatible" | "no-ticket" | "timeout";
+
+/**
+ * The frame counts as 随身Li's window only after the whole handshake: it said
+ * ready on its port WITH the portable capability (an older /embed/partner,
+ * like the one deployed before this change, does not), and then took a ticket
+ * for the consented account. Anything else (refused, old, no ticket, no answer
+ * in FRAME_TICKET_MS) → the caller tears it down and draws the bundled window.
+ */
+export async function gatedFrameResult(o: {
+  result: Promise<"ready" | "blocked">;
+  caps: () => string[];
+  firstTicket: Promise<boolean>;
+  ms?: number;
+  later?: (fn: () => void, ms: number) => void;
+}): Promise<GatedFrameResult> {
+  if ((await o.result) !== "ready") return "blocked";
+  if (!o.caps().includes(PORTABLE_CAP)) return "incompatible";
+  const later = o.later ?? ((fn, ms) => void setTimeout(fn, ms));
+  const timedOut = new Promise<"timeout">((r) =>
+    later(() => r("timeout"), o.ms ?? FRAME_TICKET_MS),
+  );
+  const got = await Promise.race([o.firstTicket, timedOut]);
+  return got === "timeout" ? "timeout" : got ? "ready" : "no-ticket";
 }
 
 /** lib/li-thread.ts HOST_ORIGIN_HEADER (unit/li-thread.test.ts keeps the two the same). */
@@ -270,8 +306,19 @@ export function pillChat(d: PillChatDeps) {
    * re-consent: B's chat never renders in A's window.
    */
   function portableFrame(o: { principal: string; onAccountMismatch: () => void }) {
-    const pageTicket = () =>
-      consentedFrameTicket({ fetch: limitedFetch!, origin: d.origin, report, ...o });
+    // The first ticket handed in settles whether the frame can really chat.
+    let handed: (ok: boolean) => void = () => {};
+    const firstTicket = new Promise<boolean>((r) => (handed = r));
+    const pageTicket = async () => {
+      const t = await consentedFrameTicket({
+        fetch: limitedFetch!,
+        origin: d.origin,
+        report,
+        ...o,
+      });
+      handed(t !== null);
+      return t;
+    };
     const shell = (d.frame ?? frameShell)({
       doc,
       win,
@@ -279,6 +326,10 @@ export function pillChat(d: PillChatDeps) {
       label: `${host}${d.path ?? location.pathname}`.slice(0, 300),
       ticket: pageTicket,
       gripLabel: EMBED_STRINGS[embedLang()].grip,
+      // His Lianki language (mirrored from lianki.com), else the browser's.
+      locale: readPortableUiLanguage(d, win.navigator?.language),
+      // As big as the bundled window: never content-sized or clipped.
+      fixedSize: PORTABLE_FRAME_SIZE,
       pos: {
         get: () => {
           const p = d.getValue(PARTNER_POS_KEY, null);
@@ -295,7 +346,10 @@ export function pillChat(d: PillChatDeps) {
         shell.destroy();
       }
     });
-    return shell;
+    return {
+      result: gatedFrameResult({ result: shell.result, caps: () => shell.caps(), firstTicket }),
+      destroy: () => shell.destroy(),
+    };
   }
   const portable = d.chatRequest
     ? startPortableLi({
