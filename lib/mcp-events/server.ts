@@ -1,5 +1,5 @@
 /**
- * MCP Events, the D1 and network part (docs/mcp-events.md;
+ * MCP Events, the D1 and network part (docs/chat-wake.md;
  * db/migrations/0089_mcp_events.sql). Two entry points:
  *
  * - `eventsRpc`: events/probe, events/list, events/subscribe and
@@ -13,10 +13,11 @@
  * the line in exactly that token's own thread. Every I/O is injected, so
  * unit/mcp-events.test.ts runs it on bun:sqlite and a fake fetch.
  */
-import { checkToken } from "@/lib/api-tokens";
 import type { D1Like } from "@/lib/d1/types";
-import { threadFor } from "@/lib/dev-eval";
-import { userHolds } from "@/lib/account-permission";
+import { principal } from "@/lib/chat-wake/principal";
+import { wakeOnPut, type WakeDeps } from "@/lib/chat-wake/core";
+import { PULL_METHODS, pullAdapter, pullRpc } from "@/lib/chat-wake/pull";
+import type { WakeAdapter, WakeReport } from "@/lib/chat-wake/rules";
 import { hit, type ThrottleDb } from "@/lib/security/throttle";
 import { seal, sealKey, unseal } from "@/lib/connections/crypto";
 import {
@@ -27,18 +28,14 @@ import {
   MENTION_EVENT,
   type Attempt,
   type EventsLimits,
-  type MentionLine,
   type Refusal,
   addressVerdict,
-  anyCandidate,
   backoffMs,
   b64encode,
   eventId,
   grantedTtl,
   hostAllowed,
-  mayTrigger,
   mentionData,
-  mentions,
   outcome,
   parseSubscribe,
   refreshAt,
@@ -50,7 +47,7 @@ import {
 
 export type EventsDb = D1Like;
 
-export type EventsDeps = {
+export type EventsDeps = WakeDeps & {
   db: EventsDb;
   flagOn: () => Promise<boolean>;
   limits: () => Promise<EventsLimits>;
@@ -84,25 +81,6 @@ type Row = {
 
 const aad = (id: string, tokenHash: string) => `mcp-events\0${id}\0${tokenHash}`;
 
-/** The live token, its account and its own thread, when it may use events at all. */
-async function principal(
-  d: EventsDeps,
-  cred: string,
-  byHash: boolean,
-): Promise<
-  | { ok: true; tokenHash: string; userId: string; name: string; thread: string }
-  | { ok: false; why: "auth" | "scope" | "audience" }
-> {
-  const c = await checkToken(d.db, cred, EVENTS_SCOPE, d.now(), { byHash });
-  if (!c.ok) return { ok: false, why: c.reason === "scope" ? "scope" : "auth" };
-  // The flag's audience is the owner: a `dev` holder, read live (no cache).
-  const dispatch = await userHolds(d.db as never, c.user.id, "dev");
-  if (!dispatch) return { ok: false, why: "audience" };
-  const thread = threadFor({ userId: c.user.id, dispatch });
-  if (!thread) return { ok: false, why: "audience" };
-  return { ok: true, tokenHash: c.id, userId: c.user.id, name: c.name, thread };
-}
-
 // ------------------------------------------------------------ the RPC
 
 export type RpcAnswer =
@@ -124,7 +102,15 @@ const ok = (result: unknown): RpcAnswer => ({ status: 200, body: { result } });
 export async function eventsRpc(d: EventsDeps, token: string, raw: unknown): Promise<RpcAnswer> {
   const r = (raw && typeof raw === "object" ? raw : {}) as { method?: unknown; params?: unknown };
   const method = typeof r.method === "string" ? r.method : "";
-  if (!["events/probe", "events/list", "events/subscribe", "events/unsubscribe"].includes(method))
+  if (
+    ![
+      "events/probe",
+      "events/list",
+      "events/subscribe",
+      "events/unsubscribe",
+      ...PULL_METHODS,
+    ].includes(method)
+  )
     return err(-32601, "Method not found");
   const p = await principal(d, token, false);
   if (!p.ok && p.why === "auth")
@@ -139,7 +125,18 @@ export async function eventsRpc(d: EventsDeps, token: string, raw: unknown): Pro
       needScope: EVENTS_SCOPE,
     });
   if (!on || !p.ok) return err(-32601, "Method not found");
-  if (method === "events/list") return ok({ events: EVENT_DEFINITIONS });
+  // Pull (lib/chat-wake/pull.ts): the tool's chat/mentions and SEP-3415 events/poll.
+  if (PULL_METHODS.includes(method))
+    return { status: 200, body: await pullRpc(d, p, method, r.params) };
+  if (method === "events/list") {
+    // Poll is listed only while chat.wake.pull is on; otherwise exactly as before.
+    const poll = await pullAdapter.enabled(d).catch(() => false);
+    return ok({
+      events: poll
+        ? EVENT_DEFINITIONS.map((e) => ({ ...e, delivery: [...e.delivery, "poll"] }))
+        : EVENT_DEFINITIONS,
+    });
+  }
   if (method === "events/unsubscribe") {
     const parsed = parseSubscribe(r.params, false);
     if (!parsed.ok) return { status: 200, body: { error: parsed.refusal } };
@@ -289,7 +286,7 @@ export const MAX_ANSWER_BYTES = 4096;
  * allowlist `mcp.eventsCallbackHosts` (rules.ts hostAllowed), so only
  * trusted hosts are ever POSTed to. Then a second layer: the host resolved
  * now, every address public (rules.ts publicAddress). Run right before each
- * verification and each delivery attempt. docs/mcp-events.md, "Callback addresses".
+ * verification and each delivery attempt. docs/chat-wake.md, "Callback addresses".
  */
 async function checkHost(
   d: EventsDeps,
@@ -455,64 +452,47 @@ async function verifyCallback(
 
 // ------------------------------------------------------------ the mention
 
-/** What the hub wrote (lib/chat-log-line.ts ChatLogRequest), as far as this reads it. */
-type PutRequest = { op?: unknown; thread?: unknown; lines?: unknown };
-
-function linesOf(req: PutRequest): MentionLine[] {
-  if (!Array.isArray(req.lines)) return [];
-  const out: MentionLine[] = [];
-  for (const raw of req.lines.slice(0, 250)) {
-    const l = raw as Record<string, unknown>;
-    if (
-      typeof l?.id === "string" &&
-      typeof l.text === "string" &&
-      (l.from === "owner" || l.from === "friend" || l.from === "agent")
-    )
-      out.push({ id: l.id, from: l.from, text: l.text });
-  }
-  return out;
-}
-
-export type MentionReport = { delivered: number; skipped: number; dropped: number };
+export type MentionReport = WakeReport;
 
 /**
- * New lines of a thread: for each live subscription in that exact thread,
- * each person's line naming its token is sent once, signed, to its callback.
- * Never throws (the caller runs it in waitUntil).
+ * The ChatGPT webhook as a wake adapter (lib/chat-wake/rules.ts WakeAdapter):
+ * push, gated by the core's flag mcp.events. Its routes are the subscriptions
+ * in D1. For each live subscription of the token in that exact thread, each
+ * event (a person's line naming the token) is sent once, signed, to its
+ * callback. As before the adapter interface: a line put again is POSTed again
+ * with the same eventId, and the receiver dedupes on webhook-id.
  */
-export async function mentionEvents(d: EventsDeps, raw: unknown): Promise<MentionReport> {
-  const report: MentionReport = { delivered: 0, skipped: 0, dropped: 0 };
-  try {
-    const req = (raw && typeof raw === "object" ? raw : {}) as PutRequest;
-    if (req.op !== "put" || typeof req.thread !== "string") return report;
-    const lines = linesOf(req);
-    // No person's line holds an @: nothing read from D1 at all.
-    if (!anyCandidate(lines)) return report;
-    if (!(await d.flagOn())) return report;
-    const now = d.now();
+export const webhookAdapter: WakeAdapter<EventsDeps> = {
+  id: "chatgpt-webhook",
+  mode: "push",
+  enabled: async () => true,
+  async tokensIn(d, thread, now) {
     const { results } = await d.db
       .prepare(
-        "SELECT * FROM mcp_event_subscription WHERE thread = ? AND name = ? AND expires_at_ms > ?",
+        "SELECT DISTINCT token_hash FROM mcp_event_subscription WHERE thread = ? AND name = ? AND expires_at_ms > ?",
       )
-      .bind(req.thread, MENTION_EVENT, now)
-      .all<Row>();
-    if (!results.length) return report;
-    const l = await d.limits();
-    for (const sub of results) {
-      const p = await principal(d, sub.token_hash, true);
-      if (!p.ok) {
-        // Revoked, expired or out of scope: the subscription ends with it.
-        if (p.why !== "audience") await drop(d, sub.id);
-        report.dropped++;
-        continue;
-      }
-      // Only that token's own thread, as it is now.
-      if (p.thread !== req.thread || p.thread !== sub.thread) {
+      .bind(thread, MENTION_EVENT, now)
+      .all<{ token_hash: string }>();
+    return results.map((r) => r.token_hash);
+  },
+  async notLive(d, tokenHash, thread, why, report) {
+    for (const sub of await subsOf(d, tokenHash, thread)) {
+      // Not that token's own thread as it is now: nothing sent, the row kept.
+      if (why === "thread") {
         report.skipped++;
         continue;
       }
-      for (const line of lines) {
-        if (!mayTrigger(line) || !mentions(line.text, p.name)) continue;
+      // Revoked, expired or out of scope: the subscription ends with it.
+      if (why !== "audience") await drop(d, sub.id);
+      report.dropped++;
+    }
+  },
+  async wake(d, target, events, report) {
+    const subs = await subsOf(d, target.tokenHash, target.thread);
+    if (!subs.length) return;
+    const l = await d.limits();
+    for (const sub of subs) {
+      for (const ev of events) {
         const allowed = await hit(
           d.db as unknown as ThrottleDb,
           `mcp-events:${sub.id}:deliver`,
@@ -523,7 +503,8 @@ export async function mentionEvents(d: EventsDeps, raw: unknown): Promise<Mentio
           report.skipped++;
           continue;
         }
-        const r = await deliver(d, sub, mentionData(line), line.id, l);
+        const data = mentionData({ id: ev.lineId, from: ev.author, text: ev.text });
+        const r = await deliver(d, sub, data, ev.lineId, l);
         if (r === "ok") report.delivered++;
         else if (r === "gone") {
           await drop(d, sub.id);
@@ -536,10 +517,30 @@ export async function mentionEvents(d: EventsDeps, raw: unknown): Promise<Mentio
         } else report.skipped++;
       }
     }
-  } catch (e) {
-    console.error("[mcp-events] mention:", String(e).slice(0, 200));
-  }
-  return report;
+  },
+};
+
+/** The token's live subscriptions in this thread. */
+async function subsOf(d: EventsDeps, tokenHash: string, thread: string): Promise<Row[]> {
+  const { results } = await d.db
+    .prepare(
+      "SELECT * FROM mcp_event_subscription WHERE token_hash = ? AND thread = ? AND name = ? AND expires_at_ms > ?",
+    )
+    .bind(tokenHash, thread, MENTION_EVENT, d.now())
+    .all<Row>();
+  return results;
+}
+
+/** The wake adapters of phase 1, in order: push (ChatGPT), then pull. */
+export const WAKE_ADAPTERS: WakeAdapter<EventsDeps>[] = [webhookAdapter, pullAdapter];
+
+/**
+ * New lines of a thread (the hub's put): the chat-wake core records each
+ * mention and wakes the token through its adapters. Never throws (the caller
+ * runs it in waitUntil).
+ */
+export function mentionEvents(d: EventsDeps, raw: unknown): Promise<MentionReport> {
+  return wakeOnPut(d, raw, WAKE_ADAPTERS);
 }
 
 async function drop(d: EventsDeps, id: string) {

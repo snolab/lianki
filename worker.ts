@@ -363,7 +363,7 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
   async chatLog(req: unknown): Promise<ChatLogAnswer> {
     if (!allowChatLog()) return { ok: false, error: "busy" };
     const out = await chatLogOp(this.env.DB as unknown as ChatLogDb, req);
-    // MCP Events (docs/mcp-events.md): a person's new line naming a subscribed
+    // MCP Events (docs/chat-wake.md): a person's new line naming a subscribed
     // token wakes it. After the write, never holding the hub's answer up;
     // a line with no "@" reads nothing from D1.
     if (out.ok && this.env.DB && (req as { op?: unknown } | null)?.op === "put")

@@ -1,5 +1,5 @@
 /**
- * MCP Events (docs/mcp-events.md; lib/mcp-events/*): the mention match, the
+ * MCP Events (docs/chat-wake.md; lib/mcp-events/*): the mention match, the
  * loop guard, the thread scope, the Standard Webhooks signature, callback
  * verification, retries, revocation, the flag and its owner audience, and the
  * remote MCP server's forwarding. Synthetic data only: example.com accounts,

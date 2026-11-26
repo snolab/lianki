@@ -18,6 +18,8 @@ export const CLIENT_HEADER = "x-lianki-client";
 /** Most pages one lianki_import call sends (the server's own cap is higher). */
 export const IMPORT_MAX = 100;
 export const CHAT_PATH = "/api/version/chat";
+/** lianki_chat_mentions_since: the main Worker's events route (docs/chat-wake.md, "Pull"). */
+export const MENTIONS_PATH = "/api/mcp-events";
 /** Known tool permissions; introspection must explicitly grant each permission. */
 const ALL_SCOPES = ["study", "chat:read", "chat:write", "chat:ask", "progress", "apps:publish"];
 /** lianki_chat_wait: how long it waits by default, and at most (under a client's usual 60 s request timeout). */
@@ -316,6 +318,52 @@ export const TOOLS = [
     },
     annotations: READ,
     run: async (_api, a, io) => waitChat(io, a),
+  },
+  {
+    name: "lianki_chat_mentions_since",
+    scope: "chat:read",
+    title: "Lines that named you",
+    description:
+      "The lines in this token's own chat thread where a person named you (@<your token name>), oldest first: {mentions: [{id, lineId, text, author, at}], cursor, hasMore, truncated}. " +
+      "Only your own mentions, never other lines or history. Without `cursor`, the recent ones (about the last day); pass the returned `cursor` next time to get only newer ones, and call again at once while `hasMore`. " +
+      "Use it on a schedule (\"check Lianki mentions\") or when the user asks whether anyone called you; answer in the chat with lianki_chat_say.",
+    input: {
+      cursor: z
+        .string()
+        .min(1)
+        .max(64)
+        .optional()
+        .describe("The cursor a previous call returned: only mentions after it"),
+      limit: z.number().int().min(1).max(100).optional().describe("How many at most (default 20)"),
+    },
+    annotations: READ,
+    run: async (api, a) => {
+      const d = await api({
+        method: "POST",
+        path: MENTIONS_PATH,
+        body: {
+          method: "chat/mentions",
+          params: { cursor: a.cursor ?? null, ...(a.limit ? { limit: a.limit } : {}) },
+        },
+      });
+      if (d?.error) {
+        const off = d.error.code === -32601;
+        throw new CliError(
+          off ? "unavailable" : "server",
+          EXIT.server,
+          off
+            ? "Mentions are not switched on for this token's account"
+            : String(d.error.message ?? "mentions failed").slice(0, 200),
+        );
+      }
+      const r = d?.result ?? {};
+      return {
+        mentions: Array.isArray(r.mentions) ? r.mentions : [],
+        cursor: typeof r.cursor === "string" ? r.cursor : null,
+        hasMore: r.hasMore === true,
+        truncated: r.truncated === true,
+      };
+    },
   },
   {
     name: "lianki_chat_say",

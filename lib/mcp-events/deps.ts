@@ -10,11 +10,12 @@ import { loadConfig } from "@/lib/config-store";
 import { flagIn } from "@/lib/flags";
 import { loadFlags } from "@/lib/flags-store";
 import { MCP_EVENTS_FLAG, dohAddresses, eventsLimits } from "./rules";
+import { WAKE_PULL_FLAG, wakeLimits } from "@/lib/chat-wake/rules";
 import type { EventsDeps } from "./server";
 
 /** Cloudflare's resolver, JSON API. Reached from the Worker over HTTPS. */
 export const DOH_URL = "https://cloudflare-dns.com/dns-query";
-/** Per lookup (A and AAAA run together); part of each attempt's budget, docs/mcp-events.md. */
+/** Per lookup (A and AAAA run together); part of each attempt's budget, docs/chat-wake.md. */
 const DOH_TIMEOUT_MS = 2000;
 
 /**
@@ -58,7 +59,9 @@ export function eventsDeps(db: D1Like, sealSecret: string | undefined): EventsDe
   return {
     db,
     flagOn: async () => flagIn(await loadFlags(db).catch(() => null), MCP_EVENTS_FLAG),
+    pullOn: async () => flagIn(await loadFlags(db).catch(() => null), WAKE_PULL_FLAG),
     limits: async () => eventsLimits(await loadConfig(db).catch(defaultConfig)),
+    wakeLimits: async () => wakeLimits(await loadConfig(db).catch(defaultConfig)),
     sealSecret,
     fetch: (url, init) => fetch(url, init),
     resolve: (host) => resolveDoh(host),

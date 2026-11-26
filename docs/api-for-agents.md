@@ -212,7 +212,8 @@ participant list.
   (the token's own name, scopes and expiry, `describeToken`) and lists only
   the tools those scopes allow (`TOOLS` in `packages/lianki-cli/mcp.mjs`:
   `study` → stats, due, next, get, add, import, review, settings_get, settings_set;
-  `chat:read|write|ask` → chat_read + chat_wait, chat_say + chat_avatar, chat_ask;
+  `chat:read|write|ask` → chat_read + chat_seen + chat_wait + chat_mentions_since
+  (docs/chat-wake.md), chat_say + chat_avatar, chat_ask;
   `progress` → progress_report, progress_show, progress_ack). The scopes are
   refreshed for discovery and calls; failed introspection exposes no tools.
 - **Untrusted results.** Every result is `<untrusted-data>` JSON with `<`
