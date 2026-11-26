@@ -27,6 +27,7 @@ import { PASSKEY_RP_NAME, passkeyRelyingParty } from "./lib/passkey";
 import { settleUserSponsorships, type D1WithBatch } from "./lib/payments/sponsors-store";
 import { notifySignedOut } from "./lib/push-signed-out";
 import { setEmailCanonical } from "./lib/canonical-email-d1";
+import { gmailDotFallbackAdapter } from "./lib/gmail-dot-signin";
 import { recordSignupLocale } from "./lib/signup-locale-d1";
 import { claimPregrants, type PregrantDb } from "./lib/referrals/pregrant";
 import { boxBindingHook, boxProviderPlugin } from "./lib/box-oauth/provider";
@@ -311,7 +312,20 @@ export function getAuth(): Auth {
       });
       d1Auth = betterAuth({
         ...baseOptions(),
-        database: kyselyAdapter(kysely, { type: "sqlite" }),
+        // A Gmail address typed with or without its dots finds the one account
+        // (lib/gmail-dot-signin.ts); the exact address still wins.
+        database: gmailDotFallbackAdapter(kyselyAdapter(kysely, { type: "sqlite" }), (canonical) =>
+          (
+            kysely as unknown as Kysely<{
+              user: { id: string; email: string; email_canonical: string };
+            }>
+          )
+            .selectFrom("user")
+            .select(["id", "email"])
+            .where("email_canonical", "=", canonical)
+            .limit(5)
+            .execute(),
+        ),
       }) as Auth;
     }
     return d1Auth;
