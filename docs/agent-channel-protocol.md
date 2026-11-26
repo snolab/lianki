@@ -188,8 +188,9 @@ Each row says who sends it, its payload and the ACP or A2A shape it reuses.
 | `turn.start`          | agent → chat      | `{ cause?: <message id> }`; sets `turn` for what follows                                                                        | Codex `turn.started`                                                   |
 | `turn.end`            | agent → chat      | `{ stopReason: "end_turn" \| "max_tokens" \| "max_turn_requests" \| "refusal" \| "cancelled", usage? }`                          | ACP `StopReason`                                                       |
 | `turn.cancel`         | chat → agent      | `{}`; best effort, answered by `turn.end` `cancelled`                                                                           | ACP `session/cancel`                                                   |
-| `permission.request`  | agent → chat      | `{ toolCall: ToolCallUpdate, options: PermissionOption[], expiresAt? }`                                                          | ACP `session/request_permission` params                                |
-| `permission.response` | chat → agent      | `{ outcome: { outcome: "selected", optionId } \| { outcome: "cancelled" } }`, `re` = the request                                 | ACP `RequestPermissionResponse`                                        |
+| `permission.request`  | agent → chat      | `{ binding, toolCall: ToolCallUpdate, options: PermissionOption[], expiresAt }` (§12.1)                                                          | ACP `session/request_permission` params                                |
+| `permission.response` | chat → agent      | `{ outcome: { outcome: "selected", optionId } \| { outcome: "cancelled" }, binding }`, `re` = the request; `binding` echoed unchanged (§12.1)                                 | ACP `RequestPermissionResponse`                                        |
+| `permission.revoke`   | chat → agent      | `{ scope: "session", toolKind? }`: ends session approvals early (§12.2)                                                         | —                                                                      |
 | `error`               | both              | `{ code, message, fatal: boolean, retryAfterMs? }`, `re` = the cause if any                                                     | JSON-RPC error codes where they fit                                    |
 | `bye`                 | both              | `{ reason }`; the sender closes after it                                                                                        | —                                                                      |
 
@@ -412,7 +413,105 @@ natively needs no table: ay wraps its `session/update` as `delta` as is.
 - The card names the agent and its machine name as ay reports it, so a prompt
   can never pass as Li's own.
 
+### 12.1 A response is bound to its request
+
+A `permission.request` carries a binding that ay's endpoint mints and keeps:
+
+```json
+"payload": {
+  "binding": {
+    "requestId": "perm-01JD6R…",
+    "session": "ay-sess-7f3c…",
+    "turn": "turn-12",
+    "agent": "agent:repo-main",
+    "nonce": "b64url, 128 bits"
+  },
+  "toolCall": { "...": "ACP ToolCallUpdate" },
+  "options": [{ "optionId": "allow_once", "name": "Allow once", "kind": "allow_once" }],
+  "expiresAt": "2026-11-27T09:24:03.512Z"
+}
+```
+
+- `requestId` is unique per request, `session` is the ay channel session
+  (the agent's pid + start time, or the stream/ACP session id), `turn` the
+  turn the prompt came from, `agent` the agent address ay launched (§13.1),
+  `nonce` a random value never shown in the chat UI.
+- A `permission.response` must echo the whole binding (`re` = the request's
+  `id`, `payload.binding` byte-for-byte). ay's endpoint acts on it only when
+  every field matches a request it has **open** in this channel session:
+  same request, same session, same turn, same agent, same nonce.
+- Anything else is rejected with `error` `binding-mismatch` and never reaches
+  the agent: a response from another session (ay restarted, or another
+  bridge), for another turn, for another agent, or for a request that the
+  agent has already moved past (the prompt left its screen, the turn ended or
+  was cancelled).
+- **Answered once.** The first matching response closes the request; ay
+  records the `requestId` as answered for the life of the session. A replay
+  (the same event id, or a new event with the same binding) is ignored with
+  `ack` `rejected` `already-answered` and is never pressed twice. A reconnect
+  that re-delivers an old response therefore does nothing.
+- On Lianki's side the ask card stores the binding; the `answered` event
+  from a tap returns it unchanged, and the card can be answered once (the
+  hub's existing ask rule). Lianki never builds a binding itself.
+
+### 12.2 Approvals expire
+
+- Every approval has a **scope** and a **TTL**:
+
+  | option (ACP kind)            | scope                 | lasts                                                                  |
+  | ---------------------------- | --------------------- | ---------------------------------------------------------------------- |
+  | `allow_once`                 | this one tool call    | until used, or the request's `expiresAt`                               |
+  | `allow_always` (shown as "for this session") | this agent session, this tool kind (and command prefix or path when the agent gives one) | `chat.channel.sessionApprovalTtlMin` (default 60 min), and never past the session's end |
+  | `reject_once` / `reject_always` | same scopes         | same TTLs                                                              |
+
+- An unanswered request expires at `expiresAt` = `ts` +
+  `chat.channel.permissionTtlSec` (default 600 s) and is answered
+  `reject_once` (fail closed).
+- The defaults are config keys (`chat.channel.permissionTtlSec`,
+  `chat.channel.sessionApprovalTtlMin`, `chat.channel.allowAlways`), defaults
+  in code and live values in the config store (docs/config-store.md); ay has
+  the same keys as flags/env on its side, and the shorter of the two wins.
+- **No "forever".** The profile has no approval that outlives an agent
+  session. ACP's `allow_always` is mapped to "for this session" and labelled so
+  on the card. A standing rule beyond a session (for example "always allow
+  `bun test` in this repo") exists only if the user sets it explicitly in
+  ay's own config at the terminal or in a Lianki settings page; it is never
+  created by tapping a card, and both endpoints show it in their lists so the
+  user can revoke it.
+- A session approval ends early when the agent restarts, the channel session
+  ends, the user taps "revoke" on the agent's presence row
+  (`permission.revoke` event, chat → ay), or its TTL passes, whichever is
+  first.
+
 ## 13. Security
+
+### 13.1 Who said it: identity comes from the transport, not the payload
+
+`from` (and `payload.binding.agent`, `principal`) is a **claim**, never a
+credential. Each endpoint overwrites or checks it from what it verified
+itself, and drops an event whose claim disagrees (`error`
+`identity-mismatch`).
+
+| endpoint              | before acting, it verifies                                                                                                                                                                                                                       | `from` is set from                                                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| Lianki hub (Worker)   | the token on the socket's first frame: known, unexpired, unrevoked, scope `chat:*`, its account and the one thread it may use (`token-chat.ts`); a tap: a signed-in page of that thread                                                            | the verified token's name (`agent:<token name>`) for agent lines; the page session's user for taps       |
+| `lianki chat channel` | it emits user `message`s only from hub `chat` events on its own authenticated socket, with `from` derived from the hub's `from`/thread fields (`owner`/`user` → `user:primary`, `friend` → `user:friend` + untrusted principal); it never reads `from` from stdin | the hub's verified fields; anything arriving on its stdin from ay is posted as the token's own agent line, whatever `from` says |
+| `ay channel`          | the agent it talks to is one **it launched or attached** (pid + start time in ay's registry, or the stdio child it spawned); on stdio, that its peer is the process it spawned or the pipe the user started; on WebSocket/HTTP, the user's local secret | `agent:<name>` from ay's registry row for that process; inbound events keep their `from` only as a label, and get `trust: "chat"` |
+| bridge (pipe)         | nothing: it has no identity and grants none                                                                                                                                                                                                      | —                                                                                                        |
+
+Consequences:
+
+- An agent cannot make a line look like the user's: everything ay sends up
+  is posted with the token, as an agent line (`from: "agent"`, `via:
+  "token"`), whatever its `from`.
+- A chat message cannot make ay act as another agent or answer another
+  agent's prompt: ay routes by its own registry, and a permission response
+  must match a binding ay minted (§12.1).
+- A tap is the only thing that produces a `permission.response`; Lianki's
+  endpoint emits one only for an `answered` event on a card it created in
+  this session, never from text, voice or another agent's line.
+
+### 13.2 Other measures
 
 - **Loop guard.** A `message` that came from an agent is never routed back
   into an agent as a task: Lianki's endpoint drops its own token's lines and
