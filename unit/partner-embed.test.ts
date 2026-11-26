@@ -889,6 +889,21 @@ describe("the userscript's side (src/partner.ts)", () => {
     expect(h.calls).toEqual([]);
   });
 
+  it("an explicitly requested page-realm note can be dismissed without starting chat", () => {
+    const d = new FakeDoc();
+    let hidden = 0;
+    const remove = pageRealmNote(asDoc(d), "https://lianki.com", () => hidden++);
+    const host = d.documentElement.children[0];
+    const box = host.shadow!.children[0];
+    const close = box.children.find((child) => child.tag === "button")!;
+    expect(close).toBeDefined();
+    close.fire("click");
+    expect(hidden).toBe(1);
+    expect(d.documentElement.children).toEqual([]);
+    remove();
+    expect(hidden).toBe(1);
+  });
+
   it("the page-realm note is drawn into <body> when there is no documentElement", () => {
     const d = new FakeDoc();
     const body = new FakeEl("body", d);
