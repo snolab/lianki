@@ -8,6 +8,7 @@
  * Whether it is on is this device's view state (`lk:pref:chat-view`, `full`;
  * ui-store.ts chatPrefs), never synced.
  */
+import { SNAP_DEFAULTS } from "./snap-targets";
 
 /**
  * Who may use it: the flag `partner.fullscreen` is on (the host reads it on
@@ -279,8 +280,8 @@ export function FULL_HINT_STYLE(on: boolean, reduce: boolean) {
   } as const;
 }
 
-/** How far up a drag in full screen goes before it leaves (px): a press that wobbles stays. */
-export const FULL_LEAVE_PX = 48;
+/** How far up a drag in full screen goes before it leaves (px): a press that wobbles stays. Live: chat.fullLeavePx. */
+export const FULL_LEAVE_PX = SNAP_DEFAULTS.fullLeavePx;
 
 /**
  * A drag that began in full screen leaves it once the finger has gone
@@ -288,6 +289,6 @@ export const FULL_LEAVE_PX = 48;
  * back as it was and follows the finger from there. Sideways or down, it
  * stays full screen.
  */
-export function dragLeavesFull(d: { full: boolean; dy: number }) {
-  return d.full && d.dy <= -FULL_LEAVE_PX;
+export function dragLeavesFull(d: { full: boolean; dy: number }, leavePx: number = FULL_LEAVE_PX) {
+  return d.full && d.dy <= -leavePx;
 }

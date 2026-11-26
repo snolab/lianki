@@ -1400,17 +1400,31 @@ Rules: `packages/debug-chat/src/full-screen.ts`; unit tests:
   on another site (`embedded`: the userscript's widget, `/embed/partner`).
 - **In by a drag, no button** (owner, 2026-11-09 18:25 JST: "no dedicated
   fullscreen button; it should happen when the input box is dragged to the very
-  bottom"). Dragging the open chat (its grip or the bar's edge) until its bar is
-  pushed flush against the bottom edge (the drag keeps it on screen, so it rests
-  flush within half a pixel) enters full screen on the drop (`dropEntersFull`).
-  Only the bottom: the top edge would hide the history (18:26 JST), so a bar
-  pushed against the top stays a panel there. **Before the release** (owner,
-  2026-11-10): the moment the drag meets that condition, a glass sheet grows
-  up from the bottom edge to the whole screen, behind the chat
-  (`FULL_HINT_STYLE`, `data-testid="debug-chat-full-hint"`), with a light
-  haptic where the browser has `navigator.vibrate` (not iOS); backing off the
-  edge folds it away (`fullHintStep`). Reduced motion: it appears at once. In full screen a drag on the grip
-  or the bar's edge that goes `FULL_LEAVE_PX` (48 px) up leaves it
+  bottom"). **Drop zones** (owner, 2026-11-27; spec docs/chat-drag-ux.md): the
+  moment a drag of the chat passes `chat.dragThresholdPx` (5 px), every zone a
+  drop would act on shows, faint, with an icon and a label (`SnapOverlay.tsx`,
+  `data-testid="debug-chat-snap"`), and the zone under the **pointer** shows
+  its result as translucent seal-red glass growing out of the window (FLIP,
+  `chat.snapHintMs` ≤ 200 ms, none under reduced motion; a `chat.snapHapticMs`
+  tick on entry). One pure function decides both the drawing and the drop,
+  `snapTargets(viewport, …)` (snap-targets.ts, unit/snap-targets.test.ts), on
+  one viewport definition (snap-viewport.ts: the visual viewport plus the
+  safe areas; 随身Li measures the host page). Zones: the **bottom strip →
+  full screen**, the whole visible area at every width (`fullMode: "screen"`);
+  the **right strip → the right sidebar** (≥ 35em; `fullMode: "side"`, at the
+  saved dock width); the **bottom-right corner → Minimize**, the pill put in
+  that corner; anywhere else, the top edge included, a free move. Sizes:
+  `chat.snapZoneEdgePx`, `chat.snapZoneCornerPx` (shrunk on small screens).
+  The menu and the double tap keep `fullMode: "auto"` (a sidebar when wide, as
+  before). **Cancel** (codex review): the drag's start is a snapshot (place,
+  open, full screen and its mode, dock width); Escape, pointercancel, a resize
+  or rotation mid-drag, or a release off-screen put exactly that back and save
+  nothing. Only the bottom and the right: the top edge would hide the history
+  (18:26 JST). Inside 随身Li's lianki.com frame the chat does not drag
+  (`movable={false}`): the userscript's shell (src/partner-frame.ts) moves it on
+  the host page, with the same zones (only Minimize there). The grip also moves
+  by the keyboard: arrows 16 px, Shift 48. In full screen a drag on the grip
+  or the bar's edge that goes `chat.fullLeavePx` (48 px) up leaves it
   (`dragLeavesFull`): the panel comes back, its own size, and follows the finger
   from there; a smaller wobble, sideways or down, stays. Without a drag (the
   keyboard, a screen reader): the menu's **Full screen** row (a double tap on the

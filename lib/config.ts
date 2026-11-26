@@ -77,6 +77,7 @@ import { TWO_MIC_WINDOW_MAX, TWO_MIC_WINDOW_MS } from "@lianki/debug-chat/two-mi
 import { ETA_BAR_CYCLE, ETA_TICKER_KEEP, ETA_TICKER_SEC } from "@lianki/debug-chat/eta-ticker";
 import { MERGE_REOPEN_DEFAULT_SEC, MERGE_REOPEN_MAX_SEC } from "@lianki/debug-chat/voice-tune";
 import { STT_REPEAT } from "@lianki/debug-chat/stt-repeat";
+import { SNAP_DEFAULTS } from "@lianki/debug-chat/snap-targets";
 import {
   DEFAULT_PERSON_VOICES,
   PERSON_VOICES_MAX,
@@ -1717,6 +1718,73 @@ export const CONFIG = {
     group: "chat",
     audience: "public",
     description: "触屏或触笔按住聊天拖柄多久打开菜单。鼠标拖动立即开始；双击/双点切换全屏。",
+  }),
+  "chat.dragThresholdPx": int({
+    default: SNAP_DEFAULTS.dragThresholdPx,
+    min: 2,
+    max: 24,
+    unit: "px",
+    group: "chat",
+    audience: "public",
+    description:
+      "拖动聊天窗口时，手指或鼠标移动超过这个距离才算拖动（少于它算点按）。docs/chat-drag-ux.md",
+  }),
+  "chat.fullLeavePx": int({
+    default: SNAP_DEFAULTS.fullLeavePx,
+    min: 16,
+    max: 200,
+    unit: "px",
+    group: "chat",
+    audience: "public",
+    description: "全屏或右侧栏时，向上拖动这么远才退出、回到原来的浮动位置和大小。",
+  }),
+  "chat.snapZoneEdgePx": int({
+    default: SNAP_DEFAULTS.edgePx,
+    min: 16,
+    max: 200,
+    unit: "px",
+    group: "chat",
+    audience: "public",
+    description:
+      "拖动聊天窗口时，屏幕底边（全屏）和右边（右侧栏）的放下区域有多厚。小屏幕会自动缩到不超过边长的四分之一。",
+  }),
+  "chat.snapZoneCornerPx": int({
+    default: SNAP_DEFAULTS.cornerPx,
+    min: 24,
+    max: 240,
+    unit: "px",
+    group: "chat",
+    audience: "public",
+    description:
+      "拖动聊天窗口时，右下角“最小化”放下区域的边长。小屏幕会自动缩到不超过短边的三分之一。",
+  }),
+  "chat.snapHintMs": int({
+    default: SNAP_DEFAULTS.hintMs,
+    min: 0,
+    max: 200,
+    unit: "ms",
+    group: "chat",
+    audience: "public",
+    description:
+      "拖动时放下区域淡入、结果预览从窗口长到目标大小的动画时长。不超过 200 毫秒（0.2 秒反馈）；系统“减少动态效果”时为 0。",
+  }),
+  "chat.snapHapticMs": int({
+    default: SNAP_DEFAULTS.hapticMs,
+    min: 0,
+    max: 50,
+    unit: "ms",
+    group: "chat",
+    audience: "public",
+    description: "拖动进入一个放下区域时的轻震动时长（安卓；iOS 没有）。0 = 不震动。",
+  }),
+  "chat.snapPreviewPct": int({
+    default: SNAP_DEFAULTS.previewPct,
+    min: 10,
+    max: 100,
+    unit: "%",
+    group: "chat",
+    audience: "public",
+    description: "拖到放下区域时，窗口最终位置的半透明预览有多不透明。",
   }),
   "voice.kwsDownloadMb": int({
     default: 25,

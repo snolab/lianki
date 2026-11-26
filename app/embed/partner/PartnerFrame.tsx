@@ -119,6 +119,9 @@ function Chat({
       key={scope}
       draftScope={scope}
       embedded
+      // The userscript's shell moves this window on the host page (src/partner-frame.ts):
+      // a drag in here would move it only inside the frame (docs/chat-drag-ux.md).
+      movable={false}
       // No page selection or uploads here: the frame cannot see the host page.
       // Its + menu shares from the page instead, through the userscript (M3).
       attach={false}

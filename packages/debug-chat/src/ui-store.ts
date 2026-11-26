@@ -171,7 +171,17 @@ function migrateTree(v: unknown): KeptTree | null {
  * (EtaBar.tsx, its ▸/▾; owner, 2026-11-13), shown by default. A stored value
  * from before a key existed keeps the others and reads that one as off.
  */
-export type ChatView = { compact: boolean; full: boolean; etaFolded: boolean };
+export type ChatView = {
+  compact: boolean;
+  full: boolean;
+  etaFolded: boolean;
+  /**
+   * How full screen is drawn (snap-targets.ts FullMode): `auto` by width (the
+   * menu, the double tap), `screen` (dropped on the bottom zone), `side`
+   * (dropped on the right zone). Absent reads as `auto`.
+   */
+  fullMode?: "auto" | "screen" | "side";
+};
 export const CHAT_VIEW_INITIAL: ChatView = { compact: false, full: false, etaFolded: false };
 export const chatPrefs = () =>
   createUiStore<ChatView>("chat-view", 1, CHAT_VIEW_INITIAL, { storage: "local" });

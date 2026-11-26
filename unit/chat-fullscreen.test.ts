@@ -267,7 +267,8 @@ describe("by a drag: the bottom edge enters, a drag up leaves (owner, 2026-11-09
     expect(src).toContain('data-testid="debug-chat-fullscreen-exit"');
     // The menu's row is its own component (FullScreenMenuItem.tsx, unit/chat-fullscreen-menu.test.tsx).
     expect(src).toContain("<FullScreenMenuItem");
-    expect(src).toContain("dropEntersFull(");
+    // Entering is a drop zone now (snap-targets.ts, unit/snap-targets.test.ts): hit by the pointer.
+    expect(src).toContain("snapTargets(");
     expect(src).toContain("dragLeavesFull(");
   });
   it("full screen shows the site's logo top left, before the exit button (owner, 2026-11-14)", () => {
