@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { canonicalEmail } from "@/lib/canonical-email";
-import { gmailDotKey, withGmailDotFallback } from "@/lib/gmail-dot-signin";
+import { gmailDotFallbackAdapter, gmailDotKey, withGmailDotFallback } from "@/lib/gmail-dot-signin";
 
 type Row = { id: string; email: string };
 type FindArgs = { model: string; where?: { field: string; value: unknown; operator?: string }[] };
@@ -120,5 +120,40 @@ describe("withGmailDotFallback", () => {
     const { wrapped } = fakeAdapter([{ id: "u1", email: "janedoe@gmail.com" }]);
     const found = await wrapped.transaction((trx) => trx.findOne(byEmail("jane.doe@gmail.com")));
     expect(found?.id).toBe("u1");
+  });
+
+  test("a failed candidate lookup means no fallback, not an error", async () => {
+    const adapter = { findOne: async () => null };
+    const wrapped = withGmailDotFallback(adapter as never, async () => {
+      throw new Error("d1 down");
+    }) as unknown as { findOne: (a: FindArgs) => Promise<Row | null> };
+    const err = console.error;
+    console.error = () => {};
+    try {
+      expect(await wrapped.findOne(byEmail("jane.doe@gmail.com"))).toBeNull();
+    } finally {
+      console.error = err;
+    }
+  });
+});
+
+describe("gmailDotFallbackAdapter", () => {
+  test("every adapter the factory builds falls back", async () => {
+    const rows: Row[] = [{ id: "u1", email: "janedoe@gmail.com" }];
+    const base = {
+      findOne: async (args: FindArgs) =>
+        rows.find((r) =>
+          (args.where ?? []).every((w) => (r as Record<string, unknown>)[w.field] === w.value),
+        ) ?? null,
+      transaction: async <R>(cb: (trx: unknown) => Promise<R>) => cb(base),
+    };
+    const factory = gmailDotFallbackAdapter(
+      () => base as never,
+      async (c) => rows.filter((r) => canonicalEmail(r.email) === c),
+    );
+    const adapter = factory({} as never) as unknown as {
+      findOne: (a: FindArgs) => Promise<Row | null>;
+    };
+    expect((await adapter.findOne(byEmail("jane.doe@gmail.com")))?.id).toBe("u1");
   });
 });
