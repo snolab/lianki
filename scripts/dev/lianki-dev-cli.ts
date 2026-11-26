@@ -205,7 +205,7 @@ ${EXITS}`,
   stdout: the hub's {"type":"ui-done",…,"delivered"} (with --json, as "data").
 ${GLOBAL}
 ${EXITS}`,
-  progress: `usage: lianki-dev progress --task "<text>" --status <status> [--path /a/b] [--pct 40] [--eta 15m] [--done] [--pr N] …
+  progress: `usage: lianki-dev progress --task "<text>" --status <status> [--path /a/b] [--pct 40] [--eta auto[:<kind>] | --eta 15m] [--done] [--pr N] …
        lianki-dev progress show | grant --node <id> --agent <name> [--ttl 8h] | resolve --id <id> [--note "…"]
   The state tree's live progress (progress.ts; every flag of
   \`bun scripts/dev/progress.ts --help\`). --agent defaults to the lane.

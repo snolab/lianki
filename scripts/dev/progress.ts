@@ -28,6 +28,7 @@
 import { BASE } from "./eval-socket";
 import {
   PROGRESS_USAGE,
+  findAutoEta,
   formatHistory,
   formatStats,
   parseProgressArgs,
@@ -40,10 +41,22 @@ import { ownerStamp } from "./owner-time";
 /** "2026-11-07 20:30 JST": when the estimate runs out, in the machine's zone (owner-time.ts). */
 const etaAt = (at: number) => ownerStamp(at);
 
-const args = process.argv.slice(2);
+let args = process.argv.slice(2);
 if (args.includes("--help") || args.includes("-h")) {
   console.log(PROGRESS_USAGE);
   process.exit(0);
+}
+// --eta auto[:<kind>]: the estimate skill gives the P5-P95 (and logs it, keyed
+// by the node, so `estimate.ts sync` closes it when the node goes done).
+if (findAutoEta(args)) {
+  const { resolveAutoEta } = await import("./estimate");
+  const r = await resolveAutoEta(args);
+  if (r instanceof Error) {
+    console.error(`progress: ${r.message}\n${PROGRESS_USAGE}`);
+    process.exit(2);
+  }
+  if (r.note) console.error(`progress: ${r.note}`);
+  args = r.argv;
 }
 const cmd = parseProgressArgs(args);
 if (cmd instanceof Error) {
