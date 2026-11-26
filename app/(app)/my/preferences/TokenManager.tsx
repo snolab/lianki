@@ -366,7 +366,7 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
                   key={p.name}
                   type="button"
                   disabled={busy}
-                  aria-pressed={active}
+                  aria-pressed={name.trim().toLowerCase() === p.name.toLowerCase()}
                   data-testid={`token-platform-${p.name.toLowerCase()}`}
                   onClick={() => {
                     setName(p.name);
