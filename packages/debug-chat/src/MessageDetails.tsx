@@ -25,6 +25,7 @@ import { hasVoiceDetails, voiceDetailRows } from "./voice-details";
 import { latencyLines, voiceLatency } from "./latency";
 import type { UiStrings } from "./ui-strings";
 import { LineReplay } from "./LineReplay";
+import { pressMenu } from "./press-menu";
 
 /** The details' voice rows' words (chat-ui-locales.ts). */
 export type VoiceWords = Pick<
@@ -201,6 +202,9 @@ export function useMessageDetails(
 ) {
   const id = useId();
   const popup = useRef<HTMLDivElement>(null);
+  /** A right-press that opened the details, followed until it lifts (press-menu.ts). */
+  const follow = useRef<{ end: () => void } | null>(null);
+  useEffect(() => () => follow.current?.end(), []);
   const [selection, setSelection] = useState<{
     message: ChatMessage;
     sender: string;
@@ -260,6 +264,20 @@ export function useMessageDetails(
         e.preventDefault();
         e.stopPropagation();
         setSelection({ message, sender, anchor: e.currentTarget.getBoundingClientRect() });
+        // Right button still held (the menu opened on the press, as on macOS and
+        // Linux): follow it, a release on a control picks it (press-menu.ts).
+        // Opened on the release (Windows), it is a plain right-click.
+        if (e.buttons & 2) {
+          const line = e.currentTarget;
+          follow.current?.end();
+          follow.current = pressMenu({
+            win: window,
+            menu: () => popup.current,
+            opener: () => line,
+            start: { x: e.clientX, y: e.clientY },
+            close: () => popup.current?.hidePopover?.(),
+          });
+        }
       },
       onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
         if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;

@@ -838,6 +838,8 @@ export type ChatStrings = {
   snapDockRight: string;
   /** Drag overlay label on the bottom-right corner drop zone: dropping there minimizes the chat. Short verb. */
   snapMinimize: string;
+  /** The chat menu's on/off row that docks the chat as a full-height right sidebar (wide screens). */
+  dockRight: string;
   vpPrint: string;
   /** Note in the voiceprint panel when Lianki's speech server (the service that turns speech into text and checks the voice) is not reachable; the mic button shows a green dot when it is. 'Lianki's speech server' is the company's own server; never name a person's computer. One sentence. */
   vpOff: string;
@@ -1210,6 +1212,7 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   snapFullscreen: "Full screen",
   snapDockRight: "Sidebar",
   snapMinimize: "Minimize",
+  dockRight: "Dock right",
   vpPrint: "{device}: {n} sentences",
   vpOff: "Needs Lianki's speech server (the green dot on the mic).",
   vpEnrol: "Enrol this device",

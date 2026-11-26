@@ -55,8 +55,8 @@ describe("no fold step hides the chat", () => {
     { type: "restore" },
     { type: "minimize" },
     { type: "handle" },
-    { type: "dropped", nearest: "left", against: "left" },
-    { type: "dropped", nearest: "right", against: null },
+    { type: "dropped", nearest: "left" },
+    { type: "dropped", nearest: "right" },
   ];
   it("from open or the pill, every event leaves the bar or its pill on screen", () => {
     // Breadth-first over every reachable state: only open and pill, never gone.

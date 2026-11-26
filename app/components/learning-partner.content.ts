@@ -875,6 +875,24 @@ const learningPartnerContent = {
       mr: "लहान करा",
       ko: "최소화",
     }),
+    dockRight: t({
+      en: "Dock right",
+      zh: "停靠右侧",
+      hi: "दाईं ओर डॉक करें",
+      es: "Acoplar a la derecha",
+      fr: "Ancrer à droite",
+      ar: "تثبيت على اليمين",
+      bn: "ডানে ডক করুন",
+      pt: "Fixar à direita",
+      ru: "Закрепить справа",
+      ur: "دائیں جانب ڈاک کریں",
+      id: "Sematkan di kanan",
+      de: "Rechts andocken",
+      ja: "右にドッキング",
+      sw: "Bandika kulia",
+      mr: "उजवीकडे डॉक करा",
+      ko: "오른쪽에 고정",
+    }),
     vpPrint: t({
       en: "{device}: {n} sentences",
       zh: "{device}：{n} 句",
@@ -4065,6 +4083,8 @@ const context: Record<keyof typeof learningPartnerContent.content, string> = {
     "Label with an icon on the strip along the right edge of the screen, shown only while the chat window is being dragged: letting go there docks the chat as a full-height panel on the right, the page staying usable beside it. A short noun for that panel (sidebar), at most two words; it is drawn in a narrow vertical strip.",
   snapMinimize:
     "Label with an icon in the bottom-right corner of the screen, shown only while the chat window is being dragged: letting go there folds the chat into its small pill in that corner. The usual verb for a window's Minimize, one word.",
+  dockRight:
+    "Name of an on/off row in the chat window's menu (beside Full screen), shown only on wide screens: on, the chat becomes a full-height panel docked to the right edge of the screen, the page staying usable beside it; off, it floats again. An imperative or a short noun phrase, two or three words; the On/Off words are separate.",
   vpPrint:
     "One row per enrolled device in the voiceprint panel: {device} is a device name like iphone or android, {n} how many sentences were read for it. Keep both placeholders.",
   vpOff:
