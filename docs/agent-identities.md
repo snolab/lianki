@@ -1,0 +1,50 @@
+# Agent Identities ("My AI")
+
+Tree: /chat/agent-identities
+
+Design plan for turning API tokens into user-understandable **Agent Identities** (owner requests, 2026-11-27 05:25–05:28 JST). See also [api-for-agents.md](api-for-agents.md).
+
+## Problem
+
+"API token" feels like a developer-only credential. Ordinary learners think in terms of **their AI assistants** (local or online agents such as ChatGPT, Claude, Gemini, or Arden) that need a recognizable name, avatar, wakeword, and a safe way to ask for permissions when needed.
+
+## Core Design
+
+### 1. One-Tap Entry ("Add My Agent")
+
+- The primary entry point is a single **"Add My Agent"** button.
+- Clicking it creates an **untitled** identity with minimal initial capability (`identity:self`) and displays **two clearly separate destinations** (never a single "copy both into the agent" button):
+  1. **Connection secret (protected settings / local secret store only)**: shown once in private Settings with per-platform setup steps. The token or token-bearing MCP URL goes **only** into the app's protected connector or MCP settings (e.g., ChatGPT connector settings, Claude Desktop `claude_desktop_config.json`, Cursor `.cursor/mcp.json`, Claude Code `claude mcp add`) or into a local CLI secret store (`LIANKI_TOKEN` env var / keychain) — **never** into the chat conversation.
+  2. **Credential-free prompt (for the chat)**: the **only** text pasted into ChatGPT, Claude, or the local agent's chat. Reusing `/api/agent-guide` and [api-for-agents.md](api-for-agents.md) with zero secrets, it tells the agent to connect over the already-configured MCP/CLI, **name yourself first**, then request the permissions you need.
+
+### 2. Name-Before-Use Gate
+
+- Until the identity has a non-empty name, **every other API/MCP call is refused** (including permission requests), **explicitly exempting**:
+  - the authenticated name-only bootstrap call for that token (`identity:self`), and
+  - a rename performed by the signed-in user from Settings (which does not require `identity:self`).
+- Requiring the name first guarantees that when the agent later requests permissions, the Li Chat approval prompt always shows the agent's real name rather than `"untitled"`.
+
+### 3. Self-Profile (`identity:self`)
+
+With `identity:self`, an agent can update its own:
+
+- **Display name** (shown on chat messages, permission prompts, and the identity list).
+- **Avatar** (user-friendly visual identity in Li Chat).
+- **Aliases / Wakewords** (so the user can address or trigger that agent by name/alias in Li Chat).
+
+`identity:self` only mutates the calling token's own identity record—never another identity or account setting.
+
+### 4. Self-Requested Permissions (In-Chat Prompt)
+
+- Each identity can **request additional permissions itself** (e.g., via an MCP tool or API endpoint).
+- **Rate-limited**: Permission requests are rate-limited per identity to prevent prompt spam.
+- **In-chat approval UI**: The user's Li Chat window renders a clear permission-request prompt listing:
+  - Which identity is asking.
+  - The exact scopes requested.
+  - Explicit **Approve** and **Deny** actions.
+- **Fail-closed**: Nothing is granted until the user explicitly taps **Approve**. Owner-only capabilities (such as `eval`) remain gated and cannot be self-requested by ordinary accounts.
+
+### 5. Continuity with Existing Token Security
+
+- The one-time secret (token or token-bearing URL) is shown **only in private Settings** at creation time and goes **only into protected connector/MCP settings or a local secret store—never into a chat conversation, cards, or the agent guide**.
+- Every identity remains revocable at any time from Settings.
