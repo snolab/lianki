@@ -1,5 +1,7 @@
+import PortableLiSettings from "./PortableLiSettings";
+import { PORTABLE_LI_STRINGS } from "@/src/portable-li-strings";
+import { pillChatLang } from "@/src/pill-chat-strings";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { getIntlayer } from "intlayer";
 import { appLocale } from "@/lib/app-locale.server";
 import { authUserOrNull } from "@/app/signInEmail";
@@ -20,12 +22,13 @@ export async function generateMetadata(): Promise<Metadata> {
 /**
  * /chat/sites (docs/userscript-li-chat.md, "Per-site threads"): the signed-in
  * user's Li chats from the pill, one per website, and each one opened to read
- * and go on chatting. Only on lianki.com, never on a host page; the list comes
+ * and go on chatting. Browser-local consent settings remain available even when site history is off.
+ * Only on lianki.com, never on a host page; the list comes
  * from /api/chat/sites (the session's own account only). Not found while
- * `ext.pill-chat-per-origin` is off.
+ * the history API remains guarded by `ext.pill-chat-per-origin`.
  */
 export default async function ChatSitesPage() {
-  if (!flagIn(await readFlags(), PER_ORIGIN_FLAG)) notFound();
+  const historyEnabled = flagIn(await readFlags(), PER_ORIGIN_FLAG);
   const locale = await appLocale();
   const labels = Object.fromEntries(
     Object.entries(getIntlayer("chat-sites-page", locale)).map(([k, v]) => [k, String(v)]),
@@ -48,9 +51,16 @@ export default async function ChatSitesPage() {
   return (
     <SitesClient
       labels={labels}
+      historyEnabled={historyEnabled}
       locale={locale}
       installGuide={
-        <PillInstallGuide latestVersion={LIANKI_USERSCRIPT_VERSION} labels={installLabels} />
+        <>
+          <PillInstallGuide latestVersion={LIANKI_USERSCRIPT_VERSION} labels={installLabels} />
+          <PortableLiSettings
+            strings={PORTABLE_LI_STRINGS[pillChatLang(locale)]}
+            notReady={installLabels.installHelp}
+          />
+        </>
       }
     />
   );

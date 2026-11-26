@@ -6,6 +6,7 @@ export type ChatGmRequest = (details: {
   method: string;
   url: string;
   headers: Record<string, string>;
+  data?: string;
   withCredentials: true;
   timeout: number;
   onload: (r: { status: number; responseText: string }) => void;

@@ -516,6 +516,23 @@ export const SUITES = [
     paths: ["src/pill-chat*.ts", "src/partner*.ts", "packages/debug-chat/src/embed/**"],
     sensitive: true,
   },
+  // Global consent and bundled GM chat under strict frame/connect/style CSP; synthetic AI, no device or live account.
+  {
+    name: "PORTABLE LI (global consent and strict CSP)",
+    cmd: "bun",
+    args: ["scripts/qa/qa-portable-li.ts"],
+    id: "portable-li",
+    paths: [
+      "src/portable-li*.ts",
+      "src/page-chat-http-client.ts",
+      "src/pill-chat-global.ts",
+      "src/pill-chat-language.ts",
+      "lib/page-chat-http*.ts",
+      "app/api/chat/page-broker/**",
+      "app/(app)/chat/sites/**",
+    ],
+    sensitive: true,
+  },
   // One Li thread per website (ext.pill-chat-per-origin), end to end: the main Worker
   // and lianki-push in one wrangler dev session of its own, https and plain-http host
   // sites, /api/chat/sites over the PUSH binding. `base` only for the OpenNext build

@@ -8,11 +8,13 @@
 // @grant       GM_xmlhttpRequest
 // @grant       GM_setValue
 // @grant       GM_getValue
+// @grant       GM_addValueChangeListener
+// @grant       GM_removeValueChangeListener
 // @grant       GM_deleteValue
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.42
+// @version     2.24.45
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -3510,6 +3512,1365 @@ Sasisha kadi kwa anwani mpya?`,
     };
   }
 
+  // packages/debug-chat/src/uuid.ts
+  function uuidv4() {
+    const b = crypto.getRandomValues(new Uint8Array(16));
+    b[6] = (b[6] & 15) | 64;
+    b[8] = (b[8] & 63) | 128;
+    const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  }
+
+  // src/pill-chat-trust.ts
+  var LICHAT_SITES_KEY = "lianki_lichat_sites";
+  var PILLCHAT_ON_KEY = "lianki_pillchat_on";
+  var PILLCHAT_RECHECK_MS = 60000;
+  var HOST_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/;
+  var validHost = (h) =>
+    typeof h === "string" && h.length > 0 && h.length <= 253 && HOST_RE.test(h);
+  var siteKey = (hostname) => {
+    const h = String(hostname ?? "").toLowerCase();
+    return validHost(h) ? h : null;
+  };
+  function parseSites(raw) {
+    let v = raw;
+    if (typeof raw === "string") {
+      try {
+        v = JSON.parse(raw);
+      } catch {
+        return {};
+      }
+    }
+    const out = Object.create(null);
+    if (!v || typeof v !== "object" || Array.isArray(v)) return out;
+    for (const [h, d] of Object.entries(v)) {
+      if (validHost(h) && (d === "allow" || d === "never")) out[h] = d;
+    }
+    return out;
+  }
+  function trustStore(gm) {
+    const read = () => parseSites(gm.getValue(LICHAT_SITES_KEY, "{}"));
+    const write = (s) => gm.setValue(LICHAT_SITES_KEY, JSON.stringify(s));
+    return {
+      decision(host) {
+        const k = siteKey(host);
+        return k ? (read()[k] ?? null) : null;
+      },
+      set(host, d) {
+        const k = siteKey(host);
+        if (!k) return;
+        write({ ...read(), [k]: d });
+      },
+      forget(host) {
+        const s = { ...read() };
+        const k = siteKey(host);
+        if (!k || !(k in s)) return;
+        delete s[k];
+        write(s);
+      },
+      list() {
+        return Object.entries(read()).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+      },
+    };
+  }
+  function applyChoice(store, onceHosts, host, choice) {
+    const k = siteKey(host);
+    if (!k) return false;
+    if (choice === "once") {
+      onceHosts.add(k);
+      return true;
+    }
+    if (choice === "always") {
+      store.set(k, "allow");
+      return true;
+    }
+    if (choice === "never") store.set(k, "never");
+    return false;
+  }
+  function allowedHere(store, onceHosts, host) {
+    const k = siteKey(host);
+    if (!k) return false;
+    const d = store.decision(k);
+    if (d === "never") return false;
+    return d === "allow" || onceHosts.has(k);
+  }
+  function flagMirrorOn(raw) {
+    const v = typeof raw === "string" ? safeJson(raw) : raw;
+    return !!v && typeof v === "object" && v.on === true;
+  }
+  function flagRecheckDue(raw, now) {
+    const v = typeof raw === "string" ? safeJson(raw) : raw;
+    const at = v && typeof v === "object" ? v.at : undefined;
+    return (
+      typeof at !== "number" || !Number.isFinite(at) || now - at >= PILLCHAT_RECHECK_MS || at > now
+    );
+  }
+  function safeJson(s) {
+    try {
+      return JSON.parse(s);
+    } catch {
+      return null;
+    }
+  }
+  function pillEntry(o) {
+    if (!o.flagOn || !o.top || !o.host || o.decision === "never") return "hidden";
+    return o.isolated ? "show" : "note";
+  }
+
+  // src/pill-chat-global.ts
+  var GLOBAL_CHAT_KEY = "lianki_lichat_global_v1";
+  var MAX_CHAT_SITES = 128;
+  var principalOk = (v) => typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v);
+  var hosts = (v) =>
+    Array.isArray(v)
+      ? [
+          ...new Set(
+            v.map((x) => (typeof x === "string" ? siteKey(x) : null)).filter((x) => x !== null),
+          ),
+        ].slice(0, MAX_CHAT_SITES)
+      : [];
+  var empty = () => ({
+    version: 1,
+    consent: "unknown",
+    principal: null,
+    consentStamp: "",
+    excluded: [],
+    collapsed: [],
+  });
+  function parseGlobalChat(raw) {
+    try {
+      const v = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (!v || typeof v !== "object" || Array.isArray(v) || v.version !== 1) return empty();
+      const principal = principalOk(v.principal) ? v.principal : null;
+      const consent =
+        v.consent === "off" ? "off" : v.consent === "all" && principal ? "all" : "unknown";
+      return {
+        version: 1,
+        consent,
+        principal,
+        consentStamp:
+          typeof v.consentStamp === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v.consentStamp)
+            ? v.consentStamp
+            : "",
+        excluded: hosts(v.excluded),
+        collapsed: hosts(v.collapsed),
+      };
+    } catch {
+      return empty();
+    }
+  }
+  function chatSiteExcluded(policy, hostname) {
+    const host = siteKey(hostname);
+    return !host || policy.excluded.some((x) => host === x || host.endsWith("." + x));
+  }
+  function globalChatAllowed(policy, hostname, principal) {
+    return (
+      principalOk(principal) &&
+      policy.principal === principal &&
+      policy.consent === "all" &&
+      !chatSiteExcluded(policy, hostname)
+    );
+  }
+  function globalChatStore(gm) {
+    const read = () => {
+      const policy = parseGlobalChat(gm.getValue(GLOBAL_CHAT_KEY));
+      const denied = Object.entries(parseSites(gm.getValue(LICHAT_SITES_KEY, "{}")))
+        .filter(([, v]) => v === "never")
+        .map(([host]) => host);
+      policy.excluded = [...new Set([...policy.excluded, ...denied])];
+      return policy;
+    };
+    const write = (policy) =>
+      gm.setValue(
+        GLOBAL_CHAT_KEY,
+        JSON.stringify({ ...policy, excluded: policy.excluded.slice(0, MAX_CHAT_SITES) }),
+      );
+    return {
+      read,
+      revoke() {
+        write({ ...read(), consent: "off", consentStamp: uuidv4() });
+      },
+      invalidate() {
+        const p = read();
+        write({
+          ...p,
+          principal: null,
+          consentStamp: uuidv4(),
+          consent: p.consent === "off" ? "off" : "unknown",
+          collapsed: [],
+        });
+      },
+      consent(value, principal) {
+        if (!principalOk(principal)) return false;
+        write({ ...read(), principal, consent: value, consentStamp: uuidv4() });
+        return true;
+      },
+      bind(principal) {
+        if (!principalOk(principal)) return false;
+        const p = read();
+        if (p.principal === principal) return true;
+        write({
+          ...p,
+          principal,
+          consentStamp: uuidv4(),
+          consent: p.consent === "off" ? "off" : "unknown",
+          collapsed: [],
+        });
+        return true;
+      },
+      exclude(hostname, excluded) {
+        const host = siteKey(hostname);
+        if (!host) return false;
+        const p = read();
+        if (excluded && !p.excluded.includes(host) && p.excluded.length >= MAX_CHAT_SITES)
+          return false;
+        if (!excluded) {
+          const legacy = parseSites(gm.getValue(LICHAT_SITES_KEY, "{}"));
+          if (legacy[host] === "never") {
+            delete legacy[host];
+            gm.setValue(LICHAT_SITES_KEY, JSON.stringify(legacy));
+          }
+        }
+        write({
+          ...p,
+          excluded: excluded ? hosts([...p.excluded, host]) : p.excluded.filter((x) => x !== host),
+        });
+        return true;
+      },
+      collapse(hostname, collapsed) {
+        const host = siteKey(hostname);
+        if (!host) return false;
+        const p = read();
+        const rest = p.collapsed.filter((x) => x !== host);
+        write({ ...p, collapsed: collapsed ? [...rest.slice(-(MAX_CHAT_SITES - 1)), host] : rest });
+        return true;
+      },
+    };
+  }
+
+  // src/pill-chat-language.ts
+  var PILL_UI_LANGUAGE_KEY = "lianki_lichat_ui_language_v1";
+  var UI_ORIGINS = new Set([
+    "https://lianki.com",
+    "https://www.lianki.com",
+    "https://preview.lianki.com",
+  ]);
+  function portableUiLocale(value) {
+    if (typeof value !== "string") return null;
+    const base = value.toLowerCase().split(/[-_]/)[0];
+    return PILL_CHAT_LOCALES.includes(base) ? base : null;
+  }
+  function readPortableUiLanguage(gm, fallback) {
+    return portableUiLocale(gm.getValue(PILL_UI_LANGUAGE_KEY)) ?? pillChatLang(fallback);
+  }
+  function rememberPortableUiLanguage(gm, origin, language, top) {
+    const locale = portableUiLocale(language);
+    if (!top || !UI_ORIGINS.has(origin) || !locale) return false;
+    if (gm.getValue(PILL_UI_LANGUAGE_KEY) !== locale) gm.setValue(PILL_UI_LANGUAGE_KEY, locale);
+    return true;
+  }
+
+  // src/portable-li-strings.ts
+  var PORTABLE_LI_STRINGS = {
+    en: {
+      title: "Portable Li",
+      consentTitle: "Show Li on all websites?",
+      consentBody:
+        "On this browser, Li will open on every website. Websites may be able to read your conversation. Page contents are not shared automatically. Advanced actions require confirmation on lianki.com. You can withdraw this permission or exclude websites in Chat sites.",
+      allowAll: "Allow on all websites",
+      disableAll: "Turn off on all websites",
+      excludeHere: "Hide on this website",
+      collapse: "Collapse",
+      expand: "Expand",
+      send: "Send",
+      connecting: "Connecting…",
+      failed: "Connection failed. Try again.",
+      retry: "Try again",
+      disabled: "Portable Li is off in this browser.",
+      exclude: "Exclude a website",
+      removeExclusion: "Remove exclusion",
+    },
+    zh: {
+      title: "随身Li",
+      consentTitle: "在所有网站显示 Li？",
+      consentBody:
+        "在此浏览器中，Li 将在每个网站自动打开。网站可能读取你的聊天内容；不会自动分享网页内容。高级操作须回到 lianki.com 确认。你可在聊天站点中撤回同意或排除个别网站。",
+      allowAll: "同意所有网站",
+      disableAll: "关闭所有网站",
+      excludeHere: "不在此网站显示",
+      collapse: "收起",
+      expand: "展开",
+      send: "发送",
+      connecting: "正在连接…",
+      failed: "连接失败，请重试。",
+      retry: "重试",
+      disabled: "此浏览器已关闭随身Li。",
+      exclude: "排除网站",
+      removeExclusion: "取消排除",
+    },
+    hi: {
+      title: "साथ में Li",
+      consentTitle: "सभी वेबसाइटों पर Li दिखाएँ?",
+      consentBody:
+        "इस ब्राउज़र में Li हर वेबसाइट पर खुलेगा। वेबसाइट आपकी बातचीत पढ़ सकती है। पेज की सामग्री अपने-आप साझा नहीं होगी। उन्नत कार्रवाइयों के लिए lianki.com पर पुष्टि करें। चैट साइटों में अनुमति वापस लें या वेबसाइटें बाहर रखें।",
+      allowAll: "सभी वेबसाइटों पर अनुमति दें",
+      disableAll: "सभी वेबसाइटों पर बंद करें",
+      excludeHere: "इस वेबसाइट पर छिपाएँ",
+      collapse: "समेटें",
+      expand: "खोलें",
+      send: "भेजें",
+      connecting: "जुड़ रहा है…",
+      failed: "कनेक्शन विफल। फिर कोशिश करें।",
+      retry: "फिर कोशिश करें",
+      disabled: "इस ब्राउज़र में साथ में Li बंद है।",
+      exclude: "वेबसाइट बाहर रखें",
+      removeExclusion: "बहिष्करण हटाएँ",
+    },
+    es: {
+      title: "Li contigo",
+      consentTitle: "¿Mostrar Li en todos los sitios?",
+      consentBody:
+        "En este navegador, Li se abrirá en cada sitio web. Los sitios podrían leer tu conversación. El contenido de la página no se comparte automáticamente. Las acciones avanzadas requieren confirmación en lianki.com. Puedes retirar el permiso o excluir sitios en Sitios de chat.",
+      allowAll: "Permitir en todos los sitios",
+      disableAll: "Desactivar en todos los sitios",
+      excludeHere: "Ocultar en este sitio",
+      collapse: "Contraer",
+      expand: "Expandir",
+      send: "Enviar",
+      connecting: "Conectando…",
+      failed: "No se pudo conectar. Inténtalo de nuevo.",
+      retry: "Reintentar",
+      disabled: "Li contigo está desactivado en este navegador.",
+      exclude: "Excluir un sitio",
+      removeExclusion: "Quitar exclusión",
+    },
+    fr: {
+      title: "Li partout",
+      consentTitle: "Afficher Li sur tous les sites ?",
+      consentBody:
+        "Dans ce navigateur, Li s’ouvrira sur chaque site. Les sites pourront peut-être lire votre conversation. Le contenu des pages n’est pas partagé automatiquement. Les actions avancées nécessitent une confirmation sur lianki.com. Vous pouvez retirer cet accord ou exclure des sites dans Sites de discussion.",
+      allowAll: "Autoriser sur tous les sites",
+      disableAll: "Désactiver sur tous les sites",
+      excludeHere: "Masquer sur ce site",
+      collapse: "Réduire",
+      expand: "Développer",
+      send: "Envoyer",
+      connecting: "Connexion…",
+      failed: "Échec de connexion. Réessayez.",
+      retry: "Réessayer",
+      disabled: "Li partout est désactivé dans ce navigateur.",
+      exclude: "Exclure un site",
+      removeExclusion: "Retirer l’exclusion",
+    },
+    ar: {
+      title: "Li معك",
+      consentTitle: "عرض Li على جميع المواقع؟",
+      consentBody:
+        "في هذا المتصفح، سيفتح Li على كل موقع. قد تتمكن المواقع من قراءة محادثتك. لا تتم مشاركة محتوى الصفحة تلقائيًا. تتطلب الإجراءات المتقدمة تأكيدًا على lianki.com. يمكنك سحب الموافقة أو استثناء مواقع في مواقع الدردشة.",
+      allowAll: "السماح على جميع المواقع",
+      disableAll: "إيقافه على جميع المواقع",
+      excludeHere: "إخفاء على هذا الموقع",
+      collapse: "طي",
+      expand: "توسيع",
+      send: "إرسال",
+      connecting: "جارٍ الاتصال…",
+      failed: "فشل الاتصال. حاول مجددًا.",
+      retry: "إعادة المحاولة",
+      disabled: "Li معك متوقف في هذا المتصفح.",
+      exclude: "استثناء موقع",
+      removeExclusion: "إزالة الاستثناء",
+    },
+    bn: {
+      title: "সঙ্গে Li",
+      consentTitle: "সব ওয়েবসাইটে Li দেখাবেন?",
+      consentBody:
+        "এই ব্রাউজারে প্রতিটি ওয়েবসাইটে Li খুলবে। ওয়েবসাইট আপনার কথোপকথন পড়তে পারে। পৃষ্ঠার বিষয়বস্তু স্বয়ংক্রিয়ভাবে শেয়ার হবে না। উন্নত কাজের জন্য lianki.com-এ নিশ্চিত করতে হবে। চ্যাট সাইটে অনুমতি ফিরিয়ে নিতে বা সাইট বাদ দিতে পারবেন।",
+      allowAll: "সব ওয়েবসাইটে অনুমতি দিন",
+      disableAll: "সব ওয়েবসাইটে বন্ধ করুন",
+      excludeHere: "এই ওয়েবসাইটে লুকান",
+      collapse: "গুটিয়ে নিন",
+      expand: "প্রসারিত করুন",
+      send: "পাঠান",
+      connecting: "সংযোগ হচ্ছে…",
+      failed: "সংযোগ ব্যর্থ। আবার চেষ্টা করুন।",
+      retry: "আবার চেষ্টা করুন",
+      disabled: "এই ব্রাউজারে সঙ্গে Li বন্ধ আছে।",
+      exclude: "ওয়েবসাইট বাদ দিন",
+      removeExclusion: "বাদ দেওয়া সরান",
+    },
+    pt: {
+      title: "Li com você",
+      consentTitle: "Mostrar Li em todos os sites?",
+      consentBody:
+        "Neste navegador, Li abrirá em cada site. Os sites poderão ler sua conversa. O conteúdo da página não é compartilhado automaticamente. Ações avançadas exigem confirmação em lianki.com. Você pode retirar a permissão ou excluir sites em Sites de conversa.",
+      allowAll: "Permitir em todos os sites",
+      disableAll: "Desativar em todos os sites",
+      excludeHere: "Ocultar neste site",
+      collapse: "Recolher",
+      expand: "Expandir",
+      send: "Enviar",
+      connecting: "Conectando…",
+      failed: "Falha na conexão. Tente novamente.",
+      retry: "Tentar novamente",
+      disabled: "Li com você está desativado neste navegador.",
+      exclude: "Excluir um site",
+      removeExclusion: "Remover exclusão",
+    },
+    ru: {
+      title: "Li с собой",
+      consentTitle: "Показывать Li на всех сайтах?",
+      consentBody:
+        "В этом браузере Li будет открываться на каждом сайте. Сайты могут получить доступ к переписке. Содержимое страницы не передаётся автоматически. Расширенные действия требуют подтверждения на lianki.com. Разрешение можно отозвать или исключить сайты в разделе сайтов чата.",
+      allowAll: "Разрешить на всех сайтах",
+      disableAll: "Выключить на всех сайтах",
+      excludeHere: "Скрыть на этом сайте",
+      collapse: "Свернуть",
+      expand: "Развернуть",
+      send: "Отправить",
+      connecting: "Подключение…",
+      failed: "Не удалось подключиться. Повторите попытку.",
+      retry: "Повторить",
+      disabled: "В этом браузере Li с собой выключен.",
+      exclude: "Исключить сайт",
+      removeExclusion: "Отменить исключение",
+    },
+    ur: {
+      title: "ساتھ Li",
+      consentTitle: "تمام ویب سائٹس پر Li دکھائیں؟",
+      consentBody:
+        "اس براؤزر میں Li ہر ویب سائٹ پر کھلے گا۔ ویب سائٹس آپ کی گفتگو پڑھ سکتی ہیں۔ صفحے کا مواد خودکار طور پر شیئر نہیں ہوگا۔ اعلیٰ کارروائیوں کے لیے lianki.com پر تصدیق درکار ہے۔ چیٹ سائٹس میں اجازت واپس لیں یا سائٹس خارج کریں۔",
+      allowAll: "تمام ویب سائٹس پر اجازت دیں",
+      disableAll: "تمام ویب سائٹس پر بند کریں",
+      excludeHere: "اس ویب سائٹ پر چھپائیں",
+      collapse: "سمیٹیں",
+      expand: "کھولیں",
+      send: "بھیجیں",
+      connecting: "رابطہ ہو رہا ہے…",
+      failed: "رابطہ ناکام۔ دوبارہ کوشش کریں۔",
+      retry: "دوبارہ کوشش کریں",
+      disabled: "اس براؤزر میں ساتھ Li بند ہے۔",
+      exclude: "ویب سائٹ خارج کریں",
+      removeExclusion: "اخراج ہٹائیں",
+    },
+    id: {
+      title: "Li di mana saja",
+      consentTitle: "Tampilkan Li di semua situs?",
+      consentBody:
+        "Di browser ini, Li akan terbuka di setiap situs. Situs mungkin dapat membaca percakapan Anda. Isi halaman tidak dibagikan otomatis. Tindakan lanjutan memerlukan konfirmasi di lianki.com. Anda dapat mencabut izin atau mengecualikan situs di Situs chat.",
+      allowAll: "Izinkan di semua situs",
+      disableAll: "Matikan di semua situs",
+      excludeHere: "Sembunyikan di situs ini",
+      collapse: "Ciutkan",
+      expand: "Perluas",
+      send: "Kirim",
+      connecting: "Menghubungkan…",
+      failed: "Koneksi gagal. Coba lagi.",
+      retry: "Coba lagi",
+      disabled: "Li di mana saja mati di browser ini.",
+      exclude: "Kecualikan situs",
+      removeExclusion: "Hapus pengecualian",
+    },
+    de: {
+      title: "Li für unterwegs",
+      consentTitle: "Li auf allen Websites anzeigen?",
+      consentBody:
+        "In diesem Browser öffnet sich Li auf jeder Website. Websites können möglicherweise deine Unterhaltung lesen. Seiteninhalte werden nicht automatisch geteilt. Erweiterte Aktionen erfordern eine Bestätigung auf lianki.com. Unter Chat-Websites kannst du die Zustimmung widerrufen oder Websites ausschließen.",
+      allowAll: "Auf allen Websites erlauben",
+      disableAll: "Auf allen Websites ausschalten",
+      excludeHere: "Auf dieser Website ausblenden",
+      collapse: "Einklappen",
+      expand: "Ausklappen",
+      send: "Senden",
+      connecting: "Verbindung wird hergestellt…",
+      failed: "Verbindung fehlgeschlagen. Erneut versuchen.",
+      retry: "Erneut versuchen",
+      disabled: "Li für unterwegs ist in diesem Browser ausgeschaltet.",
+      exclude: "Website ausschließen",
+      removeExclusion: "Ausschluss entfernen",
+    },
+    ja: {
+      title: "どこでもLi",
+      consentTitle: "すべてのサイトに Li を表示しますか？",
+      consentBody:
+        "このブラウザーでは、各サイトで Li が自動的に開きます。サイトに会話の内容を読み取られる可能性があります。ページの内容は自動共有されません。高度な操作には lianki.com での確認が必要です。チャットサイトで同意を取り消したり、特定のサイトを除外できます。",
+      allowAll: "すべてのサイトで許可",
+      disableAll: "すべてのサイトでオフ",
+      excludeHere: "このサイトでは非表示",
+      collapse: "折りたたむ",
+      expand: "展開する",
+      send: "送信",
+      connecting: "接続中…",
+      failed: "接続できませんでした。再試行してください。",
+      retry: "再試行",
+      disabled: "このブラウザーでは、どこでもLi はオフです。",
+      exclude: "サイトを除外",
+      removeExclusion: "除外を解除",
+    },
+    sw: {
+      title: "Li popote",
+      consentTitle: "Onyesha Li kwenye tovuti zote?",
+      consentBody:
+        "Katika kivinjari hiki, Li itafunguka kwenye kila tovuti. Tovuti huenda zikaweza kusoma mazungumzo yako. Maudhui ya ukurasa hayashirikiwi kiotomatiki. Hatua za juu zinahitaji uthibitisho kwenye lianki.com. Unaweza kuondoa idhini au kutenga tovuti kwenye Tovuti za gumzo.",
+      allowAll: "Ruhusu kwenye tovuti zote",
+      disableAll: "Zima kwenye tovuti zote",
+      excludeHere: "Ficha kwenye tovuti hii",
+      collapse: "Kunja",
+      expand: "Panua",
+      send: "Tuma",
+      connecting: "Inaunganisha…",
+      failed: "Muunganisho umeshindwa. Jaribu tena.",
+      retry: "Jaribu tena",
+      disabled: "Li popote imezimwa katika kivinjari hiki.",
+      exclude: "Tenga tovuti",
+      removeExclusion: "Ondoa utengaji",
+    },
+    mr: {
+      title: "सोबत Li",
+      consentTitle: "सर्व वेबसाइटवर Li दाखवायचा?",
+      consentBody:
+        "या ब्राउझरमध्ये प्रत्येक वेबसाइटवर Li उघडेल. वेबसाइट तुमचे संभाषण वाचू शकते. पानाचा मजकूर आपोआप शेअर होणार नाही. प्रगत कृतींसाठी lianki.com वर पुष्टी आवश्यक आहे. चॅट साइटमध्ये परवानगी मागे घ्या किंवा वेबसाइट वगळा.",
+      allowAll: "सर्व वेबसाइटवर परवानगी द्या",
+      disableAll: "सर्व वेबसाइटवर बंद करा",
+      excludeHere: "या वेबसाइटवर लपवा",
+      collapse: "दुमडा",
+      expand: "विस्तृत करा",
+      send: "पाठवा",
+      connecting: "जोडत आहे…",
+      failed: "जोडणी अयशस्वी. पुन्हा प्रयत्न करा.",
+      retry: "पुन्हा प्रयत्न करा",
+      disabled: "या ब्राउझरमध्ये सोबत Li बंद आहे.",
+      exclude: "वेबसाइट वगळा",
+      removeExclusion: "वगळणे रद्द करा",
+    },
+    ko: {
+      title: "어디서나 Li",
+      consentTitle: "모든 웹사이트에 Li를 표시할까요?",
+      consentBody:
+        "이 브라우저에서는 각 웹사이트에서 Li가 자동으로 열립니다. 웹사이트가 대화 내용을 읽을 수도 있습니다. 페이지 내용은 자동으로 공유되지 않습니다. 고급 작업은 lianki.com에서 확인해야 합니다. 채팅 사이트에서 동의를 철회하거나 특정 사이트를 제외할 수 있습니다.",
+      allowAll: "모든 웹사이트에서 허용",
+      disableAll: "모든 웹사이트에서 끄기",
+      excludeHere: "이 웹사이트에서 숨기기",
+      collapse: "접기",
+      expand: "펼치기",
+      send: "보내기",
+      connecting: "연결 중…",
+      failed: "연결하지 못했습니다. 다시 시도하세요.",
+      retry: "다시 시도",
+      disabled: "이 브라우저에서는 어디서나 Li가 꺼져 있습니다.",
+      exclude: "웹사이트 제외",
+      removeExclusion: "제외 해제",
+    },
+  };
+
+  // lib/portable-chat-url.ts
+  function portableSource(value) {
+    if (typeof value !== "string" || value.length > 2048) return null;
+    try {
+      const u = new URL(value);
+      if (
+        (u.protocol !== "https:" && u.protocol !== "http:") ||
+        u.username ||
+        u.password ||
+        u.origin.length > 100
+      )
+        return null;
+      return u.origin;
+    } catch {
+      return null;
+    }
+  }
+  function portableChatPath(source) {
+    const from = portableSource(source);
+    return from ? "/chat?from=" + encodeURIComponent(from) : "/chat";
+  }
+
+  // src/portable-li-panel.ts
+  var PORTABLE_PANEL_CSS = `
+:host{all:initial!important;position:fixed!important;right:12px!important;bottom:80px!important;z-index:2147483644!important;font:14px/1.5 system-ui,sans-serif!important;color-scheme:light dark}
+*{box-sizing:border-box}section{width:min(360px,calc(100vw - 24px));max-height:min(560px,calc(100dvh - 92px));display:flex;flex-direction:column;border:1px solid #8888;border-radius:14px;background:Canvas;color:CanvasText;box-shadow:0 8px 30px #0003;overflow:hidden}
+header{display:flex;align-items:center;gap:8px;padding:8px 10px}header strong{flex:1;min-width:0;overflow-wrap:anywhere}button,a,textarea{font:inherit}button{cursor:pointer;border:1px solid #8888;border-radius:8px;padding:5px 8px;background:ButtonFace;color:ButtonText}button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid #4588ff;outline-offset:2px}button:disabled{opacity:.6;cursor:default}
+main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-behavior:contain}.line{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;padding:8px;border-radius:8px;background:#8881}.line[data-from=agent]{background:#4888ff12}.note{font-size:12px;padding:0 10px 8px;overflow-wrap:anywhere}.note a{color:LinkText}form{display:flex;gap:6px;padding:8px}textarea{resize:vertical;min-height:42px;max-height:120px;flex:1;min-width:0;border:1px solid #8888;border-radius:8px;padding:6px;background:Field;color:FieldText}[hidden]{display:none!important}.status{padding:0 10px;font-size:12px}.actions{display:flex;gap:6px;flex-wrap:wrap;padding:0 10px 8px}
+`;
+  function attachPortableStyle(root, doc, css) {
+    const Sheet = doc.defaultView?.CSSStyleSheet;
+    if (Sheet && "adoptedStyleSheets" in root) {
+      const sheet = new Sheet();
+      sheet.replaceSync(css);
+      root.adoptedStyleSheets = [sheet];
+    } else {
+      const style = doc.createElement("style");
+      style.textContent = css;
+      root.append(style);
+    }
+  }
+  function portableLiPanel(d) {
+    const { doc, strings: t } = d;
+    const host = doc.createElement("lianki-portable-chat");
+    const root = host.attachShadow({ mode: "closed" });
+    attachPortableStyle(root, doc, PORTABLE_PANEL_CSS);
+    const section = doc.createElement("section");
+    section.setAttribute("aria-label", t.title);
+    section.dir = ["ar", "ur"].includes(d.locale ?? "") ? "rtl" : "ltr";
+    const header = doc.createElement("header"),
+      title = doc.createElement("strong");
+    title.textContent = t.title;
+    const toggle = doc.createElement("button");
+    toggle.type = "button";
+    const main = doc.createElement("main");
+    main.setAttribute("role", "log");
+    main.setAttribute("aria-live", "polite");
+    const note = doc.createElement("div");
+    note.className = "note";
+    note.append(doc.createTextNode(d.common.chatOnly + " "));
+    const advanced = doc.createElement("a");
+    advanced.textContent = d.common.advanced;
+    advanced.href = d.origin + portableChatPath(d.hostOrigin);
+    advanced.target = "_blank";
+    advanced.rel = "noopener noreferrer";
+    note.append(advanced);
+    const status = doc.createElement("div");
+    status.className = "status";
+    status.setAttribute("role", "status");
+    const actions = doc.createElement("div");
+    actions.className = "actions";
+    const retry = doc.createElement("button");
+    retry.type = "button";
+    retry.textContent = t.retry;
+    retry.hidden = true;
+    const exclude = doc.createElement("button");
+    exclude.type = "button";
+    exclude.textContent = t.excludeHere;
+    const form = doc.createElement("form"),
+      input = doc.createElement("textarea"),
+      send = doc.createElement("button");
+    input.maxLength = 4000;
+    input.rows = 2;
+    input.setAttribute("aria-label", d.common.openChat);
+    send.type = "submit";
+    send.textContent = t.send;
+    header.append(title, toggle);
+    actions.append(retry, exclude);
+    form.append(input, send);
+    section.append(header, note, main, status, actions, form);
+    root.append(section);
+    (doc.documentElement ?? doc.body).append(host);
+    let destroyed = false,
+      collapsed = d.collapsed,
+      controller,
+      afterSeq,
+      sending = false;
+    let draft;
+    let awaitingReplySeq;
+    const messages = new Map();
+    const render = () => {
+      const atBottom = main.scrollHeight - main.scrollTop - main.clientHeight < 40;
+      main.replaceChildren();
+      for (const m of [...messages.values()]
+        .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))
+        .slice(-200)) {
+        const line = doc.createElement("div");
+        line.className = "line";
+        line.dataset.from = m.from;
+        line.textContent = m.text;
+        main.append(line);
+      }
+      if (atBottom) main.scrollTop = main.scrollHeight;
+    };
+    const fail = (error) => {
+      if (error === "cancelled" || destroyed) return;
+      status.textContent = t.failed;
+      retry.hidden = false;
+      if (error === "account-changed" || error === "signed-out" || error === "off") {
+        stop();
+        d.onInvalidAccount();
+      }
+    };
+    const stop = () => {
+      controller?.abort();
+      controller = undefined;
+    };
+    const read = async (signal) => {
+      while (!signal.aborted && !destroyed && !collapsed && doc.visibilityState !== "hidden") {
+        try {
+          const r = await d.call(
+            {
+              op: "read",
+              ...(afterSeq === undefined ? {} : { afterSeq }),
+              wait: afterSeq !== undefined,
+            },
+            d.principal,
+            signal,
+          );
+          if (signal.aborted || destroyed) return;
+          if (!r.ok) {
+            fail(r.error);
+            return;
+          }
+          if (r.kind !== "history") {
+            fail("unavailable");
+            return;
+          }
+          for (const [id, m] of messages)
+            if ((m.seq ?? 0) <= r.range.prunedThroughSeq) messages.delete(id);
+          for (const m of r.range.messages) messages.set(m.id, m);
+          for (const m of r.range.removed) messages.delete(m.id);
+          if (messages.size > 200)
+            for (const m of [...messages.values()]
+              .sort((a, b) => a.at - b.at)
+              .slice(0, messages.size - 200))
+              messages.delete(m.id);
+          afterSeq = r.range.throughSeq;
+          render();
+          if (
+            awaitingReplySeq !== undefined &&
+            [...messages.values()].some(
+              (m) => m.from === "agent" && (m.seq ?? 0) > awaitingReplySeq,
+            )
+          )
+            awaitingReplySeq = undefined;
+          if (awaitingReplySeq !== undefined && !r.pending) {
+            awaitingReplySeq = undefined;
+            fail("unavailable");
+          } else status.textContent = r.pending ? t.connecting : "";
+        } catch {
+          if (!signal.aborted) fail("unavailable");
+          return;
+        }
+      }
+    };
+    const start = () => {
+      if (destroyed || collapsed || controller || doc.visibilityState === "hidden") return;
+      retry.hidden = true;
+      status.textContent = t.connecting;
+      controller = new AbortController();
+      const current = controller;
+      read(current.signal).finally(() => {
+        if (controller === current) controller = undefined;
+      });
+    };
+    const update = () => {
+      for (const el of [main, note, status, actions, form]) el.hidden = collapsed;
+      toggle.textContent = collapsed ? t.expand : t.collapse;
+      toggle.setAttribute("aria-expanded", String(!collapsed));
+      if (collapsed) stop();
+      else start();
+    };
+    toggle.addEventListener("click", () => {
+      collapsed = !collapsed;
+      d.onCollapse(collapsed);
+      update();
+    });
+    exclude.addEventListener("click", () => {
+      d.onExclude();
+      destroy();
+    });
+    retry.addEventListener("click", () => {
+      stop();
+      start();
+    });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text || sending || destroyed) return;
+      sending = true;
+      send.disabled = true;
+      retry.hidden = true;
+      if (!draft || draft.text !== text) draft = { text, id: uuidv4().replace(/-/g, "_") };
+      const id = draft.id;
+      try {
+        const r = await d.call({ op: "send", id, text }, d.principal, controller?.signal);
+        if (destroyed) return;
+        if (!r.ok) {
+          fail(r.error);
+          return;
+        }
+        if (r.kind !== "accepted") {
+          fail("unavailable");
+          return;
+        }
+        input.value = "";
+        draft = undefined;
+        awaitingReplySeq = [...messages.values()].some(
+          (m) => m.from === "agent" && (m.seq ?? 0) > r.seq,
+        )
+          ? undefined
+          : r.seq;
+        status.textContent = awaitingReplySeq === undefined ? "" : t.connecting;
+        if (!controller) start();
+      } catch {
+        fail("unavailable");
+      } finally {
+        sending = false;
+        send.disabled = false;
+      }
+    });
+    const visible = () => {
+      if (doc.visibilityState === "hidden") stop();
+      else start();
+    };
+    doc.addEventListener("visibilitychange", visible);
+    const destroy = () => {
+      if (destroyed) return;
+      destroyed = true;
+      stop();
+      doc.removeEventListener("visibilitychange", visible);
+      host.remove();
+    };
+    update();
+    return {
+      destroy,
+      collapse(value) {
+        collapsed = value;
+        update();
+      },
+      isCollapsed: () => collapsed,
+    };
+  }
+
+  // src/portable-li-settings-wire.ts
+  var PORTABLE_SETTINGS_REQUEST = "lianki:portable-settings-request";
+  var PORTABLE_SETTINGS_STATE = "lianki:portable-settings-state";
+  function parsePortableSettingsRequest(detail) {
+    if (typeof detail !== "string" || detail.length > 512) return null;
+    try {
+      const v = JSON.parse(detail);
+      if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+      if (["state", "allow", "off"].includes(v.op) && Object.keys(v).length === 1)
+        return { op: v.op };
+      if (
+        v.op === "exclude" &&
+        Object.keys(v).length === 3 &&
+        typeof v.host === "string" &&
+        v.host.length <= 253 &&
+        typeof v.excluded === "boolean"
+      )
+        return { op: "exclude", host: v.host, excluded: v.excluded };
+    } catch {}
+    return null;
+  }
+
+  // src/portable-li.ts
+  var trustedOrigins = new Set([
+    "https://lianki.com",
+    "https://www.lianki.com",
+    "https://preview.lianki.com",
+  ]);
+  function startPortableLi(d) {
+    const store = globalChatStore(d.gm);
+    let host = null;
+    try {
+      const url = new URL(d.hostOrigin);
+      if ((url.protocol === "https:" || url.protocol === "http:") && url.origin === d.hostOrigin)
+        host = siteKey(url.hostname);
+    } catch {}
+    let panel,
+      promptClose,
+      destroyed = false,
+      generation = 0;
+    const trusted = d.top && trustedOrigins.has(d.hostOrigin);
+    const settings = () => trusted && d.win.location.pathname.replace(/\/$/, "") === "/chat/sites";
+    if (trusted) rememberPortableUiLanguage(d.gm, d.hostOrigin, d.doc.documentElement.lang, true);
+    const strings = () =>
+      PORTABLE_LI_STRINGS[readPortableUiLanguage(d.gm, d.win.navigator.language)];
+    const close = () => {
+      generation++;
+      panel?.destroy();
+      panel = undefined;
+      promptClose?.();
+      promptClose = undefined;
+    };
+    const publish = (error = false) => {
+      if (!settings()) return;
+      const p = store.read();
+      d.doc.dispatchEvent(
+        new CustomEvent(PORTABLE_SETTINGS_STATE, {
+          detail: JSON.stringify({
+            installed: true,
+            consent: p.consent,
+            excluded: p.excluded,
+            ...(error ? { error: true } : {}),
+          }),
+        }),
+      );
+    };
+    const show = () => {
+      if (destroyed || !host || trusted || !d.top || panel || d.doc.visibilityState === "hidden")
+        return;
+      const p = store.read();
+      if (!p.principal || !globalChatAllowed(p, host, p.principal)) return;
+      const locale = readPortableUiLanguage(d.gm, d.win.navigator.language);
+      panel = portableLiPanel({
+        doc: d.doc,
+        origin: d.origin,
+        hostOrigin: d.hostOrigin,
+        principal: p.principal,
+        call: d.call,
+        locale,
+        strings: PORTABLE_LI_STRINGS[locale],
+        common: pillChatStrings(locale),
+        collapsed: p.collapsed.includes(host),
+        onCollapse: (value) => {
+          store.collapse(host, value);
+          publish();
+        },
+        onExclude: () => {
+          store.exclude(host, true);
+          panel = undefined;
+          publish();
+        },
+        onInvalidAccount: () => {
+          store.invalidate();
+          close();
+          publish(true);
+        },
+      });
+    };
+    const allow = async () => {
+      const gen = ++generation;
+      const stamp = store.read().consentStamp;
+      const result = await d.call({ op: "hello" });
+      if (
+        destroyed ||
+        generation !== gen ||
+        store.read().consentStamp !== stamp ||
+        !flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null))
+      )
+        return false;
+      if (!result.ok || result.kind !== "hello") {
+        publish(true);
+        return false;
+      }
+      store.bind(result.principal);
+      store.consent("all", result.principal);
+      publish();
+      show();
+      return true;
+    };
+    const consent = () => {
+      if (
+        destroyed ||
+        promptClose ||
+        trusted ||
+        !d.top ||
+        !host ||
+        chatSiteExcluded(store.read(), host)
+      )
+        return;
+      const t = strings(),
+        node = d.doc.createElement("lianki-portable-consent"),
+        root = node.attachShadow({ mode: "closed" });
+      attachPortableStyle(
+        root,
+        d.doc,
+        PORTABLE_PANEL_CSS +
+          "section{padding:12px;gap:10px}p{margin:0}h2{font:600 16px/1.4 system-ui;margin:0}.buttons{display:flex;gap:8px;flex-wrap:wrap}",
+      );
+      const box = d.doc.createElement("section");
+      box.setAttribute("role", "dialog");
+      box.setAttribute("aria-label", t.consentTitle);
+      const title = d.doc.createElement("h2"),
+        body = d.doc.createElement("p"),
+        buttons = d.doc.createElement("div"),
+        yes = d.doc.createElement("button"),
+        no = d.doc.createElement("button"),
+        status = d.doc.createElement("p");
+      title.textContent = t.consentTitle;
+      body.textContent = t.consentBody;
+      yes.textContent = t.allowAll;
+      no.textContent = pillChatStrings(readPortableUiLanguage(d.gm)).notNow;
+      buttons.className = "buttons";
+      yes.type = no.type = "button";
+      status.setAttribute("role", "status");
+      buttons.append(yes, no);
+      box.append(title, body, buttons, status);
+      root.append(box);
+      d.doc.documentElement.append(node);
+      promptClose = () => node.remove();
+      no.addEventListener("click", () => {
+        promptClose?.();
+        promptClose = undefined;
+      });
+      yes.addEventListener("click", async () => {
+        yes.disabled = true;
+        status.textContent = t.connecting;
+        try {
+          if (await allow()) {
+            promptClose?.();
+            promptClose = undefined;
+          } else {
+            status.textContent = t.failed;
+            yes.disabled = false;
+          }
+        } catch {
+          status.textContent = t.failed;
+          yes.disabled = false;
+        }
+      });
+    };
+    const refresh = () => {
+      if (destroyed) return;
+      if (trusted) {
+        rememberPortableUiLanguage(d.gm, d.hostOrigin, d.doc.documentElement.lang, true);
+        publish();
+        return;
+      }
+      const p = store.read();
+      if (!flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null))) {
+        promptClose?.();
+        promptClose = undefined;
+      }
+      if (
+        !flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null)) ||
+        !host ||
+        chatSiteExcluded(p, host) ||
+        p.consent !== "all"
+      ) {
+        panel?.destroy();
+        panel = undefined;
+        if (p.consent === "unknown" && flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null)))
+          consent();
+        return;
+      }
+      if (panel) panel.collapse(p.collapsed.includes(host));
+      else show();
+    };
+    const onSettings = async (e) => {
+      if (!settings()) return;
+      const v = parsePortableSettingsRequest(e.detail);
+      if (!v) return;
+      if (v.op === "state") {
+        publish();
+        return;
+      }
+      if (v.op === "allow") {
+        try {
+          await allow();
+        } catch {
+          publish(true);
+        }
+        return;
+      }
+      if (v.op === "off") {
+        store.revoke();
+        close();
+        publish();
+        return;
+      }
+      if (v.op === "exclude") {
+        const ok = store.exclude(v.host, v.excluded);
+        publish(!ok);
+      }
+    };
+    d.doc.addEventListener(PORTABLE_SETTINGS_REQUEST, onSettings);
+    const visible = () => {
+      if (d.doc.visibilityState === "visible") refresh();
+    };
+    d.doc.addEventListener("visibilitychange", visible);
+    const languageObserver = trusted
+      ? new MutationObserver(() =>
+          rememberPortableUiLanguage(d.gm, d.hostOrigin, d.doc.documentElement.lang, true),
+        )
+      : undefined;
+    languageObserver?.observe(d.doc.documentElement, {
+      attributes: true,
+      attributeFilter: ["lang"],
+    });
+    const unwatch = [GLOBAL_CHAT_KEY, PILLCHAT_ON_KEY, PILL_UI_LANGUAGE_KEY].map((key) =>
+      d.watch?.(key, () => {
+        if (key === PILL_UI_LANGUAGE_KEY) close();
+        if (key === PILLCHAT_ON_KEY && !flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null)))
+          generation++;
+        refresh();
+      }),
+    );
+    const destroy = () => {
+      destroyed = true;
+      close();
+      languageObserver?.disconnect();
+      d.doc.removeEventListener(PORTABLE_SETTINGS_REQUEST, onSettings);
+      d.doc.removeEventListener("visibilitychange", visible);
+      for (const un of unwatch) un?.();
+    };
+    d.signal?.addEventListener("abort", destroy, { once: true });
+    queueMicrotask(refresh);
+    return {
+      close,
+      destroy,
+      excluded: () => !host || chatSiteExcluded(store.read(), host),
+      active: () =>
+        d.top &&
+        !!host &&
+        (flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null)) || store.read().consent !== "unknown"),
+      open: async () => {
+        if (panel) {
+          const p = store.read();
+          store.collapse(host, !panel.isCollapsed());
+          refresh();
+          return "ready";
+        }
+        const p = store.read();
+        if (p.consent === "all") {
+          show();
+          return "ready";
+        }
+        consent();
+        return "denied";
+      },
+      manage: () => {
+        d.win.open(d.origin + "/chat/sites", "_blank", "noopener,noreferrer");
+        return { remove() {}, closed: Promise.resolve() };
+      },
+    };
+  }
+
+  // packages/debug-chat/src/wire.ts
+  var MAX_CHAT = 4000;
+  function oklchLuminance(l, c, hDeg) {
+    const h = (hDeg * Math.PI) / 180;
+    const a = c * Math.cos(h);
+    const b = c * Math.sin(h);
+    const l_ = (l + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+    const m_ = (l - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+    const s_ = (l - 0.0894841775 * a - 1.291485548 * b) ** 3;
+    const clamp = (v) => Math.min(1, Math.max(0, v));
+    const r = clamp(4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_);
+    const g = clamp(-1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_);
+    const bl = clamp(-0.0041960863 * l_ - 0.7034186147 * m_ + 1.707614701 * s_);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  }
+  var INK = [
+    { css: "oklch(0.2 0 0)", y: oklchLuminance(0.2, 0, 0) },
+    { css: "oklch(1 0 0)", y: 1 },
+  ];
+  var DEFAULT_GRANT_MS = 8 * 60 * 60000;
+  var MAX_SELECTION = 2000;
+  var MAX_CONTEXT_TITLE = 200;
+  var MAX_SDP = 12 * 1024;
+
+  // lib/page-chat-http-wire.ts
+  var PAGE_CHAT_HTTP_PATH = "/api/chat/page-broker";
+  var PAGE_CHAT_PRINCIPAL_HEADER = "x-lianki-chat-principal";
+  var object = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+  var exactKeys = (v, keys) => Object.keys(v).every((k) => keys.includes(k));
+  function parsePageChatHttpInput(value) {
+    if (!object(value)) return null;
+    if (value.op === "hello") return exactKeys(value, ["op"]) ? { op: "hello" } : null;
+    if (value.op === "read") {
+      if (
+        !exactKeys(value, ["op", "afterSeq", "wait"]) ||
+        (value.afterSeq !== undefined &&
+          (!Number.isSafeInteger(value.afterSeq) || Number(value.afterSeq) < 0)) ||
+        (value.wait !== undefined && typeof value.wait !== "boolean")
+      )
+        return null;
+      return {
+        op: "read",
+        ...(value.afterSeq === undefined ? {} : { afterSeq: value.afterSeq }),
+        wait: value.wait === true,
+      };
+    }
+    if (value.op === "send") {
+      if (
+        !exactKeys(value, ["op", "id", "text"]) ||
+        typeof value.id !== "string" ||
+        !/^[A-Za-z0-9_-]{8,64}$/.test(value.id) ||
+        typeof value.text !== "string"
+      )
+        return null;
+      const text = value.text.trim();
+      return text && text.length <= MAX_CHAT ? { op: "send", id: value.id, text } : null;
+    }
+    return null;
+  }
+
+  // lib/page-chat-http-result.ts
+  var errors = new Set([
+    "invalid",
+    "too-large",
+    "off",
+    "signed-out",
+    "account-changed",
+    "blocked",
+    "rate-limited",
+    "busy",
+    "unavailable",
+    "cancelled",
+    "id-conflict",
+  ]);
+  function publicPageChatResult(value) {
+    if (!value || typeof value !== "object") return null;
+    const v = value;
+    if (v.ok === false && typeof v.error === "string" && errors.has(v.error))
+      return { ok: false, error: v.error };
+    if (v.ok !== true) return null;
+    if (
+      v.kind === "accepted" &&
+      typeof v.id === "string" &&
+      /^[A-Za-z0-9_-]{8,64}$/.test(v.id) &&
+      Number.isSafeInteger(v.seq) &&
+      Number(v.seq) > 0
+    )
+      return { ok: true, kind: "accepted", id: v.id, seq: v.seq };
+    if (v.kind === "history" && v.range && typeof v.range === "object") {
+      const r = v.range;
+      if (
+        r.type !== "history" ||
+        typeof r.thread !== "string" ||
+        ![r.afterSeq, r.throughSeq, r.headSeq, r.prunedThroughSeq].every(
+          (n) => Number.isSafeInteger(n) && n >= 0,
+        ) ||
+        !Array.isArray(r.messages) ||
+        r.messages.length > 500 ||
+        !Array.isArray(r.removed) ||
+        r.removed.length > 500 ||
+        !Array.isArray(r.skipped) ||
+        r.skipped.length > 500
+      )
+        return null;
+      const messages = [];
+      for (const m of r.messages) {
+        if (
+          !m ||
+          typeof m.id !== "string" ||
+          m.id.length > 128 ||
+          typeof m.text !== "string" ||
+          m.text.length > 64000 ||
+          !["owner", "friend", "agent"].includes(m.from) ||
+          !Number.isFinite(m.at) ||
+          !Number.isSafeInteger(m.seq) ||
+          Number(m.seq) < 1
+        )
+          return null;
+        messages.push({
+          id: m.id,
+          text: m.text,
+          from: m.from,
+          at: m.at,
+          seq: m.seq,
+          label: "",
+          thread: r.thread,
+        });
+      }
+      const removed = r.removed.map((x) => ({ id: x.id, seq: x.seq }));
+      if (
+        !removed.every(
+          (x) =>
+            typeof x.id === "string" &&
+            x.id.length <= 128 &&
+            Number.isSafeInteger(x.seq) &&
+            x.seq > 0,
+        )
+      )
+        return null;
+      const skipped = r.skipped.map((x) => ({ from: x.from, to: x.to }));
+      if (
+        !skipped.every(
+          (x) =>
+            Number.isSafeInteger(x.from) &&
+            Number.isSafeInteger(x.to) &&
+            x.from >= 0 &&
+            x.to >= x.from,
+        )
+      )
+        return null;
+      return {
+        ok: true,
+        kind: "history",
+        range: {
+          type: "history",
+          thread: r.thread,
+          messages,
+          removed,
+          skipped,
+          afterSeq: r.afterSeq,
+          throughSeq: r.throughSeq,
+          headSeq: r.headSeq,
+          prunedThroughSeq: r.prunedThroughSeq,
+        },
+        ...(typeof v.pending === "string" && /^[A-Za-z0-9_-]{8,64}$/.test(v.pending)
+          ? { pending: v.pending }
+          : {}),
+        ...(v.warning === "no-reply" || v.warning === "limit" ? { warning: v.warning } : {}),
+      };
+    }
+    return null;
+  }
+
+  // src/page-chat-http-client.ts
+  var origins = new Set([
+    "https://lianki.com",
+    "https://www.lianki.com",
+    "https://preview.lianki.com",
+  ]);
+  function pageChatHttpClient(origin, hostOrigin, request) {
+    return (input, principal, signal) => {
+      if (!origins.has(origin) || !parsePageChatHttpInput(input))
+        return Promise.reject(new Error("invalid chat request"));
+      return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+          resolve({ ok: false, error: "cancelled" });
+          return;
+        }
+        let handle;
+        let settled = false;
+        const finish = (value) => {
+          if (settled) return;
+          settled = true;
+          signal?.removeEventListener("abort", abort);
+          resolve(value);
+        };
+        const abort = () => {
+          finish({ ok: false, error: "cancelled" });
+          if (
+            handle &&
+            typeof handle === "object" &&
+            "abort" in handle &&
+            typeof handle.abort === "function"
+          )
+            handle.abort();
+        };
+        signal?.addEventListener("abort", abort, { once: true });
+        try {
+          handle = request({
+            method: "POST",
+            url: origin + PAGE_CHAT_HTTP_PATH,
+            withCredentials: true,
+            timeout: 30000,
+            headers: {
+              "content-type": "application/json",
+              "x-lianki-userscript": "1",
+              "x-lianki-host-origin": hostOrigin,
+              ...(principal ? { [PAGE_CHAT_PRINCIPAL_HEADER]: principal } : {}),
+            },
+            data: JSON.stringify(input),
+            onload: (r) => {
+              try {
+                const raw = JSON.parse(r.responseText);
+                if (
+                  input.op === "hello" &&
+                  raw.ok === true &&
+                  raw.kind === "hello" &&
+                  typeof raw.principal === "string" &&
+                  /^[A-Za-z0-9_-]{1,64}$/.test(raw.principal)
+                )
+                  return finish({ ok: true, kind: "hello", principal: raw.principal });
+                const result = publicPageChatResult(raw);
+                finish(result ?? { ok: false, error: "unavailable" });
+              } catch {
+                finish({ ok: false, error: "unavailable" });
+              }
+            },
+            onerror: () => finish({ ok: false, error: "unavailable" }),
+            ontimeout: () => finish({ ok: false, error: "unavailable" }),
+          });
+        } catch (error) {
+          signal?.removeEventListener("abort", abort);
+          reject(error);
+        }
+      });
+    };
+  }
+
   // src/page-chat-fetch.ts
   function pageChatFetch(origin, hostOrigin, request) {
     return (url, options) => {
@@ -3536,28 +4897,6 @@ Sasisha kadi kwa anwani mpya?`,
         });
       });
     };
-  }
-
-  // lib/portable-chat-url.ts
-  function portableSource(value) {
-    if (typeof value !== "string" || value.length > 2048) return null;
-    try {
-      const u = new URL(value);
-      if (
-        (u.protocol !== "https:" && u.protocol !== "http:") ||
-        u.username ||
-        u.password ||
-        u.origin.length > 100
-      )
-        return null;
-      return u.origin;
-    } catch {
-      return null;
-    }
-  }
-  function portableChatPath(source) {
-    const from = portableSource(source);
-    return from ? "/chat?from=" + encodeURIComponent(from) : "/chat";
   }
 
   // packages/debug-chat/src/embed/guard.ts
@@ -3815,28 +5154,6 @@ Sasisha kadi kwa anwani mpya?`,
   function embedLang(lang = globalThis.navigator?.language) {
     return isZh(lang) ? "zh" : isJa(lang) ? "ja" : "en";
   }
-  // packages/debug-chat/src/wire.ts
-  function oklchLuminance(l, c, hDeg) {
-    const h = (hDeg * Math.PI) / 180;
-    const a = c * Math.cos(h);
-    const b = c * Math.sin(h);
-    const l_ = (l + 0.3963377774 * a + 0.2158037573 * b) ** 3;
-    const m_ = (l - 0.1055613458 * a - 0.0638541728 * b) ** 3;
-    const s_ = (l - 0.0894841775 * a - 1.291485548 * b) ** 3;
-    const clamp = (v) => Math.min(1, Math.max(0, v));
-    const r = clamp(4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_);
-    const g = clamp(-1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_);
-    const bl = clamp(-0.0041960863 * l_ - 0.7034186147 * m_ + 1.707614701 * s_);
-    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
-  }
-  var INK = [
-    { css: "oklch(0.2 0 0)", y: oklchLuminance(0.2, 0, 0) },
-    { css: "oklch(1 0 0)", y: 1 },
-  ];
-  var DEFAULT_GRANT_MS = 8 * 60 * 60000;
-  var MAX_SELECTION = 2000;
-  var MAX_CONTEXT_TITLE = 200;
-  var MAX_SDP = 12 * 1024;
 
   // packages/debug-chat/src/embed/share.ts
   var MAX_SHARE_URL = 600;
@@ -4289,102 +5606,6 @@ Sasisha kadi kwa anwani mpya?`,
     return out;
   }
 
-  // src/pill-chat-trust.ts
-  var LICHAT_SITES_KEY = "lianki_lichat_sites";
-  var PILLCHAT_ON_KEY = "lianki_pillchat_on";
-  var PILLCHAT_RECHECK_MS = 60000;
-  var HOST_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/;
-  var validHost = (h) =>
-    typeof h === "string" && h.length > 0 && h.length <= 253 && HOST_RE.test(h);
-  var siteKey = (hostname) => {
-    const h = String(hostname ?? "").toLowerCase();
-    return validHost(h) ? h : null;
-  };
-  function parseSites(raw) {
-    let v = raw;
-    if (typeof raw === "string") {
-      try {
-        v = JSON.parse(raw);
-      } catch {
-        return {};
-      }
-    }
-    const out = Object.create(null);
-    if (!v || typeof v !== "object" || Array.isArray(v)) return out;
-    for (const [h, d] of Object.entries(v)) {
-      if (validHost(h) && (d === "allow" || d === "never")) out[h] = d;
-    }
-    return out;
-  }
-  function trustStore(gm) {
-    const read = () => parseSites(gm.getValue(LICHAT_SITES_KEY, "{}"));
-    const write = (s) => gm.setValue(LICHAT_SITES_KEY, JSON.stringify(s));
-    return {
-      decision(host) {
-        const k = siteKey(host);
-        return k ? (read()[k] ?? null) : null;
-      },
-      set(host, d) {
-        const k = siteKey(host);
-        if (!k) return;
-        write({ ...read(), [k]: d });
-      },
-      forget(host) {
-        const s = { ...read() };
-        const k = siteKey(host);
-        if (!k || !(k in s)) return;
-        delete s[k];
-        write(s);
-      },
-      list() {
-        return Object.entries(read()).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-      },
-    };
-  }
-  function applyChoice(store, onceHosts, host, choice) {
-    const k = siteKey(host);
-    if (!k) return false;
-    if (choice === "once") {
-      onceHosts.add(k);
-      return true;
-    }
-    if (choice === "always") {
-      store.set(k, "allow");
-      return true;
-    }
-    if (choice === "never") store.set(k, "never");
-    return false;
-  }
-  function allowedHere(store, onceHosts, host) {
-    const k = siteKey(host);
-    if (!k) return false;
-    const d = store.decision(k);
-    if (d === "never") return false;
-    return d === "allow" || onceHosts.has(k);
-  }
-  function flagMirrorOn(raw) {
-    const v = typeof raw === "string" ? safeJson(raw) : raw;
-    return !!v && typeof v === "object" && v.on === true;
-  }
-  function flagRecheckDue(raw, now) {
-    const v = typeof raw === "string" ? safeJson(raw) : raw;
-    const at = v && typeof v === "object" ? v.at : undefined;
-    return (
-      typeof at !== "number" || !Number.isFinite(at) || now - at >= PILLCHAT_RECHECK_MS || at > now
-    );
-  }
-  function safeJson(s) {
-    try {
-      return JSON.parse(s);
-    } catch {
-      return null;
-    }
-  }
-  function pillEntry(o) {
-    if (!o.flagOn || !o.top || !o.host || o.decision === "never") return "hidden";
-    return o.isolated ? "show" : "note";
-  }
-
   // src/pill-chat-ui.ts
   var css2 = (el, rules) => {
     for (const [k, v] of rules) el.style.setProperty(k, v, "important");
@@ -4770,17 +5991,32 @@ Sasisha kadi kwa anwani mpya?`,
     const isolated = isolatedWorld(d.info);
     const report = d.report ?? (() => {});
     const limitedFetch = d.pageFetch;
+    const portable = d.chatRequest
+      ? startPortableLi({
+          gm: d,
+          doc,
+          win,
+          origin: d.origin,
+          hostOrigin: d.hostOrigin ?? location.origin,
+          top,
+          call: pageChatHttpClient(d.origin, d.hostOrigin ?? location.origin, d.chatRequest),
+          watch: d.watch,
+          signal: d.signal,
+        })
+      : undefined;
     let open = null;
     let busy = false;
     let note = null;
     const entry = () =>
-      pillEntry({
-        flagOn: flagMirrorOn(d.getValue(PILLCHAT_ON_KEY, null)),
-        top,
-        isolated,
-        decision: host ? store.decision(host) : null,
-        host,
-      });
+      portable?.excluded()
+        ? "hidden"
+        : pillEntry({
+            flagOn: flagMirrorOn(d.getValue(PILLCHAT_ON_KEY, null)),
+            top,
+            isolated,
+            decision: host ? store.decision(host) : null,
+            host,
+          });
     const prompt = d.prompt ?? ((h) => trustDialog({ doc, win, strings, host: h }).result);
     let kind = "owner";
     const ticket = async () => {
@@ -4804,6 +6040,7 @@ Sasisha kadi kwa anwani mpya?`,
       }
     };
     const close = () => {
+      portable?.close();
       open?.destroy();
       open = null;
       note?.();
@@ -4812,6 +6049,7 @@ Sasisha kadi kwa anwani mpya?`,
     async function openChat() {
       const e = entry();
       if (e === "hidden" || !host) return "hidden";
+      if (portable) return portable.open();
       if (e === "note" && !limitedFetch) {
         note?.();
         note = pageRealmNote(doc, d.origin, () => store.set(host, "never"));
@@ -4880,10 +6118,11 @@ Sasisha kadi kwa anwani mpya?`,
       }
     }
     function manage(onChange) {
-      return sitesDialog({ doc, win, strings, store, onChange });
+      return portable ? portable.manage() : sitesDialog({ doc, win, strings, store, onChange });
     }
     return {
       entry,
+      ownsPortable: () => portable?.active() ?? false,
       open: openChat,
       close,
       manage,
@@ -4917,6 +6156,15 @@ Sasisha kadi kwa anwani mpya?`,
 
   // src/lianki.user.ts
   var US = userscriptStrings();
+  var portableWatch = (key, changed) => {
+    if (
+      typeof GM_addValueChangeListener !== "function" ||
+      typeof GM_removeValueChangeListener !== "function"
+    )
+      return () => {};
+    const id = GM_addValueChangeListener(key, changed);
+    return () => GM_removeValueChangeListener?.(id);
+  };
   if (window.self === window.top) {
     globalThis.unload_Lianki?.();
     globalThis.unload_Lianki = main();
@@ -5488,7 +6736,20 @@ Sasisha kadi kwa anwani mpya?`,
       mirrorFilters();
       window.addEventListener(REVIEW_FILTERS_EVENT, mirrorFilters);
       setTimeout(() => syncToSiteDB(), 500);
-      return unwatchPillChat;
+      const portable = startPortableLi({
+        gm: { getValue: GM_getValue, setValue: GM_setValue },
+        doc: document,
+        win: window,
+        origin: ORIGIN,
+        hostOrigin: location.origin,
+        top: window.self === window.top,
+        call: pageChatHttpClient(ORIGIN, location.origin, GM_xmlhttpRequest),
+        watch: portableWatch,
+      });
+      return () => {
+        unwatchPillChat();
+        portable.destroy();
+      };
     }
     const ac = new AbortController();
     const { signal } = ac;
@@ -5536,6 +6797,9 @@ Sasisha kadi kwa anwani mpya?`,
     let fab = null;
     const liChat = pillChat({
       origin: ORIGIN,
+      chatRequest: GM_xmlhttpRequest,
+      watch: portableWatch,
+      signal,
       gmFetch,
       pageFetch: pageChatFetch(ORIGIN, location.origin, GM_xmlhttpRequest),
       getValue: GM_getValue,
@@ -7738,25 +9002,28 @@ ${state.errorDetails}`);
     if (location.hostname === "docs.google.com") {
       startGdocStream({ origin: ORIGIN, gmFetch, getValue: GM_getValue, setValue: GM_setValue });
     }
-    startPartner({
-      origin: ORIGIN,
-      src:
-        typeof __LK_PARTNER_SRC__ === "string" ? __LK_PARTNER_SRC__ : `${ORIGIN}/partner-embed.js`,
-      gmFetch,
-      getValue: GM_getValue,
-      setValue: GM_setValue,
-      deleteValue: GM_deleteValue,
-      info: GM_info,
-      report: (what, detail) =>
-        what === "partner-mode" && detail.startsWith("isolated")
-          ? console.debug(`[Lianki] ${what}: ${detail}`)
-          : console.error(`[Lianki] ${what}: ${detail}`),
-    })
-      .then((stop) => {
-        if (signal.aborted) stop();
-        else stopPartner = stop;
+    if (!liChat.ownsPortable())
+      startPartner({
+        origin: ORIGIN,
+        src:
+          typeof __LK_PARTNER_SRC__ === "string"
+            ? __LK_PARTNER_SRC__
+            : `${ORIGIN}/partner-embed.js`,
+        gmFetch,
+        getValue: GM_getValue,
+        setValue: GM_setValue,
+        deleteValue: GM_deleteValue,
+        info: GM_info,
+        report: (what, detail) =>
+          what === "partner-mode" && detail.startsWith("isolated")
+            ? console.debug(`[Lianki] ${what}: ${detail}`)
+            : console.error(`[Lianki] ${what}: ${detail}`),
       })
-      .catch((err) => console.error("[Lianki] partner failed:", err));
+        .then((stop) => {
+          if (signal.aborted) stop();
+          else stopPartner = stop;
+        })
+        .catch((err) => console.error("[Lianki] partner failed:", err));
     return () => {
       clearPresence();
       window.LIANKI_USERSCRIPT_INSTALLED = false;

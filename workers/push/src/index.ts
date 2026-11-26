@@ -1,3 +1,4 @@
+import { PAGE_CHAT_HTTP_INTERNAL_PATH } from "../../../lib/page-chat-http-wire";
 /**
  * lianki-push — the new-version notice, event-driven end to end
  * (app/components/VersionNotice.tsx is the page's side), and the owner's
@@ -531,7 +532,8 @@ export default {
       return res;
     }
     if (
-      (url.pathname === "/internal/hub-diagnostics" ||
+      (url.pathname === PAGE_CHAT_HTTP_INTERNAL_PATH ||
+        url.pathname === "/internal/hub-diagnostics" ||
         url.pathname.startsWith("/internal/friends") ||
         url.pathname === SUB_THREADS_PATH ||
         url.pathname === "/internal/signed-out" ||
