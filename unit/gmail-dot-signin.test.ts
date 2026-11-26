@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { canonicalEmail } from "@/lib/canonical-email";
-import { gmailDotFallbackAdapter, gmailDotKey, withGmailDotFallback } from "@/lib/gmail-dot-signin";
+import { setEmailCanonical } from "@/lib/canonical-email-d1";
+import { createTestD1 } from "@/lib/d1/testDb";
+import { testSchema } from "@/lib/d1/testSchema";
+import type { D1Like } from "@/lib/d1/types";
+import {
+  d1DotCandidates,
+  gmailDotFallbackAdapter,
+  gmailDotKey,
+  withGmailDotFallback,
+} from "@/lib/gmail-dot-signin";
 
 type Row = { id: string; email: string };
 type FindArgs = { model: string; where?: { field: string; value: unknown; operator?: string }[] };
@@ -134,6 +143,54 @@ describe("withGmailDotFallback", () => {
     } finally {
       console.error = err;
     }
+  });
+});
+
+describe("d1DotCandidates (the D1 lookup), many +tag variants", () => {
+  async function withD1(emails: string[]) {
+    const d1 = createTestD1(testSchema());
+    const at = "2026-11-27T00:00:00.000Z";
+    const rows: Row[] = [];
+    for (const [i, email] of emails.entries()) {
+      const id = `u${i}`;
+      d1.raw()
+        .prepare(
+          "INSERT INTO user (id, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, 1, ?, ?)",
+        )
+        .run(id, email, at, at);
+      await setEmailCanonical(d1 as unknown as D1Like, id, email);
+      rows.push({ id, email });
+    }
+    const exact = {
+      findOne: async (args: FindArgs) =>
+        rows.find((r) =>
+          (args.where ?? []).every((w) => (r as Record<string, unknown>)[w.field] === w.value),
+        ) ?? null,
+    };
+    return withGmailDotFallback(
+      exact as never,
+      d1DotCandidates(d1 as unknown as D1Like),
+    ) as unknown as { findOne: (a: FindArgs) => Promise<Row | null> };
+  }
+  // Eight accounts share the canonical form through their +tags, more than any
+  // small limit on the canonical match would keep.
+  const tagged = Array.from({ length: 8 }, (_, i) => `jane.doe+t${i}@gmail.com`);
+
+  test("the one dots-only match is found behind many +tag variants", async () => {
+    const wrapped = await withD1([...tagged, "jane.doe@gmail.com"]);
+    expect((await wrapped.findOne(byEmail("janedoe@gmail.com")))?.email).toBe("jane.doe@gmail.com");
+  });
+
+  test("two dots-only matches behind many +tag variants mean no fallback", async () => {
+    const wrapped = await withD1([...tagged, "jane.doe@gmail.com", "j.anedoe@googlemail.com"]);
+    expect(await wrapped.findOne(byEmail("janedoe@gmail.com"))).toBeNull();
+  });
+
+  test("a +tagged address matches only its own tag", async () => {
+    const wrapped = await withD1([...tagged, "jane.doe@gmail.com"]);
+    expect((await wrapped.findOne(byEmail("janedoe+t3@gmail.com")))?.email).toBe(
+      "jane.doe+t3@gmail.com",
+    );
   });
 });
 

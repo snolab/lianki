@@ -16,6 +16,7 @@
 import type { kyselyAdapter } from "@better-auth/kysely-adapter";
 import type { BetterAuthOptions } from "better-auth";
 import { DOTLESS_DOMAINS, canonicalEmail } from "@/lib/canonical-email";
+import type { D1Like } from "@/lib/d1/types";
 
 type DBAdapter = ReturnType<ReturnType<typeof kyselyAdapter>>;
 type Where = NonNullable<Parameters<DBAdapter["findOne"]>[0]["where"]>[number];
@@ -30,7 +31,36 @@ export function gmailDotKey(email: string): string | null {
   return `${e.slice(0, at).replaceAll(".", "")}@${domain}`;
 }
 
-export type CanonicalCandidates = (canonical: string) => Promise<{ id: string; email: string }[]>;
+/**
+ * The accounts whose address has this dots-only key. It must not truncate
+ * before narrowing to the key: a limit applied to every `email_canonical` match
+ * (which also joins `+tag` variants) could hide a second dots-only match.
+ */
+export type CanonicalCandidates = (
+  canonical: string,
+  dotKey: string,
+) => Promise<{ id: string; email: string }[]>;
+
+/**
+ * The D1 lookup: narrowed to the dots-only key in SQL (the local part with its
+ * dots removed; `email_canonical` already pins the gmail/googlemail domain), so
+ * `LIMIT 2` is enough to tell one match from several.
+ */
+export function d1DotCandidates(db: D1Like): CanonicalCandidates {
+  return async (canonical, dotKey) => {
+    const local = dotKey.slice(0, dotKey.lastIndexOf("@"));
+    const { results } = await db
+      .prepare(
+        `SELECT id, email FROM user
+          WHERE email_canonical = ?
+            AND replace(substr(lower(email), 1, instr(lower(email), '@') - 1), '.', '') = ?
+          LIMIT 2`,
+      )
+      .bind(canonical, local)
+      .all<{ id: string; email: string }>();
+    return results;
+  };
+}
 
 /** The one email lookup this rule applies to: `user` where `email` = a string, nothing else. */
 function emailLookup(model: string, where: Where[] | undefined): string | null {
@@ -58,7 +88,7 @@ export function withGmailDotFallback<A extends MaybeTransactional>(
     const email = emailLookup(args.model, args.where);
     const key = email ? gmailDotKey(email) : null;
     if (!email || !key) return found;
-    const rows = await candidates(canonicalEmail(email)).catch((e) => {
+    const rows = await candidates(canonicalEmail(email), key).catch((e) => {
       console.error("[gmail-dot-signin] lookup:", e);
       return [];
     });
