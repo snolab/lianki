@@ -47,6 +47,36 @@ export function meaningLang(text: string, uiLocale: string): string {
 }
 
 /**
+ * Split an example sentence by script/language so a parenthesized or trailing
+ * translation (e.g. `"I like it. (我喜欢它。)"`) is voiced in its own language
+ * rather than read by the word's TTS voice.
+ */
+export function exampleParts(ex: string, lang: string, uiLocale: string): SayPart[] {
+  const baseLang = lang.toLowerCase().split(/[-_]/)[0];
+  const isLatinTarget = !["zh", "ja", "ko", "ru", "ar", "hi", "bn", "ur", "mr"].includes(baseLang);
+  if (!isLatinTarget) return [{ kind: "example", text: ex, lang }];
+
+  const parts: SayPart[] = [];
+  // Match parenthesized foreign-script glosses or bare foreign-script runs.
+  const re =
+    /[(（]([^()（）]*[぀-ヿ가-힯ᄀ-ᇿ一-鿿㐀-䶿Ѐ-ӿ][^()（）]*)[)）]|([぀-ヿ가-힯ᄀ-ᇿ一-鿿㐀-䶿Ѐ-ӿ][぀-ヿ가-힯ᄀ-ᇿ一-鿿㐀-䶿Ѐ-ӿ\s、，。！？；：…—·0-9a-zA-Z]*[぀-ヿ가-힯ᄀ-ᇿ一-鿿㐀-䶿Ѐ-ӿ。！？]?)/g;
+  let last = 0;
+  for (const m of ex.matchAll(re)) {
+    const idx = m.index ?? 0;
+    const before = ex.slice(last, idx).trim();
+    if (before) parts.push({ kind: "example", text: before, lang });
+    const inner = (m[1] ?? m[2] ?? "").trim();
+    if (inner) {
+      parts.push({ kind: "example", text: inner, lang: meaningLang(inner, uiLocale) });
+    }
+    last = idx + m[0].length;
+  }
+  const tail = ex.slice(last).trim();
+  if (tail) parts.push({ kind: "example", text: tail, lang });
+  return parts.length ? parts : [{ kind: "example", text: ex, lang }];
+}
+
+/**
  * The word, then the back in the row's order (BACK_ORDER: example → meaning);
  * empty parts and repeats left out.
  */
@@ -59,19 +89,18 @@ export function sayParts(
   const word = spokenText(it, lang, readingOnBack);
   const meaning = meaningText(it.back);
   const ex = it.ex?.trim() ?? "";
-  const back: Record<BackPart, SayPart | null> = {
+  const back: Record<BackPart, SayPart[]> = {
     meaning:
       meaning && meaning !== word
-        ? { kind: "meaning", text: meaning, lang: meaningLang(meaning, uiLocale) }
-        : null,
+        ? [{ kind: "meaning", text: meaning, lang: meaningLang(meaning, uiLocale) }]
+        : [],
     // Past the server's limit (400) a part is left to the browser's speech.
-    example: ex && ex !== word ? { kind: "example", text: ex, lang } : null,
+    example: ex && ex !== word ? exampleParts(ex, lang, uiLocale) : [],
   };
   const parts: SayPart[] = [];
   if (word) parts.push({ kind: "word", text: word, lang });
   for (const k of BACK_ORDER) {
-    const p = back[k];
-    if (p) parts.push(p);
+    parts.push(...back[k]);
   }
   return parts;
 }

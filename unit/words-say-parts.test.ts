@@ -29,6 +29,22 @@ describe("sayParts", () => {
     ]);
   });
 
+  test("mixed-language example splits parenthesized translation into its own language", () => {
+    expect(
+      sayParts(
+        { term: "islog", back: "记录日志", ex: "We log each event. (我们记录每个事件。)" },
+        "en",
+        false,
+        "zh",
+      ),
+    ).toEqual([
+      { kind: "word", text: "islog", lang: "en" },
+      { kind: "example", text: "We log each event.", lang: "en" },
+      { kind: "example", text: "我们记录每个事件。", lang: "zh" },
+      { kind: "meaning", text: "记录日志", lang: "zh" },
+    ]);
+  });
+
   test("readingOnBack: the kana reading is the word; the meaning still follows", () => {
     expect(
       sayParts(
