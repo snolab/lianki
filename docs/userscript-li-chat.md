@@ -476,7 +476,7 @@ avatars, light/dark), mounted by `mountPortable` in
 - **Where it comes from.** The Learning Partner build,
   `public/partner-embed.js` (scripts/build-partner-embed.ts: its own React,
   the widget's CSS, `localStorage`/network shadowed), ~1.2 MB. It is not in
-  `lianki.user.js` (~355 KB, unchanged in size): `src/portable-ui-loader.ts`
+  `lianki.user.js` (363 KB → 368 KB with the loader and client glue): `src/portable-ui-loader.ts`
   fetches it with `GM_xmlhttpRequest` the first time 随身Li shows on a page and
   evaluates it in the manager's world, once per page. The dev loader's
   `__LK_PARTNER_SRC__` points it at the dev server's build.

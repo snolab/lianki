@@ -33,11 +33,11 @@ const range = (p: Partial<ChatReplayRange>): ChatReplayRange => ({
   ...p,
 });
 const doc = () => {
-  const fns = new Set<() => void>();
+  const fns = new Set<(e?: unknown) => void>();
   return {
     visibilityState: "visible" as DocumentVisibilityState,
-    addEventListener: (_t: string, fn: () => void) => fns.add(fn),
-    removeEventListener: (_t: string, fn: () => void) => fns.delete(fn),
+    addEventListener: (_t: string, fn: (e?: unknown) => void) => void fns.add(fn),
+    removeEventListener: (_t: string, fn: (e?: unknown) => void) => void fns.delete(fn),
     fire() {
       for (const f of fns) f();
     },
@@ -55,7 +55,7 @@ function broker(first: ChatReplayRange, opts: { send?: (i: PortableInput) => unk
       return (opts.send?.(input) ?? { ok: true, kind: "accepted", id: input.id, seq: 50 }) as never;
     if (reads++ === 0) return { ok: true, kind: "history", range: first };
     return new Promise((resolve) => {
-      wake = resolve;
+      wake = resolve as (v: unknown) => void;
       signal?.addEventListener("abort", () => resolve({ ok: false, error: "cancelled" }), {
         once: true,
       });
