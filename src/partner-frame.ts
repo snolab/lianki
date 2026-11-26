@@ -124,6 +124,9 @@ export function frameShell(d: FrameShellDeps): FrameShell {
     ["width", d.fixedSize?.w ?? `${MIN_W}px`],
     ["height", d.fixedSize?.h ?? `${MIN_H}px`],
     ["background", "transparent"],
+    // The same color-scheme as the page inside: /embed/partner forces
+    // "normal" (globals.css html[data-embed]). A mismatch makes the browser
+    // paint an opaque canvas behind the frame (the dark box seen on 2.24.58).
     ["color-scheme", "normal"],
   ]);
   box.append(grip, iframe);
