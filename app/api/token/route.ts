@@ -25,7 +25,9 @@ async function handle(req: Request) {
     db: () => getD1() as unknown as D1Like & AuditDb,
     // The `eval` permission (lib/api-tokens.ts OWNER_SCOPES): the `dev` grant, read now.
     siteOwner: (userId) => isDevUser(getD1() as unknown as BoxDb, userId).catch(() => false),
-    allowUntitled: async () => flagIn(await readFlags(), "chat.agent-identities"),
+    allowUntitled: async (userId) =>
+      flagIn(await readFlags(), "chat.agent-identities") &&
+      (await isDevUser(getD1() as unknown as BoxDb, userId).catch(() => false)),
     revoked: (ids) => notifyTokensRevoked({ ids }),
   });
 }

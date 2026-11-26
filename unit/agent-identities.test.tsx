@@ -9,6 +9,10 @@ import { testSchema } from "../lib/d1/testSchema";
 import type { D1Like } from "../lib/d1/types";
 import { checkToken, renameSelfToken } from "../lib/api-tokens";
 import { tokenApi, type TokenApiDeps } from "../lib/api-token-api";
+import { identityApi } from "../lib/identity-api";
+import { TOOLS, toolsFor, runTool } from "../packages/lianki-cli/mcp-tools.mjs";
+import { call as apiCall } from "../packages/lianki-cli/api.mjs";
+import { run as runCli } from "../packages/lianki-cli/cli.mjs";
 import { stubGlobals } from "./support/globals";
 
 const now = Date.parse("2026-11-27T00:00:00Z");
@@ -103,6 +107,140 @@ describe("agent identities backend gate & naming", () => {
     const unlocked = await checkToken(db as unknown as D1Like, token, "study", now);
     expect(unlocked.ok).toBe(true);
     if (unlocked.ok) expect(unlocked.name).toBe("My Agent");
+  });
+
+  test("flag-off and non-owner get 403 on all identity issuance and mutation paths", async () => {
+    // Flag off or non-owner -> allowUntitled returns false -> 403 on untitled and identity:self
+    const untitled403 = await tokenApi(
+      jsonReq("POST", { untitled: true, scopes: ["identity:self"], expiry: { days: 90 } }),
+      makeDeps(db, false),
+    );
+    expect(untitled403.status).toBe(403);
+
+    const scope403 = await tokenApi(
+      jsonReq("POST", { name: "Agent", scopes: ["identity:self"], expiry: { days: 90 } }),
+      makeDeps(db, false),
+    );
+    expect(scope403.status).toBe(403);
+
+    // Mint while allowed, then disable flag / switch to non-owner -> PATCH and /api/my/identity return 403
+    const created = await tokenApi(
+      jsonReq("POST", { untitled: true, scopes: ["identity:self"], expiry: { days: 90 } }),
+      makeDeps(db, true),
+    );
+    const { token, id } = (await created.json()) as { token: string; id: string };
+
+    const patch403 = await tokenApi(jsonReq("PATCH", { id, name: "New" }), makeDeps(db, false));
+    expect(patch403.status).toBe(403);
+
+    const whoami403 = await identityApi(
+      new Request("https://lianki.com/api/my/identity", {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      { db: () => db as unknown as D1Like, allowed: async () => false, now: () => now },
+    );
+    expect(whoami403.status).toBe(403);
+
+    const setName403 = await identityApi(
+      new Request("https://lianki.com/api/my/identity", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: "Arden" }),
+      }),
+      { db: () => db as unknown as D1Like, allowed: async () => false, now: () => now },
+    );
+    expect(setName403.status).toBe(403);
+  });
+
+  test("end-to-end synthetic first connect: MCP tools and CLI whoami / set-name", async () => {
+    // 1. An identity:self token sees ONLY lianki_whoami and lianki_set_name in MCP tools/list.
+    const selfTools = toolsFor(["identity:self"]).map((t: { name: string }) => t.name);
+    expect(selfTools).toEqual(["lianki_whoami", "lianki_set_name"]);
+
+    // 2. Mint an untitled token with identity:self + study.
+    const minted = await tokenApi(
+      jsonReq("POST", { untitled: true, scopes: ["identity:self", "study"], expiry: { days: 90 } }),
+      makeDeps(db, true),
+    );
+    const { token } = (await minted.json()) as { token: string };
+
+    // 3. Normal study call is refused until named.
+    expect(await checkToken(db as unknown as D1Like, token, "study", now)).toMatchObject({
+      ok: false,
+      reason: "untitled",
+    });
+
+    const routeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req =
+        typeof input === "string"
+          ? new Request(input, init)
+          : input instanceof URL
+            ? new Request(input.toString(), init)
+            : input;
+      return identityApi(req, {
+        db: () => db as unknown as D1Like,
+        allowed: async () => true,
+        now: () => now,
+      });
+    };
+
+    // 4. CLI whoami works while untitled.
+    const cliOut: string[] = [];
+    const code1 = await runCli(["whoami", "--json"], {
+      env: { LIANKI_TOKEN: token },
+      version: "0.0.0-test",
+      fetch: routeFetch,
+      out: (s: string) => cliOut.push(s),
+      err: () => {},
+      store: { get: async () => null },
+      config: { read: () => ({ sites: {} }) },
+      readStdin: async () => "",
+      stdinIsTTY: false,
+      now: () => now,
+    });
+    expect(code1).toBe(0);
+    expect(JSON.parse(cliOut[0]!).data).toMatchObject({
+      untitled: true,
+      name: "",
+      account: "u1@example.com",
+    });
+
+    // 5. CLI set-name names the token.
+    const cliOut2: string[] = [];
+    const code2 = await runCli(["set-name", "Arden", "--json"], {
+      env: { LIANKI_TOKEN: token },
+      version: "0.0.0-test",
+      fetch: routeFetch,
+      out: (s: string) => cliOut2.push(s),
+      err: () => {},
+      store: { get: async () => null },
+      config: { read: () => ({ sites: {} }) },
+      readStdin: async () => "",
+      stdinIsTTY: false,
+      now: () => now,
+    });
+    expect(code2).toBe(0);
+    expect(JSON.parse(cliOut2[0]!).data).toMatchObject({ ok: true, name: "Arden" });
+
+    // 6. MCP lianki_whoami sees the new name, and study is now unlocked.
+    const whoamiTool = TOOLS.find((t: { name: string }) => t.name === "lianki_whoami")!;
+    const mcpApi = (opts: Parameters<typeof apiCall>[2]) =>
+      apiCall(
+        {
+          site: "lianki.com",
+          base: "https://lianki.com",
+          deps: { fetch: routeFetch, timeoutMs: 5000 },
+          client: "test",
+        },
+        token,
+        opts,
+      ).then((r: { data: unknown }) => r.data);
+    const mcpRes = await runTool(whoamiTool, mcpApi, {}, {});
+    expect("isError" in mcpRes ? mcpRes.isError : undefined).toBeUndefined();
+    expect(mcpRes.content[0]!.text).toContain('"untitled": false');
+    expect(mcpRes.content[0]!.text).toContain('"name": "Arden"');
+    const unlocked = await checkToken(db as unknown as D1Like, token, "study", now);
+    expect(unlocked.ok).toBe(true);
   });
 });
 

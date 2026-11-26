@@ -19,7 +19,15 @@ export const CLIENT_HEADER = "x-lianki-client";
 export const IMPORT_MAX = 100;
 export const CHAT_PATH = "/api/version/chat";
 /** Known tool permissions; introspection must explicitly grant each permission. */
-const ALL_SCOPES = ["study", "chat:read", "chat:write", "chat:ask", "progress", "apps:publish"];
+const ALL_SCOPES = [
+  "identity:self",
+  "study",
+  "chat:read",
+  "chat:write",
+  "chat:ask",
+  "progress",
+  "apps:publish",
+];
 /** lianki_chat_wait: how long it waits by default, and at most (under a client's usual 60 s request timeout). */
 export const WAIT_DEFAULT_SEC = 50;
 export const WAIT_MAX_SEC = 55;
@@ -50,6 +58,27 @@ const WRITE = { readOnlyHint: false, destructiveHint: false, openWorldHint: fals
  * is cli.mjs `call` with the token and the client header already in place.
  */
 export const TOOLS = [
+  {
+    name: "lianki_whoami",
+    scope: "identity:self",
+    title: "Current agent identity",
+    description:
+      "Show this token's current agent identity (id, name, untitled status, scopes, account). Works even before the agent has been named.",
+    annotations: READ,
+    run: async (api) => api({ path: "/api/my/identity" }),
+  },
+  {
+    name: "lianki_set_name",
+    scope: "identity:self",
+    title: "Set agent identity name",
+    description:
+      "Set this agent identity's display name (1-40 characters). Required before an untitled token can use any other permission.",
+    input: {
+      name: z.string().min(1).max(40).describe("Display name for this agent identity"),
+    },
+    annotations: WRITE,
+    run: async (api, a) => api({ method: "POST", path: "/api/my/identity", body: { name: a.name } }),
+  },
   {
     name: "lianki_app_publish",
     scope: "apps:publish",

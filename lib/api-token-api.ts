@@ -43,8 +43,8 @@ export type TokenApiDeps = {
   db: () => D1Like & AuditDb;
   /** Does this account hold `dev` now (lib/permissions.ts)? Only then is `eval` offered or accepted. Absent: no. */
   siteOwner?: (userId: string) => Promise<boolean>;
-  /** Allow creating an untitled identity token (`chat.agent-identities` flag). */
-  allowUntitled?: () => Promise<boolean>;
+  /** Allow creating/renaming untitled identity tokens and `identity:self` (`chat.agent-identities` + owner). */
+  allowUntitled?: (userId: string) => Promise<boolean>;
   /** Revoked tokens' listening sockets close (lib/push-chat-tokens.ts). */
   revoked: (ids: string[]) => Promise<void>;
   /** At most this many live tokens per account. */
@@ -72,11 +72,16 @@ export async function tokenApi(req: Request, deps: TokenApiDeps): Promise<Respon
   const db = deps.db();
 
   const isOwner = async () => (deps.siteOwner ? deps.siteOwner(owner.userId) : false);
+  const untitledAllowed = async () =>
+    deps.allowUntitled ? deps.allowUntitled(owner.userId) : false;
   if (req.method === "GET") {
-    const site = await isOwner();
+    const [site, untitledOk] = await Promise.all([isOwner(), untitledAllowed()]);
+    const available = SCOPES.filter(
+      (s) => (site || !OWNER_SCOPES.includes(s.id)) && (untitledOk || s.id !== "identity:self"),
+    );
     return json({
       account: owner.email,
-      scopes: site ? SCOPES : SCOPES.filter((s) => !OWNER_SCOPES.includes(s.id)),
+      scopes: available,
       expiryDays: EXPIRY_DAYS,
       maxExpiryDays: MAX_EXPIRY_DAYS,
       ...(site ? { evalMaxDays: EVAL_MAX_DAYS } : {}),
@@ -91,6 +96,7 @@ export async function tokenApi(req: Request, deps: TokenApiDeps): Promise<Respon
   if (!body) return json({ error: "Expected JSON" }, 400);
 
   if (req.method === "PATCH") {
+    if (!(await untitledAllowed())) return json({ error: "Not available" }, 403);
     const name = cleanTokenName(body.name);
     if (!name) return json({ error: "name: 1–40 characters" }, 400);
     const updated = await renameToken(db, owner, body.id, name, now);
@@ -121,8 +127,11 @@ export async function tokenApi(req: Request, deps: TokenApiDeps): Promise<Respon
     return json({ ok: true });
   }
 
-  const untitled = body.untitled === true && (await deps.allowUntitled?.()) === true;
-  if (body.untitled === true && !untitled) return json({ error: "Not available" }, 403);
+  const wantsIdentity =
+    body.untitled === true || (Array.isArray(body.scopes) && body.scopes.includes("identity:self"));
+  const untitledOk = wantsIdentity ? await untitledAllowed() : false;
+  if (wantsIdentity && !untitledOk) return json({ error: "Not available" }, 403);
+  const untitled = body.untitled === true && untitledOk;
   const name = untitled ? "" : cleanTokenName(body.name);
   if (name === null) return json({ error: "name: 1–40 characters" }, 400);
   if (
