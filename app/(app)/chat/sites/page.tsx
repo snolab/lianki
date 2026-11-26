@@ -1,3 +1,4 @@
+import SitePermissions, { type SitePermissionLabels } from "./SitePermissions";
 import PortableLiSettings from "./PortableLiSettings";
 import { PORTABLE_LI_STRINGS } from "@/src/portable-li-strings";
 import { pillChatLang } from "@/src/pill-chat-strings";
@@ -45,6 +46,9 @@ export default async function ChatSitesPage() {
         </a>
       </div>
     );
+  const sitePermissionLabels = Object.fromEntries(
+    Object.entries(getIntlayer("site-permissions", locale)).map(([k, v]) => [k, String(v)]),
+  ) as SitePermissionLabels;
   const installLabels = Object.fromEntries(
     Object.entries(getIntlayer("pill-install", locale)).map(([k, v]) => [k, String(v)]),
   ) as PillInstallLabels;
@@ -56,6 +60,7 @@ export default async function ChatSitesPage() {
       installGuide={
         <>
           <PillInstallGuide latestVersion={LIANKI_USERSCRIPT_VERSION} labels={installLabels} />
+          <SitePermissions labels={sitePermissionLabels} />
           <PortableLiSettings
             strings={PORTABLE_LI_STRINGS[pillChatLang(locale)]}
             notReady={installLabels.installHelp}
