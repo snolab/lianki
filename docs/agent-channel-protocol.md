@@ -450,6 +450,26 @@ A `permission.request` carries a binding that ay's endpoint mints and keeps:
   (the same event id, or a new event with the same binding) is ignored with
   `ack` `rejected` `already-answered` and is never pressed twice. A reconnect
   that re-delivers an old response therefore does nothing.
+- **PTY: re-check the screen before any key.** In PTY mode ay answers by
+  sending keystrokes, so a binding alone is not enough. When the request is
+  made, ay records the prompt's fingerprint in the binding's server-side
+  record (not in the event): pid + start time, the prompt lines' normalised
+  text, and the option labels with their key positions. Right before it sends
+  a key (and again between keys, for a multi-key answer), ay reads the screen
+  of that same session (`ay tail` for that pid and start time). It types only
+  if all of these hold:
+  1. it is the same session, not a restarted agent or a reused pid;
+  2. the prompt is still showing;
+  3. the prompt text and the option labels match the fingerprint;
+  4. the option to press is where it was recorded.
+
+  On any mismatch it refuses with `error` `stale-prompt` and types nothing.
+  It closes the request (answering the card "the prompt changed, answer at
+  the terminal") and emits a fresh `status`. If a new prompt is now on
+  screen, it emits a new `permission.request` with a new binding. ay never
+  retries a key and never types "blind" when the screen cannot be read. The
+  same rule applies to stream and ACP modes in their own form: the request
+  must still be open on the agent's side.
 - On Lianki's side the ask card stores the binding; the `answered` event
   from a tap returns it unchanged, and the card can be answered once (the
   hub's existing ask rule). Lianki never builds a binding itself.
@@ -478,6 +498,26 @@ A `permission.request` carries a binding that ay's endpoint mints and keeps:
   ay's own config at the terminal or in a Lianki settings page; it is never
   created by tapping a card, and both endpoints show it in their lists so the
   user can revoke it.
+- **ay enforces it, not the agent.** A session approval is a rule held in
+  ay's endpoint, which ay can expire and revoke. ay answers each later
+  matching request with the agent's **once** option. It passes an "always"
+  option through to the agent only for an agent whose "always" ay can verifiably expire
+  and revoke itself. Otherwise it **downgrades to `allow_once`**, and the
+  card offers only "once" or "for this session (enforced by ay)". As known
+  today (each to be re-checked in phase 2a and recorded in ay's adapter
+  table):
+
+  | agent                        | its own "always"                                                                                                      | ay does                                                                                  |
+  | ---------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+  | Claude Code, PTY             | "Yes, and don't ask again" writes a rule into its settings files, which outlives the session                            | never presses it; presses "Yes" (once) and keeps the session rule itself                  |
+  | Claude Code, stream / SDK    | the control response can carry permission updates; a plain allow covers one call                                       | answers allow per call; never sends a permission update                                   |
+  | Codex app-server             | `acceptForSession` lasts until the Codex session ends; there is no known way to revoke it during the session            | sends `accept` (once) per call; never sends `acceptForSession`                            |
+  | Codex PTY                    | "don't ask again for this session"-style choices, which ay cannot revoke                                                | presses the once choice only                                                             |
+  | ACP agents (Gemini `--acp`, opencode, adapters) | `allow_always` is defined by the agent and has no revoke in ACP                                       | selects the `allow_once` option; with no such option, sends no answer and shows the prompt as `input-required` |
+  | unknown agent or prompt      | —                                                                                                                     | no "always"; once only, or terminal only (§12)                                           |
+
+  A new agent version can change what "always" means, so an unverified
+  adapter defaults to the downgrade.
 - A session approval ends early when the agent restarts, the channel session
   ends, the user taps "revoke" on the agent's presence row
   (`permission.revoke` event, chat → ay), or its TTL passes, whichever is
