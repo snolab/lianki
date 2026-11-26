@@ -72,26 +72,25 @@ settings", copy its MCP connection URL), step 2 per app (ChatGPT, Claude,
 Gemini, anchors `#chatgpt` `#claude` `#gemini`), staying in control, two
 common problems, and other tools.
 
+- **Link, never restate** (owner, 2026-11-27: "直接留链接就够了…不要复述", then
+  "不要复述任何他们的内容"). Each app's section has only its maker's official
+  help page (`help` in `AI_APPS`, `lib/ai-apps-guide.ts`) and Lianki's own facts:
+  the server address is the connection link from step 1, the sign-in choice is
+  that app's no-sign-in label (`auth`: "No authentication" for ChatGPT, "No sign
+  in" for Claude; Gemini: leave sign-in empty), and `@Lianki` where the chat takes
+  it (`at`). No click paths, plans, countries, languages or "last checked" dates:
+  they go stale, and the maker's page is the source. The intro only says that
+  each app's own page states who can connect. `unit/ai-apps-guide.test.ts` fails
+  on menu names, plan names or limits in the strings.
+- **Feedback, not polling**: "Something here wrong or out of date? Tell us" opens
+  `/contact` (`AI_APPS_FEEDBACK_PATH`), so a stale line is reported when someone
+  hits it.
 - Strings: `ai-apps-guide` (`app/(app)/guides/ai-apps/ai-apps-guide.content.ts`,
   16 locales, a context line per key). Lianki's own labels (`{page}`,
   `{tokens}`, `{study}`, `{create}`, `{copy}`, `{revoke}`) are filled at render
   from the `my-mcp` and `api-tokens` dictionaries, so the guide always names
-  the buttons as the token page shows them. The other apps' menu names stay in
-  English in quotes, with a note and the date they were checked
-  (`AI_APPS_CHECKED_ON`, `lib/ai-apps-guide.ts`).
-- "Who can use it" gives each app's limits only as its maker's help page states
-  them (links in `AI_APPS`, checked 2026-11-27): ChatGPT, Business/Enterprise/Edu
-  on the web, Pro read-only, no geo limit, work accounts added by owners/admins
-  ("Plugins" → "+" → "Add custom MCP server", older "Workspace settings" → "Apps"
-  → "Create"); Claude, every plan, Free one connector, the
-  "Customize" → "Connectors" path, and "No sign in" as the Authentication choice
-  while `mcp.oauth` is off ("+ Add" → "Add custom connector" → "Continue" twice →
-  "No sign in" → "Add"); Gemini, 18+, US, personal account, History on, English
-  only. ChatGPT steps follow OpenAI's plugin quickstart
-  (developers.openai.com/plugins/quickstart): create the plugin, install it with
-  "+", then a Work chat and @Lianki. The caveat sits right under the intro. It also
-  says the app reaches Lianki only in a typed chat and never wakes itself, and that
-  the help pages don't cover voice modes.
+  the buttons as the token page shows them; `{auth}` is the other app's own
+  English label, inserted as is.
 - Text steps only. The drafts' screenshots and videos came from the owner's
   account; they are not published.
 - It uses the `/mcp/<token>` address with "No authentication", which works for

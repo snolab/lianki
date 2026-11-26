@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getIntlayer } from "intlayer";
 import { appLocale } from "@/lib/app-locale.server";
 import { generateAppHreflangMetadata } from "@/lib/hreflang";
-import { AI_APPS, AI_APPS_GUIDE_PATH, checkedOn, fillGuide } from "@/lib/ai-apps-guide";
+import { AI_APPS, AI_APPS_FEEDBACK_PATH, AI_APPS_GUIDE_PATH, fillGuide } from "@/lib/ai-apps-guide";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await appLocale();
@@ -19,7 +19,9 @@ export async function generateMetadata(): Promise<Metadata> {
  * The public guide to connecting ChatGPT, Claude or Gemini to the reader's own
  * Lianki account (docs/api-for-agents.md, "The public guide"). No session is
  * read: signed out, the "open" link goes to /my/mcp, which asks to sign in.
- * Text steps only, no screenshots (they would show someone's account).
+ * Text steps only, no screenshots (they would show someone's account). The
+ * other apps' own steps, plans and limits are never restated, only linked
+ * (lib/ai-apps-guide.ts): the page says only what Lianki needs.
  */
 export default async function AiAppsGuidePage() {
   const locale = await appLocale();
@@ -33,28 +35,8 @@ export default async function AiAppsGuidePage() {
     create: String(tok.create),
     copy: String(tok.copyMcp),
     revoke: String(tok.revoke),
-    ask: String(g.ask),
-    date: checkedOn(locale),
   };
   const f = (text: unknown) => fillGuide(text, vars);
-
-  const steps: Record<(typeof AI_APPS)[number]["id"], { items: unknown[]; note?: unknown }> = {
-    chatgpt: {
-      items: [g.chatgpt1, g.chatgpt2, g.chatgpt3, g.chatgpt4, g.chatgptInstall, g.chatgptTry],
-      note: g.chatgptWork,
-    },
-    claude: {
-      items: [g.claude1, g.claude2, g.claudeAuth, g.claudeTry],
-      note: g.claudeNote,
-    },
-    gemini: { items: [g.gemini1, g.gemini2, g.gemini3, g.geminiTry], note: g.geminiNote },
-  };
-
-  const avail: Record<(typeof AI_APPS)[number]["id"], unknown> = {
-    chatgpt: g.availChatgpt,
-    claude: g.availClaude,
-    gemini: g.availGemini,
-  };
 
   const card =
     "rounded-2xl border border-gray-200 dark:border-gray-700 bg-[var(--background)] p-4 sm:p-5";
@@ -129,50 +111,37 @@ export default async function AiAppsGuidePage() {
           <h2 id="apps" className={h2}>
             {g.appsHeading}
           </h2>
-          <p className="mt-1 text-sm opacity-80">{f(g.menuNote)}</p>
+          <p className="mt-1">{g.appsLead}</p>
         </div>
         {AI_APPS.map((a) => (
           <section
             key={a.id}
             id={a.id}
             aria-labelledby={`${a.id}-h`}
-            className={`${card} scroll-mt-20`}
+            className={`${card} scroll-mt-20 flex flex-col gap-2`}
           >
             <h3 id={`${a.id}-h`} className="text-lg font-semibold text-primary">
               {a.name}
             </h3>
-            <ol className={`${ol} mt-2`}>
-              {steps[a.id].items.map((s, i) => (
-                <li key={i}>{f(s)}</li>
-              ))}
-            </ol>
-            {steps[a.id].note ? (
-              <p className="mt-3 text-sm opacity-80">{f(steps[a.id].note)}</p>
-            ) : null}
+            <a
+              href={a.help}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="self-start font-medium text-primary underline"
+            >
+              {g.helpLink}
+            </a>
+            <p>{a.auth ? fillGuide(g.enterLink, { auth: a.auth }) : g.geminiEnter}</p>
+            {a.at ? <p>{g.callAt}</p> : null}
           </section>
         ))}
-      </section>
-
-      <section aria-labelledby="avail" className={card}>
-        <h2 id="avail" className={h2}>
-          {g.availHeading}
-        </h2>
-        <ul className="mt-3 list-disc ps-6 space-y-2">
-          {AI_APPS.map((a) => (
-            <li key={a.id}>
-              {f(avail[a.id])}{" "}
-              <a
-                href={a.help}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline"
-              >
-                {g.helpLink}
-              </a>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-3">{g.availText}</p>
+        <a
+          href={AI_APPS_FEEDBACK_PATH}
+          data-testid="guide-feedback"
+          className="self-start text-sm font-medium text-primary underline"
+        >
+          {g.stepsWrong}
+        </a>
       </section>
 
       <section aria-labelledby="safety" className={card}>
