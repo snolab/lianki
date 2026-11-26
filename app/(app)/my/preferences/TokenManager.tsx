@@ -272,6 +272,9 @@ export default function TokenManager({
     "identity:self": s("scopeIdentitySelf"),
   };
 
+  const connectorUrl =
+    secret && agentIdentities && secret.untitled ? `https://lianki.com/mcp/${secret.token}` : null;
+
   const setupUrl =
     secret && agentIdentities && secret.untitled
       ? agentGuideUrl(secret.scopes, String(locale))
@@ -405,6 +408,17 @@ export default function TokenManager({
           >
             {secret.token}
           </code>
+          {connectorUrl && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium">{s("agentConnectorUrlLabel")}</p>
+              <code
+                data-testid="agent-connector-url"
+                className="block break-all text-xs bg-white dark:bg-gray-900 p-2 rounded select-all font-mono"
+              >
+                {connectorUrl}
+              </code>
+            </div>
+          )}
           {setupUrl && (
             <div className="space-y-1">
               <p className="text-xs font-medium">{s("agentSetupUrlLabel")}</p>

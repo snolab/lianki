@@ -359,9 +359,15 @@ describe("TokenManager Add My Agent UI", () => {
         scopes: ["identity:self"],
         expiry: { days: 90 },
       });
+      const connectorUrlText =
+        host.querySelector('[data-testid="agent-connector-url"]')?.textContent ?? "";
+      expect(connectorUrlText).toBe(`https://lianki.com/mcp/lk_${"a".repeat(64)}`);
+      expect(host.textContent).toContain("Paste into the app's connector settings only:");
       const setupUrlText = host.querySelector('[data-testid="agent-setup-url"]')?.textContent ?? "";
       expect(setupUrlText).toContain("/agent-guide.");
       expect(setupUrlText).not.toContain("token=");
+      expect(setupUrlText).not.toContain("lk_");
+      expect(host.textContent).toContain("Instructions (no secret, safe to share):");
       expect(host.innerHTML).not.toContain("token=");
       const promptText =
         host.querySelector('[data-testid="agent-setup-prompt"]')?.textContent ?? "";
