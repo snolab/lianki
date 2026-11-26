@@ -1,5 +1,7 @@
 # 随身Li mic: dictate from the lianki.com tab into the page you are on (spec, for review)
 
+Tree: /chat/suishen-li-mic
+
 Status: **draft for review**. UI and this contract: agy lane; broker, hub and bridge: coco lane (branch `feat/portable-shared-mic`); review: codex lane.
 Nothing is built. Flag **`portable.mic-route`**, default **off**, audience
 **owner** (lib/flags.ts), switched on for the owner when it ships.
@@ -36,6 +38,22 @@ lianki.com tab (DebugChat + mic)        hub (DebugHub DO)            site tab (�
                     (who listens now)      the 随身Li page)            set / beat / clear
 ```
 
+### Grant: `page.dictation`, per site, at lianki.com
+
+Dictation into a site is an advanced capability, switched on **per exact
+origin** by him at lianki.com/chat/sites (first-party session + CSRF/Origin
+checks; the site-capability design, scope `page.dictation`), separate from the
+chat consent and from `page.read`. It is stored server-side as account +
+canonical origin + scope + revision and revocable there at once. The GM-side
+origin is not proof of the host: `route` and `read` (with a dictation selector)
+check the grant at the authority on every call; no grant, or an older
+revision → refused (`no-grant`), the button shows "open lianki.com to allow
+dictation on this site". Revoking ends the target and clears its pending text.
+
+The grant page says plainly: in page mode (ScriptCat raw) the 随身Li draft and
+the routed transcript are drawn in this site's page, so **the site can read
+them** before he sends anything, as it can read typed text there.
+
 ### 0. Keys: account + browser
 
 Routing is **per browser**, never account-wide: a mic on one device never
@@ -64,8 +82,14 @@ Authorization, the expected principal header compared on every call,
   `{account, bid, routeId, origin, gen}` as **the** target for that account +
   bid and answers a new generation `gen` (increasing). A newer `on` from any
   other window replaces it.
-- `beat` (with `gen`): keeps it while the page is visible and the button on.
+- `beat` (with `gen`): keeps that exact lease while the page is visible and
+  the button on. A beat never acquires, re-acquires or preempts a target: a
+  beat for a lease that is gone is answered `off`, and nothing else changes.
 - `off` (with `gen`): clears it if it is still this `routeId` + `gen`.
+- **Each activation is its own lease:** only `on` (one per button tap) takes a
+  target, with a new `gen`. Every answer and every `dictation` range carries
+  the `gen` it is about; the window drops anything for another `gen`, so a
+  late answer to an old on/beat/off/read can never revive a lease.
 - **Answer to every `route`:**
   `{ ok: true, kind: "route", state: "listening" | "no-source" | "off", gen }`.
   `off` = this window is not (or no longer) the target: a newer `on` took it,
@@ -84,17 +108,24 @@ Authorization, the expected principal header compared on every call,
 
 ### 2. Hub messages (DebugHub; coco)
 
-- **Source presence (explicit):** a lianki.com tab reports its mic with
-  `{ type: "dictation-source", bid, state: "on" | "off" }` when its chat mic
-  turns on or off, and `off` when it closes or hides its socket. `listening`
-  in the `route` answer is derived only from these reports (any tab of the
-  same account + bid with `on`), never inferred.
+- **Source presence (explicit, one lease):** a lianki.com tab reports its mic
+  with `{ type: "dictation-source", bid, state: "on" | "off" }` when its chat
+  mic turns on or off, and `off` when it closes or hides its socket. `on`
+  takes the **single source lease** for that account + bid (a source `sgen`;
+  the newest tab wins, an older one gets `dictation-target: null`).
+  `listening` in the `route` answer comes only from a live source lease,
+  never inferred.
 - **Target fan-out:** to the lianki.com tabs of the same account + bid, on
   every change: `{ type: "dictation-target", target: { origin, routeId, gen } | null }`.
-- **A final:** `{ type: "chat-dictation", routeId, gen, text, at }` from a
-  lianki.com tab. The hub checks it is still the target's routeId + gen and
-  the same account + bid, then queues it for that target. Otherwise it is
-  ignored and the tab gets `dictation-target: null` (its own composer again).
+- **A final:** `{ type: "chat-dictation", routeId, gen, sgen, finalId, text, at }`
+  from the lianki.com tab holding the source lease. The hub checks it is still
+  the target's routeId + gen, the current source `sgen`, the same account +
+  bid, and a grant; it dedups by (account, bid, sgen, gen, finalId) and queues
+  it. Otherwise it answers `dictation-rejected { finalId }` and the tab keeps
+  that final in **its own** composer draft (words are never lost).
+- **Clearing:** on a target change, account switch, revoke, or the source or
+  target disconnecting, the hub clears that target's pending items and
+  rejects anything arriving later for the old gen/sgen.
 - **Stop:** `{ type: "dictation-stop", bid }` from a lianki.com tab (its "→
   site" label) clears the target for that bid; the window's next `route`
   answer is `off`.
@@ -108,6 +139,9 @@ Authorization, the expected principal header compared on every call,
   page's own "stop") clears the route for this tab: back to its own composer.
 - The read-aloud, wake word, merge and polish logic stay as they are; a routed
   line is not merged into this tab's composer text.
+- **Never lose words:** a final the hub rejects (stale target, refused, no
+  answer in time) goes into this tab's own draft instead, marked "not sent to
+  example.org".
 
 ### 4. 随身Li (portable window; agy)
 
@@ -125,12 +159,17 @@ Authorization, the expected principal header compared on every call,
 - `read` carries the dictation selector `{routeId, gen, afterSeq}`; each
   delivered item is appended once (by `seq`) and ACKed by the next `read`.
 - Each routed final is appended to the composer draft (a space between), never
-  sent by itself. The draft scope stays `portable~<account>~<origin>`.
-- **Selection (v2, after #1125 deploys; not in v1)**: when a final arrives and this page has a selection, it is
-  attached the way #1125's `page.read` selection attachment does it (the chat's
-  `context` chip: text, cleaned and capped by `chat.pillShareChars`, http(s)
-  link only), from **this** page only, read at that moment. No selection → no
-  chip. This reuses #1125's path; no second selection reader.
+  sent by itself. The draft scope stays `portable~<account>~<origin>`. A
+  stale, refused or timed-out delivery never clears or rewrites what is
+  already in the draft.
+- **Selection (v2, after #1125 deploys; not in v1; plain dictation never
+  needs it)**, in this order, through #1125's page.read flow: (1) the
+  `page.read` grant status for this exact origin is OK; (2) only then read
+  this page's selection (cleaned, capped by `chat.pillShareChars`, http(s)
+  link only); (3) `consume` it (revision, text digest, account binding) and it
+  is OK; (4) only then attach it as the chat's context chip. A revoke, an
+  account switch or a late arrival is rejected before consume and before
+  attaching; nothing is attached on any failure.
 
 ## The active tab rule
 
@@ -168,9 +207,8 @@ Authorization, the expected principal header compared on every call,
 - No audio stored beyond what lianki.com already does (its clips setting).
 - Routed text is transient: not a chat line, not in history, not logged with
   its text (counts only).
-- The host page never gets the text through the DOM before he sends it: the
-  composer is in the closed shadow root (bundled window) or the lianki.com
-  frame; as with typed text, a page-realm script can read what is drawn there.
+- A closed shadow root is not a privacy boundary: in page mode the site can
+  read the draft and the routed transcript (the grant page says so).
 
 ## Tests (planned)
 
