@@ -465,47 +465,64 @@ so revoking permission or excluding a site cannot leave a second chat window.
   User cancellation aborts the request; a message already accepted durably
   is not unsent. No microphone, playback or device access is part of this UI.
 
-### The chat window is the main site's DebugChat (2.24.49)
+### The chat window is the main site's DebugChat (2.24.51)
 
 Owner, 2026-11-26: 随身Li reuses the Li chat component, no second wheel, and
-looks exactly like the chat window on lianki.com. So the panel is
-`packages/debug-chat`'s `DebugChat` itself (bubbles, RichText, composer,
-avatars, light/dark), mounted by `mountPortable` in
-`packages/debug-chat/src/embed/partner-embed.tsx`:
+looks exactly like the chat window on lianki.com, everywhere (his sites
+zhihu.com and github.com refuse frames). So there is one chat UI,
+`packages/debug-chat`'s `DebugChat`, reached two ways (`src/portable-li.ts`
+`show`):
 
-- **Where it comes from.** The Learning Partner build,
-  `public/partner-embed.js` (scripts/build-partner-embed.ts: its own React,
-  the widget's CSS, `localStorage`/network shadowed), ~1.2 MB. It is not in
-  `lianki.user.js` (363 KB → 368 KB with the loader and client glue): `src/portable-ui-loader.ts`
-  fetches it with `GM_xmlhttpRequest` the first time 随身Li shows on a page and
-  evaluates it in the manager's world, once per page. The dev loader's
-  `__LK_PARTNER_SRC__` points it at the dev server's build.
-- **Isolation.** A closed shadow root on a plain div (`embed/isolation.ts`):
-  the page's CSS never reaches in, every rem is px, so the window has a fixed
-  size whatever the page's `html { font-size }`. Keys typed in it stop at the
-  root.
-- **Transport unchanged.** `embed/portable-client.ts` drives DebugChat only
-  through the userscript's chat-only broker (`read`, `send`; same HTTP
-  contract, same 60 s single-use capability behind it). A long-poll read runs
-  while the page is visible; no timers.
-- **Advanced actions.** The window offers no + menu (`attach={false}`), no mic
-  (`embedded`). A line addressed to a node (`@/…`), page context or files is
-  refused locally, nothing is sent, and only then the hint shows: "去
-  lianki.com 为这个网站单独打开" with a link to `/chat?from=<origin>`
-  (`advancedHint`, intlayer `portable-li`). No standing notice.
-- **Hide on this website** is a row in the window's own menu (DebugChat
-  `menuItems`).
-- **Fallback.** In the page realm (the page could replace eval), with no eval
-  (a manager whose world follows the page CSP), offline, or with blocked
-  styles, the plain panel (`src/portable-li-panel.ts`, now oklch with the
-  seal accent) shows instead. Under Trusted Types, RichText falls back to
-  plain text.
-- **Language.** The window's own chrome (placeholder, menu) follows the
-  page's `<html lang>` as the partner does; the 随身Li strings follow the
-  mirrored Lianki language.
+1. **The lianki.com frame first** (`/embed/partner`, `src/pill-chat.ts`
+   `portableFrame`): what he types stays in lianki.com's origin. Its
+   chat-only ticket (60 s, single use, `lianki-page-chat`) comes only from
+   the fixed cookie-only broker `POST /api/chat/page-ticket` (no
+   Authorization, no `lk:token`, in every realm, ScriptCat raw included), is
+   fetched only when the frame asks on its MessagePort and goes only into
+   that port (contract: the backend lane's frame contract). It is bound to the
+   consented account (`consentedFrameTicket`): the answer's `principal`
+   must be the consented one; a valid different one closes the window,
+   invalidates consent and asks again; a missing or malformed one gives no
+   ticket ("can't connect", fail closed). An abort only drops the result
+   locally; GM_xmlhttpRequest is not physically cancelled.
+2. **Where the site's CSP refuses the frame** (`frame:blocked`): the same
+   DebugChat **bundled into the userscript** (`src/portable-window.ts`,
+   filled at build time by `scripts/portable-window-plugin.ts` from the
+   partner build) in a closed shadow root at a fixed size (rem → px), fed
+   only through the chat-only HTTP broker (`read` / `send`). No fetch, no
+   eval, no remote code: the window's code is one function inside the
+   script, run only when chat opens.
 
-QA: `bun scripts/qa/qa-portable-li-window.ts --shots <dir>` (normal and
-strict-CSP pages, light and dark, the build evaluated in an isolated world).
+- **No other chat UI.** The hand-built plain panel is gone; `portable-li-panel.ts`
+  keeps only the consent prompt's styles.
+- **Drafts per account and site.** `draftScope` =
+  `portable~<principal>~<origin>` in the bundled window (required by
+  `mountPortable`), and `portable~<viewer>~<origin>` with `key` = scope in
+  the frame (`lib/partner-frame-chat.ts`). A draft never follows another
+  account or site.
+- **Sends are cancellable.** Every send carries an AbortSignal; stopping the
+  window aborts sends in flight and a late answer adds nothing.
+- **No standing notice.** Only an advanced action (an `@/…` address, page
+  context, files) shows 「去 lianki.com 为这个网站单独打开」 with a link to
+  `/chat?from=<origin>`; nothing is sent for it. The frame no longer shows the
+  chat-only line either.
+- **Why this window.** `data-lk-portable` on `<html>` and one debug line say
+  which window drew or why none did, as reason codes only: `frame`,
+  `bundled frame:blocked`, `none frame:account-mismatch`,
+  `none … bundle:absent`, `none … mount:error <Error: words>`.
+- **Build.** `bun run build:userscript` is `scripts/build-userscript.ts`
+  (the `userbuild` output plus the plugin). The dev servers use the same
+  plugin. A build without it (unit tests, other tools) keeps
+  `portable-window.ts` = null: frame only.
+- **Cost.** `lianki.user.js` 343 KB → about 2.0 MB (gzip 98 KB → 600 KB). On a
+  plain page with chat closed (muted headless Chromium, median of 11):
+  compile 2.9 → 18.1 ms, run 4.8 → 5.0 ms (`scripts/qa/userscript-load-cost.ts`).
+
+QA: `bun scripts/qa/qa-portable-li-sites.ts --shots <dir>` (the built
+userscript in the page's world as ScriptCat raw runs it, on github.com,
+www.zhihu.com and example.com, light and dark, synthetic broker, lianki.com
+routed away); `qa-portable-li-window.ts` (strict-CSP fixture);
+`qa-portable-li.ts` (consent, real route and hub, synthetic AI reply).
 
 ### Extension alternative — assessment only, not implemented
 

@@ -158,14 +158,25 @@ export function createPortableClient(d: PortableClientDeps): PortableClient {
   d.doc.addEventListener("visibilitychange", visible);
   start();
 
+  /** Sends in flight: stop() aborts each (the GM request is cancelled, nothing lands after). */
+  const sending = new Set<AbortController>();
   const deliver = async (line: PortableOutgoing) => {
+    const ac = new AbortController();
+    sending.add(ac);
     let r: PortableResult;
     try {
-      r = await d.call({ op: "send", id: line.id, text: line.text }, d.principal);
+      r = await d.call({ op: "send", id: line.id, text: line.text }, d.principal, ac.signal);
     } catch {
-      r = { ok: false, error: "unavailable" };
+      r = { ok: false, error: ac.signal.aborted ? "cancelled" : "unavailable" };
+    } finally {
+      sending.delete(ac);
     }
-    if (stopped) return;
+    if (stopped || ac.signal.aborted) return;
+    if (!r.ok && r.error === "cancelled") {
+      // Cancelled, not failed: the row goes, nothing is left pending.
+      set({ outgoing: state.outgoing.filter((o) => o.id !== line.id) });
+      return;
+    }
     if (r.ok && r.kind === "accepted") {
       const mine: ChatMessage = { id: line.id, from: "owner", label: "", text: line.text, at: Date.now(), seq: r.seq };
       awaitingSeq = state.messages.some((m) => m.from === "agent" && (m.seq ?? 0) > r.seq) ? undefined : r.seq;
@@ -210,6 +221,8 @@ export function createPortableClient(d: PortableClientDeps): PortableClient {
     stop() {
       stopped = true;
       stop();
+      for (const ac of sending) ac.abort();
+      sending.clear();
       d.doc.removeEventListener("visibilitychange", visible);
       subs.clear();
     },

@@ -23,6 +23,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, watch } from "node:fs";
 import type http from "node:http";
 import { resolve } from "node:path";
+import { partnerBuildCached, portableWindowPlugin } from "../portable-window-plugin";
 
 export const LOADER_PATH = "/dev/loader.user.js";
 export const BUNDLE_PATH = "/dev/userscript.js";
@@ -434,6 +435,8 @@ async function bunBuild(entry: string): Promise<string> {
     target: "browser",
     format: "iife",
     sourcemap: "none",
+    // 随身Li's bundled chat window, as in the release build.
+    plugins: [portableWindowPlugin(await partnerBuildCached())],
   });
   if (!out.success) throw new Error(out.logs.map(String).join("\n"));
   return await out.outputs[0].text();

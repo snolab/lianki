@@ -20,6 +20,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync, watch } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { buildPartner } from "./build-partner-embed";
+import { portableWindowPlugin } from "./portable-window-plugin";
 import {
   type DevClient,
   cleanClientId,
@@ -104,6 +105,8 @@ async function build(): Promise<boolean> {
       define: {
         __LK_PARTNER_SRC__: JSON.stringify(`${origin}/partner-embed.js?rev=${partnerRev}`),
       },
+      // 随身Li's bundled chat window: this same partner build (portable-window-plugin.ts).
+      plugins: [portableWindowPlugin(p)],
     });
     if (!out.success) throw new Error(out.logs.map(String).join("\n"));
     const code = await out.outputs[0].text();

@@ -23,13 +23,13 @@ export default async function PartnerFramePage() {
   ) as unknown as Partial<ChatStrings>;
   // Most characters a selection shared from the host page keeps (M3).
   const shareChars = await cfg("chat.pillShareChars");
-  const portable = getIntlayer("pill-chat", locale as never);
+  // 随身Li's hint, shown only when an advanced action is tried (no standing notice).
+  const portable = getIntlayer("portable-li", locale as never);
   return (
     <PartnerFrame
       strings={strings}
       shareChars={shareChars}
-      chatOnlyText={String(portable.chatOnly)}
-      advancedText={String(portable.advanced)}
+      advancedHint={String(portable.advancedHint)}
     />
   );
 }

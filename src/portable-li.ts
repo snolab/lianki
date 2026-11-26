@@ -13,7 +13,6 @@ import { PORTABLE_LI_STRINGS } from "./portable-li-strings";
 import { pillChatStrings } from "./pill-chat-strings";
 import { PILLCHAT_ON_KEY, flagMirrorOn, siteKey, type GmStore } from "./pill-chat-trust";
 import {
-  portableLiPanel,
   attachPortableStyle,
   PORTABLE_PANEL_CSS,
   type PortableChatCall,
@@ -30,11 +29,26 @@ const trustedOrigins = new Set([
   "https://preview.lianki.com",
 ]);
 export type PortableWatch = (key: string, changed: () => void) => () => void;
+/**
+ * An error as a short reason for the debug line and the attribute: its name
+ * and first words, letters, digits and spaces only, so no token, URL or page
+ * text can ride along.
+ */
+export function portableWhy(e: unknown): string {
+  const err = e as { name?: unknown; message?: unknown } | null;
+  const raw = `${typeof err?.name === "string" ? err.name : "Error"}: ${typeof err?.message === "string" ? err.message : String(e)}`;
+  return raw
+    .replace(/[^A-Za-z0-9 :_-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 60);
+}
 type PortablePanel = { destroy(): void; collapse(value: boolean): void; isCollapsed(): boolean };
 /**
- * The main site's chat window for 随身Li: packages/debug-chat's DebugChat in a
- * closed shadow root (embed/partner-embed.tsx mountPortable), loaded lazily by
- * the userscript. Null when it cannot run here; then the plain panel shows.
+ * The bundled copy of the main site's chat window for 随身Li, for sites whose
+ * CSP refuses the lianki.com frame: packages/debug-chat's DebugChat in a
+ * closed shadow root (embed/partner-embed.tsx mountPortable), part of the
+ * userscript (src/portable-ui-loader.ts). Null in a build without it.
  */
 export type PortableUi = {
   mount(o: {
@@ -42,6 +56,8 @@ export type PortableUi = {
     appOrigin: string;
     call: PortableChatCall;
     principal: string;
+    /** `portable~<principal>~<site origin>`: drafts never cross accounts or sites. */
+    draftScope: string;
     strings: {
       name: string;
       connecting: string;
@@ -65,8 +81,21 @@ export function startPortableLi(d: {
   call: PortableChatCall;
   watch?: PortableWatch;
   signal?: AbortSignal;
-  /** Loads the main site's chat window (lazily, once); absent: the plain panel. */
+  /**
+   * The lianki.com frame (/embed/partner, the same DebugChat, typing private
+   * from the page), with its chat-only ticket handed over its MessagePort
+   * (src/pill-chat.ts). Tried first; "blocked" (CSP frame-src, no answer) → `ui`.
+   */
+  frame?: (o: {
+    /** The consented account: every ticket must be for it. */
+    principal: string;
+    /** The ticket was for someone else (or refused as such): close and ask again. */
+    onAccountMismatch: () => void;
+  }) => { result: Promise<"ready" | "blocked">; destroy(): void };
+  /** The bundled copy of the same window, where the frame is refused. */
   ui?: () => Promise<PortableUi | null>;
+  /** The userscript's debug reporter: which window drew, or why none did (reason codes only). */
+  report?: (what: string, detail: string) => void;
 }) {
   const store = globalChatStore(d.gm);
   // Unsupported/non-web documents must disable only portable chat, never abort LiCards startup.
@@ -105,27 +134,6 @@ export function startPortableLi(d: {
       }),
     );
   };
-  const fallback = (principal: string) => {
-    const p = store.read();
-    const locale = readPortableUiLanguage(d.gm, d.win.navigator.language);
-    return portableLiPanel({
-      doc: d.doc,
-      origin: d.origin,
-      hostOrigin: d.hostOrigin,
-      principal,
-      call: d.call,
-      locale,
-      strings: PORTABLE_LI_STRINGS[locale],
-      common: pillChatStrings(locale),
-      collapsed: p.collapsed.includes(host!),
-      onCollapse: (value) => {
-        store.collapse(host!, value);
-        publish();
-      },
-      onExclude,
-      onInvalidAccount,
-    });
-  };
   const onExclude = () => {
     store.exclude(host!, true);
     panel?.destroy();
@@ -137,62 +145,99 @@ export function startPortableLi(d: {
     close();
     publish(true);
   };
+  /**
+   * The main site's chat window, the same DebugChat everywhere: first in the
+   * lianki.com frame (what he types stays in lianki.com's origin), and where
+   * the site's CSP refuses the frame, the copy bundled in the userscript, in a
+   * closed shadow root. No other chat UI exists.
+   */
   const show = () => {
     if (destroyed || !host || trusted || !d.top || panel || d.doc.visibilityState === "hidden")
       return;
     const p = store.read();
     if (!p.principal || !globalChatAllowed(p, host, p.principal)) return;
     const principal = p.principal;
-    if (!d.ui) {
-      panel = fallback(principal);
-      return;
-    }
-    // The main site's chat window (packages/debug-chat), loaded on first show.
-    // Until it is drawn, a placeholder holds the slot so nothing opens twice.
     const gen = generation;
-    let mounted: { destroy(): void } | undefined;
+    let current: { destroy(): void } | undefined;
     let gone = false;
+    // Holds the place while the frame answers or the window is drawn, so nothing opens twice.
     const slot: PortablePanel = {
       destroy() {
         gone = true;
-        mounted?.destroy();
+        current?.destroy();
+        current = undefined;
       },
       collapse() {},
       isCollapsed: () => false,
     };
     panel = slot;
-    const locale = readPortableUiLanguage(d.gm, d.win.navigator.language);
-    const t = PORTABLE_LI_STRINGS[locale];
-    void d
-      .ui()
-      .then((ui) => {
-        if (gone || generation !== gen || panel !== slot) return;
-        if (ui)
-          try {
-            mounted = ui.mount({
-              doc: d.doc,
-              appOrigin: d.origin,
-              call: d.call,
-              principal,
-              strings: {
-                name: t.title,
-                connecting: t.connecting,
-                failed: t.failed,
-                advancedHint: t.advancedHint,
-                excludeHere: t.excludeHere,
-              },
-              advancedHref: d.origin + portableChatPath(d.hostOrigin),
-              onExclude,
-              onInvalidAccount,
-            });
-            return;
-          } catch {}
-        // The chat window could not load here (no eval, blocked styles): the plain panel.
-        panel = fallback(principal);
-      })
-      .catch(() => {
-        if (!gone && generation === gen && panel === slot) panel = fallback(principal);
-      });
+    const live = () => !gone && !destroyed && generation === gen && panel === slot;
+    const t = strings();
+    void (async () => {
+      // Why the window is what it is (or absent), for a real-browser check: a
+      // reason code, never a secret (portableWhy).
+      let frameWas = d.frame ? "" : "frame:none";
+      if (d.frame) {
+        try {
+          const f = d.frame({
+            principal,
+            onAccountMismatch: () => {
+              if (!live()) return;
+              mark("none frame:account-mismatch");
+              onInvalidAccount();
+            },
+          });
+          current = f;
+          const how = await f.result;
+          if (!live()) return f.destroy();
+          if (how === "ready") return mark("frame");
+          frameWas = "frame:blocked";
+          f.destroy();
+          current = undefined;
+        } catch (e) {
+          frameWas = `frame:error ${portableWhy(e)}`;
+          current = undefined;
+        }
+      }
+      let ui: PortableUi | null = null;
+      try {
+        ui = d.ui ? await d.ui() : null;
+      } catch (e) {
+        if (live()) mark(`none ${frameWas} bundle:error ${portableWhy(e)}`);
+        return;
+      }
+      if (!live()) return;
+      if (!ui) return mark(`none ${frameWas} bundle:absent`);
+      try {
+        current = ui.mount({
+          doc: d.doc,
+          appOrigin: d.origin,
+          call: d.call,
+          principal,
+          draftScope: `portable~${principal}~${d.hostOrigin}`,
+          strings: {
+            name: t.title,
+            connecting: t.connecting,
+            failed: t.failed,
+            advancedHint: t.advancedHint,
+            excludeHere: t.excludeHere,
+          },
+          advancedHref: d.origin + portableChatPath(d.hostOrigin),
+          onExclude,
+          onInvalidAccount,
+        });
+        mark(`bundled ${frameWas}`);
+      } catch (e) {
+        mark(`none ${frameWas} mount:error ${portableWhy(e)}`);
+      }
+    })();
+  };
+  /** One debug line and `data-lk-portable` on <html>: which window drew, or why none did. */
+  const mark = (state: string) => {
+    d.report?.("portable-window", state);
+    try {
+      d.doc.documentElement.setAttribute("data-lk-portable", state);
+    } catch {}
   };
   const allow = async () => {
     const gen = ++generation;

@@ -163,6 +163,12 @@ export type PortableMountOptions = {
   call: PortableCall;
   /** The account the broker bound at consent (x-lianki-chat-principal). */
   principal: string;
+  /**
+   * Where the composer's draft is kept: one per account and site (the
+   * userscript passes `portable~<principal>~<origin>`), so a draft typed on
+   * one site or as one account never shows on another. Required.
+   */
+  draftScope: string;
   /** From the userscript's tables (src/portable-li-strings.ts, intlayer `portable-li`). */
   strings: { name: string; connecting: string; failed: string; advancedHint: string; excludeHere: string };
   /** lianki.com's chat for this website (lib/portable-chat-url.ts), shown with the advanced hint. */
@@ -181,6 +187,7 @@ function Portable({ client, o, portal }: { client: PortableClient; o: PortableMo
     <DebugChat
       embedded
       attach={false}
+      draftScope={o.draftScope}
       portalRoot={portal}
       live={s.live}
       // Li answers through the hub's AI reply whenever the broker reads: present while connected.
@@ -210,6 +217,9 @@ export function mountPortable(o: PortableMountOptions): {
   root: ShadowRoot;
   destroy(): void;
 } {
+  // No scope = the shared, unscoped draft store: another account or site would see it.
+  if (typeof o.draftScope !== "string" || !o.draftScope.startsWith("portable~"))
+    throw new Error("portable chat needs an account and site draft scope");
   const shadow = createShadowHost(o.doc, o.css);
   if (shadow.styles === "blocked") {
     shadow.destroy();

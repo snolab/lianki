@@ -162,6 +162,59 @@ describe("createPortableClient", () => {
     c.stop();
   });
 
+  test("stop aborts a send in flight through its signal; a late answer adds nothing (review #1123 P2)", async () => {
+    let sendSignal: AbortSignal | undefined;
+    let answer!: (v: unknown) => void;
+    const call: PortableCall = async (input, _p, signal) => {
+      if (input.op === "send") {
+        sendSignal = signal;
+        return new Promise((r) => (answer = r as never)) as never;
+      }
+      return new Promise((r) =>
+        signal?.addEventListener("abort", () => r({ ok: false, error: "cancelled" })),
+      );
+    };
+    const c = createPortableClient({
+      call,
+      principal: "acct",
+      doc: doc(),
+      busyLabel: "Li",
+      failedLabel: "failed",
+      onInvalidAccount() {},
+    });
+    let heard = 0;
+    c.subscribe(() => heard++);
+    c.send("synthetic cancellation");
+    await turn();
+    expect(sendSignal).toBeDefined();
+    expect(sendSignal!.aborted).toBe(false);
+    c.stop();
+    expect(sendSignal!.aborted).toBe(true);
+    const before = heard;
+    answer({ ok: true, kind: "accepted", id: "late_accept", seq: 9 });
+    await turn();
+    expect(heard).toBe(before);
+    expect(c.get().messages).toEqual([]);
+  });
+
+  test("a send the transport reports cancelled leaves no row pending and no failure", async () => {
+    const b = broker(range({}), { send: () => ({ ok: false, error: "cancelled" }) });
+    const c = createPortableClient({
+      call: b.call,
+      principal: "acct",
+      doc: doc(),
+      busyLabel: "Li",
+      failedLabel: "failed",
+      onInvalidAccount() {},
+    });
+    await turn();
+    c.send("hi");
+    await turn();
+    expect(c.get().outgoing).toEqual([]);
+    expect(c.get().problem).toBeUndefined();
+    c.stop();
+  });
+
   test("signed out or another account closes it through the host", async () => {
     let invalid = 0;
     const call: PortableCall = async () => ({ ok: false, error: "account-changed" });

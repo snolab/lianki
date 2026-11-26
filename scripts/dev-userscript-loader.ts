@@ -22,6 +22,7 @@
  */
 import { watch } from "fs";
 import { formatMetaBlock, parseUserscriptMeta, withoutAutoUpdate } from "./userscript-meta";
+import { partnerBuildCached, portableWindowPlugin } from "./portable-window-plugin";
 
 const ENTRY = "src/lianki.user.ts";
 /** Rebuild when anything here changes — the bundle inlines @lianki/core too. */
@@ -88,6 +89,8 @@ async function rebuild(): Promise<void> {
     // Matches the release build (userbuild): readable output, no minification,
     // so stack traces in the console point at real identifiers.
     minify: false,
+    // 随身Li's bundled chat window, as in the release build.
+    plugins: [portableWindowPlugin(await partnerBuildCached())],
   });
   if (!out.success) {
     console.error("[lianki dev] build failed:\n" + out.logs.join("\n"));

@@ -6,7 +6,9 @@ import { writeStateTree, STATE_TREE_MODULE } from "./gen-state-tree";
 import { join } from "path";
 import { planPreCommit, USERSCRIPT_OUT } from "./pre-commit-plan";
 
-const run = (cmd: string) => execSync(cmd, { encoding: "utf-8" });
+// 64 MB: `git show :public/lianki.user.js` is ~2.5 MB since 随身Li's window is
+// bundled in (docs/userscript-li-chat.md), past execSync's 1 MB default.
+const run = (cmd: string) => execSync(cmd, { encoding: "utf-8", maxBuffer: 64 * 1024 * 1024 });
 const die = (msg: string): never => {
   console.error(msg);
   process.exit(1);

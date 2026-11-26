@@ -46,6 +46,49 @@ import {
 } from "./pill-chat-trust";
 import { blockedNote, sitesDialog, trustDialog } from "./pill-chat-ui";
 
+/**
+ * One chat-only ticket for 随身Li's frame, for the consented account only
+ * (contract: the page-ticket answer carries `principal`, the session-verified
+ * account = the signed sub). A valid but different `principal`, or a refusal
+ * as another account, gives no ticket and calls `onAccountMismatch` (the
+ * caller closes the window and asks consent again). A missing or malformed
+ * one gives no ticket only (fail closed: the window just cannot connect).
+ * To be swapped for the backend lane's `portableFrameTicket(origin, pageFetch,
+ * { principal, onAccountChanged })` when it lands; same inputs, same outcome.
+ */
+export async function consentedFrameTicket(o: {
+  fetch: GmFetch;
+  origin: string;
+  principal: string;
+  onAccountMismatch: () => void;
+  report: (what: string, detail: string) => void;
+}): Promise<string | null> {
+  try {
+    const r = await o.fetch(`${o.origin}/api/chat/page-ticket`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const body = await r.json().catch(() => null);
+    if (!r.ok) {
+      if (body?.error === "account-changed" || body?.error === "signed-out") o.onAccountMismatch();
+      return null;
+    }
+    if (typeof body?.ticket !== "string") return null;
+    const said = body.principal;
+    // Missing or malformed (an older issuer): refused, fail closed, just "can't connect".
+    if (typeof said !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(said)) return null;
+    // A valid, different account: the cookie changed under this window. Close, ask again.
+    if (said !== o.principal) {
+      o.report("portable-frame", "ticket principal mismatch");
+      o.onAccountMismatch();
+      return null;
+    }
+    return body.ticket;
+  } catch {
+    return null;
+  }
+}
+
 /** lib/li-thread.ts HOST_ORIGIN_HEADER (unit/li-thread.test.ts keeps the two the same). */
 export const HOST_ORIGIN_HEADER = "x-lianki-host-origin";
 
@@ -214,6 +257,46 @@ export function pillChat(d: PillChatDeps) {
   const isolated = isolatedWorld(d.info as Parameters<typeof isolatedWorld>[0]);
   const report = d.report ?? (() => {});
   const limitedFetch = d.pageFetch;
+  /**
+   * 随身Li in the lianki.com frame (docs/userscript-li-chat.md, "The chat
+   * window"; contract: chat-only page ticket). The ticket comes only from the
+   * fixed cookie-only broker (`POST /api/chat/page-ticket`, never Authorization
+   * or lk:token, in every realm), is fetched only when the frame asks on its
+   * MessagePort, and goes only into that port.
+   *
+   * Bound to the consented account: the answer's `principal` must be it. If
+   * the lianki.com cookie now belongs to someone else, or `principal` is
+   * missing or different, no ticket goes in and the window closes for
+   * re-consent: B's chat never renders in A's window.
+   */
+  function portableFrame(o: { principal: string; onAccountMismatch: () => void }) {
+    const pageTicket = () =>
+      consentedFrameTicket({ fetch: limitedFetch!, origin: d.origin, report, ...o });
+    const shell = (d.frame ?? frameShell)({
+      doc,
+      win,
+      origin: d.origin,
+      label: `${host}${d.path ?? location.pathname}`.slice(0, 300),
+      ticket: pageTicket,
+      gripLabel: EMBED_STRINGS[embedLang()].grip,
+      pos: {
+        get: () => {
+          const p = d.getValue(PARTNER_POS_KEY, null);
+          return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null;
+        },
+        set: (p) => d.setValue(PARTNER_POS_KEY, { x: Math.round(p.x), y: Math.round(p.y) }),
+      },
+    });
+    // A second load means the page navigated our iframe: whatever loaded is not ours.
+    let loads = 0;
+    shell.iframe.addEventListener("load", () => {
+      if (++loads > 1) {
+        report("portable-frame-navigated", host ?? "");
+        shell.destroy();
+      }
+    });
+    return shell;
+  }
   const portable = d.chatRequest
     ? startPortableLi({
         gm: d,
@@ -225,8 +308,10 @@ export function pillChat(d: PillChatDeps) {
         call: pageChatHttpClient(d.origin, d.hostOrigin ?? location.origin, d.chatRequest),
         watch: d.watch,
         signal: d.signal,
-        // In the page's realm the page could replace eval: the plain panel only.
-        ...(isolated && d.portableUi ? { ui: d.portableUi } : {}),
+        report,
+        ...(limitedFetch ? { frame: portableFrame } : {}),
+        // Bundled with the script (no eval, no remote code): fine in any realm.
+        ...(d.portableUi ? { ui: d.portableUi } : {}),
       })
     : undefined;
   let open: { destroy(): void } | null = null;

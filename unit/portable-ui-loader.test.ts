@@ -1,90 +1,75 @@
 import { expect, test } from "bun:test";
-import { PORTABLE_STORE_PREFIX, portableUiLoader } from "../src/portable-ui-loader";
+import { readFileSync } from "node:fs";
+import { PORTABLE_STORE_PREFIX, portableUiBundled } from "../src/portable-ui-loader";
+import type { PortableWindowFactory } from "../src/portable-window";
+import portableWindowStub from "../src/portable-window";
 
-const deps = (over: Partial<Parameters<typeof portableUiLoader>[0]> = {}) => {
+const deps = (factory: PortableWindowFactory | null) => {
   const values = new Map<string, unknown>();
   const reports: string[] = [];
-  let fetches = 0;
   return {
     values,
     reports,
-    fetches: () => fetches,
     d: {
-      src: "https://lianki.com/partner-embed.js",
-      gmFetch: async () => {
-        fetches++;
-        return { ok: true, status: 200, text: async () => "CODE" };
-      },
+      factory,
       getValue: (k: string, dflt?: unknown) => values.get(k) ?? dflt,
       setValue: (k: string, v: unknown) => void values.set(k, v),
       deleteValue: (k: string) => void values.delete(k),
       report: (what: string, detail: string) => void reports.push(`${what}: ${detail}`),
-      ...over,
     },
   };
 };
 
-test("loads the partner build once, mounts with its CSS, keeps its storage in GM under its own prefix", async () => {
+test("the bundled window runs only when first needed, once, and mounts with its CSS; its storage stays in GM under its own prefix", async () => {
+  let runs = 0;
   let mountedWith: Record<string, unknown> | undefined;
-  let gm: { set(k: string, v: string): void } | undefined;
-  const t = deps({
-    evaluate: (code) => {
-      expect(code).toBe("CODE");
-      return (g: typeof gm) => {
-        gm = g;
-        return {
-          css: ["a{}"],
-          api: {
-            mountPortable: (o: Record<string, unknown>) => ((mountedWith = o), { destroy() {} }),
-          },
-        };
-      };
-    },
-  });
-  const load = portableUiLoader(t.d);
+  let gm: Parameters<PortableWindowFactory>[0] = null;
+  const factory: PortableWindowFactory = (g) => {
+    runs++;
+    gm = g;
+    return {
+      css: ["a{}"],
+      rev: "r",
+      api: { mountPortable: (o) => ((mountedWith = o as never), { destroy() {} }) },
+    };
+  };
+  const t = deps(factory);
+  const load = portableUiBundled(t.d);
+  expect(runs).toBe(0);
   const [a, b] = await Promise.all([load(), load()]);
   expect(a).toBe(b);
-  expect(t.fetches()).toBe(1);
-  a!.mount({ principal: "p" } as never);
+  expect(runs).toBe(1);
+  a!.mount({ principal: "p", draftScope: "portable~p~https://x.test" } as never);
   expect(mountedWith).toMatchObject({ principal: "p", css: ["a{}"] });
   gm!.set("lk:x", "1");
   expect(t.values.get(PORTABLE_STORE_PREFIX + "lk:x")).toBe("1");
-  const g = gm as unknown as { get(k: string): unknown; del(k: string): void; keys(): string[] };
-  expect(g.get("lk:x")).toBe("1");
-  g.del("lk:x");
-  expect(g.get("lk:x")).toBeNull();
-  expect(g.keys()).toEqual([]);
+  expect(gm!.get("lk:x")).toBe("1");
+  gm!.del("lk:x");
+  expect(gm!.get("lk:x")).toBeNull();
+  expect(gm!.keys()).toEqual([]);
 });
 
-test("by default the build is evaluated as one function expression", async () => {
-  const t = deps({
-    gmFetch: async () => ({
-      ok: true,
-      status: 200,
-      text: async () =>
-        "(function (gm) { return { css: ['b{}'], api: { mountPortable: function (o) { return { destroy: function () {}, o: o } } } } })",
-    }),
+test("null without the bundle, a throwing build, or one without mountPortable", async () => {
+  expect(portableWindowStub).toBeNull();
+  expect(await portableUiBundled(deps(null).d)()).toBeNull();
+  const throwing = deps(() => {
+    throw new Error("boom");
   });
-  const ui = await portableUiLoader(t.d)();
-  expect(ui).not.toBeNull();
-  expect(typeof ui!.mount({} as never).destroy).toBe("function");
-});
-
-test("null (the plain panel) when the build cannot be fetched, evaluated, or has no mountPortable", async () => {
-  const offline = deps({ gmFetch: async () => ({ ok: false, status: 503, text: async () => "" }) });
-  const load = portableUiLoader(offline.d);
-  expect(await load()).toBeNull();
-  // A failed fetch may be tried again by a later show.
-  expect(await load()).toBeNull();
-  expect(offline.fetches()).toBe(0);
-  const noEval = deps({
-    evaluate: () => {
-      throw new EvalError("unsafe-eval");
-    },
-  });
-  expect(await portableUiLoader(noEval.d)()).toBeNull();
-  expect(noEval.reports[0]).toContain("portable-eval");
-  const old = deps({ evaluate: () => () => ({ css: [], api: {} }) });
-  expect(await portableUiLoader(old.d)()).toBeNull();
+  expect(await portableUiBundled(throwing.d)()).toBeNull();
+  expect(throwing.reports[0]).toContain("boom");
+  const old = deps(() => ({ css: [], rev: "r", api: {} }));
+  expect(await portableUiBundled(old.d)()).toBeNull();
   expect(old.reports[0]).toContain("no mountPortable");
+});
+
+test("no remote code path: the userscript neither fetches nor evaluates the chat window", () => {
+  const loader = readFileSync("src/portable-ui-loader.ts", "utf8").replace(
+    /\/\*[\s\S]*?\*\/|\/\/.*$/gm,
+    "",
+  );
+  const main = readFileSync("src/lianki.user.ts", "utf8");
+  expect(loader).not.toMatch(/\beval\b|gmFetch|GM_xmlhttpRequest|new Function/);
+  expect(main).not.toMatch(/portableUiLoader|portableUi:\s*portableUiLoader/);
+  // The window is part of the script, the same build the release step bundles.
+  expect(main).toContain('import portableWindow from "./portable-window"');
 });

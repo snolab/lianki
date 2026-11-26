@@ -16,7 +16,38 @@ import type { PortableChatCall } from "../src/portable-li-panel";
 const turn = async () => {
   for (let i = 0; i < 12; i++) await Promise.resolve();
 };
-function fixture(url = "https://github.com/", ui?: () => Promise<PortableUi | null>) {
+/**
+ * A stand-in for the bundled DebugChat window: a <lianki-portable-chat> host
+ * with a closed root and a "Hide on this website" button, reading once through
+ * the broker it is handed (as the real client does on mount).
+ */
+function markerUi(win: Window): PortableUi {
+  return {
+    mount(o) {
+      const host = win.document.createElement("lianki-portable-chat");
+      const root = host.attachShadow({ mode: "closed" });
+      const hide = win.document.createElement("button");
+      hide.textContent = o.strings.excludeHere;
+      hide.addEventListener("click", () => o.onExclude());
+      root.append(hide as never);
+      win.document.documentElement.append(host);
+      void o.call({ op: "read", wait: false }, o.principal).then((r) => {
+        if (!r.ok && ["account-changed", "signed-out", "off"].includes(r.error))
+          o.onInvalidAccount();
+      });
+      return { destroy: () => host.remove() };
+    },
+  };
+}
+type FrameDep = (o: { principal: string; onAccountMismatch: () => void }) => {
+  result: Promise<"ready" | "blocked">;
+  destroy(): void;
+};
+function fixture(
+  url = "https://github.com/",
+  ui?: () => Promise<PortableUi | null>,
+  frame?: FrameDep,
+) {
   const win = new Window({ url });
   win.document.documentElement.lang = "zh";
   const restore = stubGlobals({
@@ -93,7 +124,8 @@ function fixture(url = "https://github.com/", ui?: () => Promise<PortableUi | nu
     top: true,
     call,
     signal: ac.signal,
-    ...(ui ? { ui } : {}),
+    ui: ui ?? (async () => markerUi(win as never)),
+    ...(frame ? { frame } : {}),
     watch: (key, fn) => {
       const set = changes.get(key) ?? new Set();
       set.add(fn);
@@ -154,10 +186,6 @@ test("global opt-in never fetches chat first, survives site navigation, retracts
     expect(f.callCount()).toBeGreaterThan(0);
     expect(f.win.document.querySelector("lianki-portable-chat")).not.toBeNull();
     expect(f.win.document.getElementById("existing-card")?.textContent).toBe("Card");
-    f.click("收起");
-    await turn();
-    f.click("展开");
-    await turn();
     let opened = "";
     f.win.open = ((url: unknown) => {
       opened = String(url);
@@ -179,7 +207,7 @@ test("global opt-in never fetches chat first, survives site navigation, retracts
     f.finish();
   }
 });
-test("the main site's chat window is mounted with the broker and the hint link; the plain panel only when it cannot load", async () => {
+test("the lianki.com frame first; where it is refused, the bundled DebugChat with the broker, the hint link and a per-account, per-site draft scope; never a plain panel", async () => {
   const mounts: Parameters<PortableUi["mount"]>[0][] = [];
   let destroyed = 0;
   const ui: PortableUi = {
@@ -188,27 +216,53 @@ test("the main site's chat window is mounted with the broker and the hint link; 
       return { destroy: () => void destroyed++ };
     },
   };
-  let loads = 0;
-  const f = fixture("https://github.com/", async () => (loads++, ui));
+  // 1. The frame answers: it is the window, nothing is bundled-mounted.
+  let frames = 0,
+    framesGone = 0;
+  const ready: FrameDep = () => (
+    frames++, { result: Promise.resolve("ready"), destroy: () => void framesGone++ }
+  );
+  const a = fixture("https://example.org/", async () => ui, ready);
+  try {
+    await turn();
+    a.click("同意所有网站");
+    await turn();
+    expect(frames).toBe(1);
+    expect(mounts).toHaveLength(0);
+    // Closing tears the frame down.
+    a.controller.close();
+    expect(framesGone).toBe(1);
+  } finally {
+    a.finish();
+  }
+  // 2. The frame is refused (CSP frame-src): the bundled window, same component.
+  let blockedGone = 0;
+  const blocked: FrameDep = () => ({
+    result: Promise.resolve("blocked"),
+    destroy: () => void blockedGone++,
+  });
+  const f = fixture("https://github.com/", async () => ui, blocked);
   try {
     await turn();
     f.click("同意所有网站");
     await turn();
-    expect(loads).toBe(1);
+    expect(blockedGone).toBe(1);
     expect(mounts).toHaveLength(1);
     const o = mounts[0];
     expect(o.principal).toBe("account_a");
+    expect(o.draftScope).toBe("portable~account_a~https://github.com");
     expect(o.appOrigin).toBe("https://lianki.com");
     expect(o.strings.name).toBe("随身Li");
     expect(o.strings.advancedHint).toBe("去 lianki.com 为这个网站单独打开");
     expect(o.advancedHref).toBe(
       "https://lianki.com/chat?from=" + encodeURIComponent("https://github.com"),
     );
-    // The plain panel is not drawn beside it, and no standing notice exists anywhere.
     expect(f.win.document.querySelector("lianki-portable-chat")).toBeNull();
     // The broker it was handed is the userscript's chat-only call.
     await o.call({ op: "read", wait: false }, o.principal);
     expect(f.calls.at(-1)).toEqual([{ op: "read", wait: false }, "account_a"]);
+    // A pill tap while it is up goes through the slot.
+    expect(await f.controller.open()).toBe("ready");
     // "Hide on this website" from its menu excludes the site and takes it down.
     o.onExclude();
     await turn();
@@ -217,51 +271,71 @@ test("the main site's chat window is mounted with the broker and the hint link; 
   } finally {
     f.finish();
   }
-  for (const broken of [
-    async () => {
-      throw new Error("load");
-    },
-    async () => ({
-      mount: () => {
-        throw new Error("styles blocked");
-      },
-    }),
-  ]) {
-    const h = fixture("https://github.com/", broken);
-    try {
-      await turn();
-      h.click("同意所有网站");
-      await turn();
-      expect(h.win.document.querySelector("lianki-portable-chat")).not.toBeNull();
-    } finally {
-      h.finish();
-    }
-  }
-  // Pill taps while the window is up, and an account change, go through the slot.
-  const k = fixture("https://github.com/", async () => ui);
+  // Another site, another account: another draft scope.
+  const z = fixture("https://www.zhihu.com/", async () => ui);
   try {
+    z.principal("account_b");
     await turn();
-    k.click("同意所有网站");
+    z.click("同意所有网站");
     await turn();
-    expect(await k.controller.open()).toBe("ready");
-    await turn();
+    expect(mounts.at(-1)!.draftScope).toBe("portable~account_b~https://www.zhihu.com");
     mounts.at(-1)!.onInvalidAccount();
     await turn();
     expect(destroyed).toBe(2);
   } finally {
-    k.finish();
+    z.finish();
   }
-  const g = fixture("https://github.com/", async () => null);
+  // 3. Nothing can draw (no bundle, a throwing frame or mount): no other chat UI appears.
+  for (const [brokenUi, brokenFrame] of [
+    [async () => null, undefined],
+    [
+      async () => {
+        throw new Error("load");
+      },
+      () => {
+        throw new Error("frame");
+      },
+    ],
+    [
+      async () => ({
+        mount: () => {
+          throw new Error("styles blocked");
+        },
+      }),
+      undefined,
+    ],
+  ] as [() => Promise<PortableUi | null>, FrameDep | undefined][]) {
+    const h = fixture("https://github.com/", brokenUi, brokenFrame);
+    try {
+      await turn();
+      h.click("同意所有网站");
+      await turn();
+      expect(h.win.document.querySelector("lianki-portable-chat")).toBeNull();
+      expect(h.roots.filter((r) => r.host.isConnected).map((r) => r.host.localName)).toEqual([]);
+    } finally {
+      h.finish();
+    }
+  }
+  // 4. Closed while the frame is still answering: the late answer draws nothing.
+  let release!: (r: "ready" | "blocked") => void;
+  let lateGone = 0;
+  const slow: FrameDep = () => ({
+    result: new Promise((r) => (release = r)),
+    destroy: () => void lateGone++,
+  });
+  const before = mounts.length;
+  const s = fixture("https://github.com/", async () => ui, slow);
   try {
     await turn();
-    g.click("同意所有网站");
+    s.click("同意所有网站");
     await turn();
-    expect(g.win.document.querySelector("lianki-portable-chat")).not.toBeNull();
-    const panel = g.roots.find((r) => r.host.localName === "lianki-portable-chat");
-    expect(panel?.textContent).toContain("随身Li");
-    expect(panel?.textContent).not.toContain("lianki.com");
+    s.controller.close();
+    release("blocked");
+    await turn();
+    expect(mounts.length).toBe(before);
+    expect(lateGone).toBeGreaterThan(0);
   } finally {
-    g.finish();
+    s.finish();
   }
 });
 test("failed login cannot grant consent, exclusions remove chat, flag-off dismisses consent and abort unhooks observers", async () => {
@@ -495,5 +569,128 @@ test("non-web documents disable only portable chat without aborting legacy card 
     expect(f.win.document.getElementById("legacy-card")).not.toBeNull();
   } finally {
     f.finish();
+  }
+});
+
+test("frame tickets are for the consented account only: a mismatch or a refusal as another account closes for re-consent", async () => {
+  const { consentedFrameTicket } = await import("../src/pill-chat");
+  const asks: { url: string; headers?: Record<string, string> }[] = [];
+  const answer =
+    (status: number, body: unknown) =>
+    async (url: string, opts?: { headers?: Record<string, string> }) => {
+      asks.push({ url, headers: opts?.headers });
+      return { ok: status < 300, status, json: async () => body };
+    };
+  let mismatches = 0;
+  const base = {
+    origin: "https://lianki.com",
+    principal: "account_a",
+    onAccountMismatch: () => void mismatches++,
+    report: () => {},
+  };
+  expect(
+    await consentedFrameTicket({
+      ...base,
+      fetch: answer(200, { ticket: "t1", principal: "account_a" }),
+    }),
+  ).toBe("t1");
+  expect(asks[0].url).toBe("https://lianki.com/api/chat/page-ticket");
+  expect(asks[0].headers?.authorization).toBeUndefined();
+  expect(mismatches).toBe(0);
+  // The cookie switched to B: B's ticket is never handed to A's window.
+  expect(
+    await consentedFrameTicket({
+      ...base,
+      fetch: answer(200, { ticket: "tB", principal: "account_b" }),
+    }),
+  ).toBeNull();
+  expect(
+    await consentedFrameTicket({ ...base, fetch: answer(409, { error: "account-changed" }) }),
+  ).toBeNull();
+  expect(mismatches).toBe(2);
+  // No echo or a malformed one (an older issuer): fail closed, but no re-consent.
+  expect(await consentedFrameTicket({ ...base, fetch: answer(200, { ticket: "t?" }) })).toBeNull();
+  expect(
+    await consentedFrameTicket({
+      ...base,
+      fetch: answer(200, { ticket: "t?", principal: "a b<" }),
+    }),
+  ).toBeNull();
+  expect(mismatches).toBe(2);
+  // Other refusals and network errors: no ticket, no re-consent.
+  expect(
+    await consentedFrameTicket({ ...base, fetch: answer(503, { error: "unavailable" }) }),
+  ).toBeNull();
+  expect(
+    await consentedFrameTicket({
+      ...base,
+      fetch: async () => {
+        throw new Error("net");
+      },
+    }),
+  ).toBeNull();
+  expect(mismatches).toBe(2);
+
+  // In the window: the frame's mismatch closes it and asks for consent again.
+  let frameArgs: { principal: string; onAccountMismatch: () => void } | undefined;
+  let gone = 0;
+  const f = fixture(
+    "https://example.org/",
+    async () => null,
+    (o) => {
+      frameArgs = o;
+      return { result: Promise.resolve("ready"), destroy: () => void gone++ };
+    },
+  );
+  try {
+    await turn();
+    f.click("同意所有网站");
+    await turn();
+    expect(frameArgs?.principal).toBe("account_a");
+    frameArgs!.onAccountMismatch();
+    await turn();
+    expect(gone).toBeGreaterThan(0);
+    expect(globalChatStore(f.gm).read().consent).toBe("unknown");
+    expect(f.win.document.documentElement.getAttribute("data-lk-portable")).toBe(
+      "none frame:account-mismatch",
+    );
+  } finally {
+    f.finish();
+  }
+});
+
+test("why the window fell back is recorded as a reason code on <html>, with no secrets", async () => {
+  const { portableWhy } = await import("../src/portable-li");
+  expect(portableWhy(new Error("styles blocked"))).toBe("Error: styles blocked");
+  expect(portableWhy(new TypeError("https://x.test/?token=abc.def <b>"))).not.toMatch(/[/?=.<>]/);
+  expect(portableWhy("x".repeat(500)).length).toBeLessThanOrEqual(60);
+  const blocked = fixture(
+    "https://github.com/",
+    async () => null,
+    () => ({
+      result: Promise.resolve("blocked"),
+      destroy() {},
+    }),
+  );
+  try {
+    await turn();
+    blocked.click("同意所有网站");
+    await turn();
+    expect(blocked.win.document.documentElement.getAttribute("data-lk-portable")).toBe(
+      "none frame:blocked bundle:absent",
+    );
+  } finally {
+    blocked.finish();
+  }
+  const drawn = fixture("https://github.com/");
+  try {
+    await turn();
+    drawn.click("同意所有网站");
+    await turn();
+    expect(drawn.win.document.documentElement.getAttribute("data-lk-portable")).toBe(
+      "bundled frame:none",
+    );
+  } finally {
+    drawn.finish();
   }
 });
