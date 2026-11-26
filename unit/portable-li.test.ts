@@ -717,7 +717,13 @@ test("the pill wiring opens 随身Li in the lianki.com frame with a consented-ac
     [PILL_UI_LANGUAGE_KEY, "zh"],
   ]);
   const ac = new AbortController();
-  let shellDeps: { ticket: () => Promise<string | null>; label: string } | undefined;
+  let shellDeps:
+    | {
+        ticket: () => Promise<string | null>;
+        label: string;
+        pos: { get(): unknown; set(p: { x: number; y: number }): void };
+      }
+    | undefined;
   let destroyed = 0;
   const iframe = win.document.createElement("iframe");
   const asked: string[] = [];
@@ -754,7 +760,7 @@ test("the pill wiring opens 随身Li in the lianki.com frame with a consented-ac
         setTimeout(() => details.onload({ status: 200, responseText: JSON.stringify(body) }), 0);
         return { abort() {} };
       }) as never,
-      frame: ((deps: { ticket: () => Promise<string | null>; label: string }) => {
+      frame: ((deps: NonNullable<typeof shellDeps>) => {
         shellDeps = deps;
         return {
           result: Promise.resolve("ready" as const),
@@ -777,6 +783,10 @@ test("the pill wiring opens 随身Li in the lianki.com frame with a consented-ac
     expect(await shellDeps!.ticket()).toBe("tk");
     expect(asked).toEqual(["https://lianki.com/api/chat/page-ticket"]);
     expect(win.document.documentElement.getAttribute("data-lk-portable")).toBe("frame");
+    // The frame keeps the partner's dragged position, per device.
+    expect(shellDeps!.pos.get()).toBeNull();
+    shellDeps!.pos.set({ x: 1.4, y: 2.6 });
+    expect(shellDeps!.pos.get()).toEqual({ x: 1, y: 3 });
     iframe.dispatchEvent(new win.Event("load"));
     expect(destroyed).toBe(0);
     iframe.dispatchEvent(new win.Event("load"));
