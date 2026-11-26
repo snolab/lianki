@@ -832,6 +832,12 @@ export type ChatStrings = {
   vpOn: string;
   vpOffState: string;
   dockResize: string;
+  /** Drag overlay label on the bottom-edge drop zone: dropping there fills the screen. Short noun phrase. */
+  snapFullscreen: string;
+  /** Drag overlay label on the right-edge drop zone: dropping there docks the chat as a right sidebar. Short. */
+  snapDockRight: string;
+  /** Drag overlay label on the bottom-right corner drop zone: dropping there minimizes the chat. Short verb. */
+  snapMinimize: string;
   vpPrint: string;
   /** Note in the voiceprint panel when Lianki's speech server (the service that turns speech into text and checks the voice) is not reachable; the mic button shows a green dot when it is. 'Lianki's speech server' is the company's own server; never name a person's computer. One sentence. */
   vpOff: string;
@@ -1201,6 +1207,9 @@ export const CHAT_STRINGS_EN: ChatStrings = {
   vpOn: "On",
   vpOffState: "Off",
   dockResize: "Resize chat sidebar",
+  snapFullscreen: "Full screen",
+  snapDockRight: "Sidebar",
+  snapMinimize: "Minimize",
   vpPrint: "{device}: {n} sentences",
   vpOff: "Needs Lianki's speech server (the green dot on the mic).",
   vpEnrol: "Enrol this device",

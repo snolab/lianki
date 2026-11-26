@@ -34,6 +34,23 @@ import {
   portMsg,
 } from "../packages/debug-chat/src/embed/frame-protocol";
 import type { ShareWhat, SharedPage } from "../packages/debug-chat/src/embed/share";
+import { SIDEBAR_QUERY } from "../packages/debug-chat/src/full-screen";
+import {
+  iconSvg,
+  labelAt,
+  labelStyle,
+  previewStyle,
+  zoneStyle,
+} from "../packages/debug-chat/src/snap-overlay";
+import {
+  SNAP_DEFAULTS,
+  pointerOffScreen,
+  snapAt,
+  snapTargets,
+  type SnapTarget,
+  type SnapViewport,
+} from "../packages/debug-chat/src/snap-targets";
+import { measureSnapViewport } from "../packages/debug-chat/src/snap-viewport";
 
 export type FrameResult = "ready" | "blocked";
 
@@ -49,6 +66,8 @@ export type FrameShellDeps = {
   /** Read the page for a share he asked for in the frame (null: nothing to share). */
   share?: (what: ShareWhat) => SharedPage | null;
   gripLabel: string;
+  /** The Minimize drop zone's label while the grip is dragged (intlayer portable-li `collapse`). */
+  minimizeLabel?: string;
   /** The shell's offset from the bottom-right corner, kept per device. */
   pos?: { get(): Pos | null; set(p: Pos): void };
   readyMs?: number;
@@ -186,26 +205,194 @@ export function frameShell(d: FrameShellDeps): FrameShell {
   win.addEventListener("message", onMessage as EventListener);
   doc.addEventListener("securitypolicyviolation", onViolation as EventListener);
 
-  // Drag by the grip; double-click minimizes (the frame stays, with its socket).
-  let drag: { x: number; y: number; from: Pos } | null = null;
+  // Drag by the grip (docs/chat-drag-ux.md, "随身Li frame path"): past a
+  // threshold, one write per frame, kept on the HOST page's screen, the
+  // bottom-right corner a Minimize zone drawn as on lianki.com
+  // (snap-targets.ts, the same function). Escape, pointercancel or a release
+  // off-screen puts it back. A tap on the minimized grip, or a double-click,
+  // brings the frame back (the frame stays, with its socket).
+  let minimized = false;
+  const setMinimized = (on: boolean) => {
+    minimized = on;
+    css(iframe, [["display", on ? "none" : "block"]]);
+  };
+  const view = (doc.defaultView ?? null) as (Window & typeof globalThis) | null;
+  const raf = (f: () => void) =>
+    view?.requestAnimationFrame ? view.requestAnimationFrame(f) : (f(), 0);
+  const caf = (id: number) => view?.cancelAnimationFrame?.(id);
+  let drag: {
+    x: number;
+    y: number;
+    from: Pos;
+    moved: boolean;
+    /** The host rect at the start (clamp), the viewport and zones (snap-targets.ts). */
+    rect?: DOMRect;
+    vp?: SnapViewport;
+    targets?: SnapTarget[];
+    hot?: SnapTarget | null;
+    cx: number;
+    cy: number;
+    frame: number;
+  } | null = null;
+  const overlay = doc.createElement("div");
+  css(overlay, [["all", "initial"]]);
+  root.append(overlay);
+  const drawOverlay = () => {
+    overlay.replaceChildren();
+    const g = drag;
+    if (!g?.vp || !g.targets) return;
+    for (const t of g.targets) {
+      const hot = g.hot?.id === t.id;
+      const zone = doc.createElement("div");
+      Object.assign(
+        zone.style,
+        zoneStyle(t, { hot, shown: true, ms: SNAP_DEFAULTS.hintMs, reduce: reduced() }),
+      );
+      overlay.append(zone);
+      if (hot) {
+        const p = doc.createElement("div");
+        Object.assign(p.style, previewStyle(t.result, { alpha: SNAP_DEFAULTS.previewPct / 100 }));
+        p.dataset.lkSnapPreview = t.id;
+        overlay.append(p);
+      }
+      const label = doc.createElement("div");
+      Object.assign(
+        label.style,
+        labelStyle(labelAt(t, g.vp), {
+          hot,
+          vertical: false,
+          ms: SNAP_DEFAULTS.hintMs,
+          reduce: reduced(),
+        }),
+      );
+      label.append(iconSvg(doc, t.id), doc.createTextNode(d.minimizeLabel ?? "Minimize"));
+      overlay.append(label);
+    }
+  };
+  const reduced = () => {
+    try {
+      return !!view?.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    } catch {
+      return false;
+    }
+  };
+  const stop = () => {
+    if (drag) caf(drag.frame);
+    const drew = !!drag?.targets;
+    drag = null;
+    if (drew) overlay.replaceChildren();
+    view?.removeEventListener("keydown", onKey, true);
+    view?.removeEventListener("resize", cancelDrag);
+    view?.visualViewport?.removeEventListener("resize", cancelDrag);
+    view?.visualViewport?.removeEventListener("scroll", cancelDrag);
+  };
+  /** Back to where the drag found it, nothing saved. */
+  function cancelDrag() {
+    if (!drag) return;
+    pos = drag.from;
+    place();
+    stop();
+  }
+  function onKey(e: KeyboardEvent) {
+    if (e.key !== "Escape" || !drag) return;
+    e.preventDefault();
+    e.stopPropagation();
+    cancelDrag();
+  }
+  const step = () => {
+    const g = drag;
+    if (!g) return;
+    g.frame = 0;
+    let dx = g.cx - g.x;
+    let dy = g.cy - g.y;
+    // Kept on the host page's screen: the shell's rect at the start, moved by (dx, dy).
+    if (g.rect && g.vp) {
+      dx = Math.max(-g.rect.left, Math.min(g.vp.w - g.rect.right, dx));
+      dy = Math.max(g.vp.y - g.rect.top, Math.min(g.vp.y + g.vp.h - g.rect.bottom, dy));
+    }
+    // right/bottom insets: a move right or down lowers them.
+    pos = { x: g.from.x + dx, y: g.from.y + dy };
+    place();
+    const hot = g.targets ? snapAt(g.targets, g.cx, g.cy) : null;
+    if (hot?.id !== g.hot?.id) {
+      g.hot = hot;
+      drawOverlay();
+    }
+  };
   grip.addEventListener("pointerdown", (e: PointerEvent) => {
-    drag = { x: e.clientX, y: e.clientY, from: pos };
+    if ((e.button ?? 0) !== 0) return;
+    drag = {
+      x: e.clientX,
+      y: e.clientY,
+      from: pos,
+      moved: false,
+      cx: e.clientX,
+      cy: e.clientY,
+      frame: 0,
+    };
     grip.setPointerCapture?.(e.pointerId);
   });
   grip.addEventListener("pointermove", (e: PointerEvent) => {
-    if (!drag) return;
-    pos = { x: drag.from.x + e.clientX - drag.x, y: drag.from.y + e.clientY - drag.y };
-    place();
+    const g = drag;
+    if (!g) return;
+    g.cx = e.clientX;
+    g.cy = e.clientY;
+    if (!g.moved) {
+      if (Math.hypot(g.cx - g.x, g.cy - g.y) < SNAP_DEFAULTS.dragThresholdPx) return;
+      g.moved = true;
+      if (view) {
+        g.rect = host.getBoundingClientRect();
+        g.vp = measureSnapViewport(view, SIDEBAR_QUERY);
+        const r = grip.getBoundingClientRect();
+        g.targets = snapTargets(g.vp, {
+          fullAllowed: false,
+          dockAllowed: false,
+          open: !minimized,
+          dockWidth: 0,
+          pill: { w: r.width, h: r.height },
+          home: { right: g.vp.x + g.vp.w - 8, bottom: g.vp.y + g.vp.h - 8 },
+        });
+        g.hot = null;
+        drawOverlay();
+        view.addEventListener("keydown", onKey, true);
+        // The host page's viewport changing under the drag (a resize, the
+        // keyboard panning or a pinch: visualViewport resize/scroll) cancels it,
+        // the shell back where it was (docs/chat-drag-ux.md, "Resize & rotation").
+        view.addEventListener("resize", cancelDrag);
+        view.visualViewport?.addEventListener("resize", cancelDrag);
+        view.visualViewport?.addEventListener("scroll", cancelDrag);
+      }
+    }
+    if (!g.frame) g.frame = raf(step);
   });
-  grip.addEventListener("pointerup", () => {
-    if (drag) d.pos?.set(pos);
-    drag = null;
+  grip.addEventListener("pointerup", (e: PointerEvent) => {
+    const g = drag;
+    if (!g) return;
+    if (!g.moved) {
+      stop();
+      // A tap on the minimized grip brings the frame back (touch has no double-click).
+      if (minimized) setMinimized(false);
+      return;
+    }
+    if (g.frame) {
+      caf(g.frame);
+      step();
+    }
+    const x = e.clientX;
+    const y = e.clientY;
+    if (g.vp && pointerOffScreen(g.vp, x, y)) return cancelDrag();
+    const hot = g.targets ? snapAt(g.targets, x, y) : null;
+    if (hot?.id === "minimize") {
+      // Folded to the grip in its home corner, as the preview showed.
+      pos = { x: 0, y: 0 };
+      place();
+      setMinimized(true);
+    }
+    d.pos?.set(pos);
+    stop();
   });
-  let minimized = false;
-  grip.addEventListener("dblclick", () => {
-    minimized = !minimized;
-    css(iframe, [["display", minimized ? "none" : "block"]]);
-  });
+  grip.addEventListener("pointercancel", () => cancelDrag());
+  grip.addEventListener("dblclick", () => setMinimized(!minimized));
 
   (doc.documentElement ?? doc.body).append(host);
   return {
@@ -215,6 +402,7 @@ export function frameShell(d: FrameShellDeps): FrameShell {
     host,
     destroy() {
       for (const t of timers) clearTimeout(t);
+      stop();
       settle("blocked");
       win.removeEventListener("message", onMessage as EventListener);
       doc.removeEventListener("securitypolicyviolation", onViolation as EventListener);

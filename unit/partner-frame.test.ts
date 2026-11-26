@@ -371,6 +371,26 @@ describe("frame shell (userscript side)", () => {
     expect(iframe.props.get("display")).toBe("block");
     shell.destroy();
   });
+
+  it("a wobble under the threshold is no drag; pointercancel puts it back, unsaved (docs/chat-drag-ux.md)", () => {
+    const { grip, host, saved, shell } = shellSetup();
+    const right = host.props.get("right");
+    const bottom = host.props.get("bottom");
+    grip.fire("pointerdown", { clientX: 100, clientY: 100, pointerId: 1 });
+    grip.fire("pointermove", { clientX: 102, clientY: 101 });
+    expect(host.props.get("right")).toBe(right);
+    grip.fire("pointerup");
+    expect(saved).toEqual([]);
+    grip.fire("pointerdown", { clientX: 100, clientY: 100, pointerId: 1 });
+    grip.fire("pointermove", { clientX: 60, clientY: 70 });
+    expect(host.props.get("right")).not.toBe(right);
+    grip.fire("pointercancel");
+    expect(host.props.get("right")).toBe(right);
+    expect(host.props.get("bottom")).toBe(bottom);
+    grip.fire("pointerup");
+    expect(saved).toEqual([]);
+    shell.destroy();
+  });
 });
 
 // ── M3: sharing the page, only when the frame asks (docs/userscript-li-chat.md) ──

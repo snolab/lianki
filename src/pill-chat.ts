@@ -33,6 +33,7 @@ import { readShare } from "../packages/debug-chat/src/embed/share";
 import { frameShell } from "./partner-frame";
 import { PORTABLE_CAP } from "../packages/debug-chat/src/embed/frame-protocol";
 import { readPortableUiLanguage } from "./pill-chat-language";
+import { PORTABLE_LI_STRINGS } from "./portable-li-strings";
 import { PARTNER_POS_KEY, pageRealmNote } from "./partner";
 import { pillChatStrings, type PillChatStrings } from "./pill-chat-strings";
 import {
@@ -330,6 +331,12 @@ export function pillChat(d: PillChatDeps) {
       locale: readPortableUiLanguage(d, win.navigator?.language),
       // As big as the bundled window: never content-sized or clipped.
       fixedSize: PORTABLE_FRAME_SIZE,
+      // The corner drop zone's label while the grip is dragged (portable-li `collapse`).
+      minimizeLabel: (
+        (PORTABLE_LI_STRINGS as Record<string, { collapse: string } | undefined>)[
+          readPortableUiLanguage(d, win.navigator?.language)
+        ] ?? PORTABLE_LI_STRINGS.en
+      ).collapse,
       pos: {
         get: () => {
           const p = d.getValue(PARTNER_POS_KEY, null);

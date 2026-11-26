@@ -268,8 +268,6 @@ import { DockResize } from "./DockResize";
 import {
   DOCK_WIDTH_VAR,
   DOCK_RIGHT_VAR,
-  clampDockWidth,
-  dockBounds,
   dockViewport,
 } from "./dock-resize";
 import { keyboardLift } from "./keyboard-lift";
@@ -281,8 +279,6 @@ import {
   FULL_SIDEBAR_STYLE,
   FULL_TOP_VAR,
   SIDEBAR_QUERY,
-  SIDEBAR_MIN_REM,
-  SIDEBAR_W,
   SIDEBAR_RESERVE_VAR,
   escapeLeaves,
   fullBarSpan,
@@ -293,12 +289,28 @@ import {
   fullScreenBox,
   fullScreenOn,
   dragLeavesFull,
-  dropEntersFull,
-  FULL_HINT_HAPTIC_MS,
-  FULL_HINT_STYLE,
-  fullHintStep,
 } from "./full-screen";
 import { FullScreenMenuItem } from "./FullScreenMenuItem";
+import { publicCfg } from "@/lib/config-client";
+import { SnapOverlay, type SnapOverlayState } from "./SnapOverlay";
+import {
+  fullModeFor,
+  pointerOffScreen,
+  sidebarNow,
+  snapAt,
+  snapshotMode,
+  snapTargets,
+  type DragSnapshot,
+  type FullMode,
+  type Rect,
+  type SnapTarget,
+  type SnapViewport,
+} from "./snap-targets";
+import { measureSnapViewport, sidebarWidth } from "./snap-viewport";
+
+/** The sidebar's width now, px, saved or default: the one function for preview and landing. */
+const dockWidthNow = (saved: number | null, rem: number) =>
+  sidebarWidth(innerWidth, typeof visualViewport === "undefined" ? null : visualViewport, saved, rem);
 import { SealStamp } from "./SealStamp";
 import { CHAT_UI_EVENT, chatUiOf, runMenuCue } from "./ui-cue";
 import { onChatOpen } from "./island-bus";
@@ -400,18 +412,36 @@ const STRIP_GLASS = {
  */
 /**
  * Where a drag left the bar and its box: their spans, viewport px (fold.ts
- * edges); `bottom` is the bar's resting bottom (full-screen.ts dropEntersFull).
+ * edges); `bottom` is the bar's resting bottom. Zones are hit by the pointer (snap-targets.ts).
  */
 type DropSpan = { left: number; right: number; boxLeft: number; boxRight: number; bottom: number };
 
 /** Full screen as a drag sees it: on now, and the way out when the drag leaves it upward. */
-type DragFull = { now: () => boolean; leave: () => void };
+type DragFull = { now: () => boolean; leave: () => void; leavePx: () => number };
+
+/**
+ * The drop zones' side of a drag (snap-targets.ts; docs/chat-drag-ux.md):
+ * told when the drag starts (past the threshold), on every pointer move,
+ * and asked at the drop what it was. `snap`: a zone took it (the box goes
+ * back to its pre-drag place, the caller applies the result); `cancel`:
+ * released off-screen, the snapshot is restored; `free`: a free move.
+ * `cancelled`: Escape, pointercancel or a resize ended it, nothing saved.
+ */
+type DragSnapHooks = {
+  enabled: () => boolean;
+  thresholdPx: () => number;
+  start: (px: number, py: number) => void;
+  move: (cx: number, cy: number) => void;
+  drop: (cx: number, cy: number) => "free" | "cancel" | "snap";
+  cancelled: () => void;
+};
 
 function useDrag(
   onDrop?: (at: DropSpan) => void,
   fullDrag?: DragFull,
-  /** Where the bar would rest after each move; null once the press is over (the full-screen hint). */
+  /** Where the bar would rest after each move; null once the press is over. */
   onMove?: (at: DropSpan | null) => void,
+  snap?: DragSnapHooks,
 ) {
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
     try {
@@ -437,11 +467,16 @@ function useDrag(
     last?: DropSpan;
     box?: HTMLElement;
     gaps?: ReturnType<typeof createGapMeter>;
+    /** The pointer's latest point (the drop's zone is where it is let go). */
+    cx?: number;
+    cy?: number;
   } | null>(null);
   const dropRef = useRef(onDrop);
   dropRef.current = onDrop;
   const moveRef = useRef(onMove);
   moveRef.current = onMove;
+  const snapRef = useRef(snap);
+  snapRef.current = snap;
   /** The click that ends a drag is not a tap (cleared on the next press, or after 400 ms). */
   const dragged = useRef(createDragFlag());
   /** The pill is held down: the input shows how to use it. */
@@ -493,13 +528,20 @@ function useDrag(
     if (!d || !box) return;
     const dx = cx - d.px;
     const dy = cy - d.py;
-    if (!d.moved && Math.hypot(dx, dy) < 5) return;
-    d.moved = true;
-    // Full screen does not move: a drag up past FULL_LEAVE_PX leaves it, and
+    if (!d.moved && Math.hypot(dx, dy) < (snapRef.current?.thresholdPx() ?? 5)) return;
+    if (!d.moved) {
+      d.moved = true;
+      // The drag starts: the snapshot is taken and every zone shows (snap-targets.ts).
+      snapRef.current?.start(d.px, d.py);
+    }
+    d.cx = cx;
+    d.cy = cy;
+    snapRef.current?.move(cx, cy);
+    // Full screen does not move: a drag up past chat.fullLeavePx leaves it, and
     // the panel, back where it was, follows the finger from the next move on
     // (measured afresh then: this frame's rect is still the full-screen bar's).
     if (fullDrag?.now()) {
-      if (dragLeavesFull({ full: true, dy })) {
+      if (dragLeavesFull({ full: true, dy }, fullDrag.leavePx())) {
         fullDrag.leave();
         d.geom = undefined;
       }
@@ -528,24 +570,68 @@ function useDrag(
     setPos(at);
     if (save) write(POS_KEY, JSON.stringify(at));
   };
-  /** The press is over: a drag is saved, and its drop told (the fold's edge, fold.ts). */
+  /**
+   * The box back where the drag found it: its pending frame dropped and the
+   * offset React holds (never changed during a drag) written again, since
+   * React would not rewrite a style it thinks is unchanged.
+   */
+  const putBack = (d: NonNullable<typeof drag.current>) => {
+    frame.current!.cancel();
+    const box = d.box;
+    if (!box) return;
+    box.style.willChange = "";
+    const p = posRef.current;
+    box.style.transform = `translate(${p.x}px, calc(${p.y}px - var(${KB_LIFT_VAR}, 0px)))`;
+  };
+  /**
+   * The press is over: a zone takes the drop (snap-targets.ts), a release
+   * off-screen cancels it, otherwise a free move is saved and its drop told
+   * (the fold's edge, fold.ts).
+   */
   const end = () => {
     setHolding(false);
     const d = drag.current;
-    if (d?.moved) settle(d, true);
-    else frame.current!.cancel();
     drag.current = null;
     moveRef.current?.(null);
-    if (!d?.moved) return;
+    if (!d?.moved) {
+      frame.current!.cancel();
+      return;
+    }
     dragged.current.dragEnded();
+    const how = snapRef.current?.drop(d.cx ?? d.px, d.cy ?? d.py) ?? "free";
+    if (how !== "free") {
+      putBack(d);
+      if (how === "cancel") snapRef.current?.cancelled();
+      moved();
+      return;
+    }
+    settle(d, true);
     if (d.last) dropRef.current?.(d.last);
     moved();
   };
-  /** Move the box sideways by dx, saved: the pill kept in place as the box mirrors (fold.ts). */
-  const shift = (dx: number) => {
-    if (!dx) return;
+  /**
+   * Escape, pointercancel, a resize or rotation mid-drag (codex review,
+   * 2026-11-27): the snapshot comes back exactly, nothing is saved.
+   */
+  const cancel = () => {
+    setHolding(false);
+    const d = drag.current;
+    drag.current = null;
+    moveRef.current?.(null);
+    if (!d) return;
+    if (!d.moved) return frame.current!.cancel();
+    dragged.current.dragEnded();
+    putBack(d);
+    snapRef.current?.cancelled();
+  };
+  /** A drag is under way (past the threshold). */
+  const dragging = () => !!drag.current?.moved;
+  /** Move the box by (dx, dy), saved: the pill kept in place as the box mirrors (fold.ts), or put in its corner. */
+  const shift = (dx: number, dy = 0) => {
+    if (!dx && !dy) return;
     setPos((p) => {
-      const next = { x: p.x + dx, y: p.y };
+      const next = { x: p.x + dx, y: p.y + dy };
+      posRef.current = next;
       write(POS_KEY, JSON.stringify(next));
       return next;
     });
@@ -553,6 +639,8 @@ function useDrag(
   const handle = {
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
       if ((e.target as HTMLElement).closest("button:not([data-drag-handle]), textarea")) return;
+      // The window does not move here (inside 随身Li's frame: the shell moves it).
+      if (snapRef.current && !snapRef.current.enabled()) return;
       setHolding(true);
       const p = posRef.current;
       drag.current = { px: e.clientX, py: e.clientY, x: p.x, y: p.y, moved: false };
@@ -562,15 +650,8 @@ function useDrag(
     onPointerMove: (e: React.PointerEvent<HTMLElement>) =>
       moveTo(e.currentTarget.closest("[data-debug-chat]") as HTMLElement, e.clientX, e.clientY),
     onPointerUp: () => end(),
-    onPointerCancel: () => {
-      setHolding(false);
-      const d = drag.current;
-      // Where the finger left it stays (not remembered), as before.
-      if (d?.moved) settle(d, false);
-      else frame.current!.cancel();
-      drag.current = null;
-      moveRef.current?.(null);
-    },
+    // A stolen touch is a cancel, not a lift (docs/design-principles.md): the snapshot comes back.
+    onPointerCancel: () => cancel(),
     style: { touchAction: "none" as const, cursor: "grab" },
   };
   /**
@@ -578,6 +659,7 @@ function useDrag(
    * the box from here on, as if it had started on a handle at (px, py).
    */
   const begin = (px: number, py: number) => {
+    if (snapRef.current && !snapRef.current.enabled()) return;
     setHolding(true);
     const p = posRef.current;
     drag.current = { px, py, x: p.x, y: p.y, moved: false };
@@ -626,6 +708,10 @@ function useDrag(
     begin,
     moveTo,
     end,
+    cancel,
+    dragging,
+    /** The offset as rendered now (the drag's snapshot). */
+    posNow: () => posRef.current,
     shift,
     moved,
     wasDrag,
@@ -1058,6 +1144,12 @@ export type DebugChatProps = {
    */
   fullScreen?: boolean;
   /**
+   * The window can be dragged (default). Off inside 随身Li's lianki.com frame:
+   * the userscript's shell moves the window there, on the host page's
+   * viewport (docs/chat-drag-ux.md, "single drag owner"); the grip still taps.
+   */
+  movable?: boolean;
+  /**
    * Flag voice.fold-others (default true): fold voice lines recognized as someone
    * other than the owner into a compact avatar button by default. Off: lines show expanded.
    */
@@ -1194,6 +1286,7 @@ export function DebugChat({
   link,
   presence,
   fullScreen: fullScreenFlag = false,
+  movable = true,
   foldOthers = true,
   whisperRecheck,
   pttMaxCaptureMs,
@@ -1334,7 +1427,18 @@ export function DebugChat({
    */
   const fullAllowed = fullScreenAllowed({ flag: fullScreenFlag, owner, embedded });
   const fullPref = useUi(chatPrefs(), (s) => s.full);
-  const full = fullScreenOn({ allowed: fullAllowed, pref: fullPref, open });
+  /**
+   * A drag that left full screen or the sidebar (a drag up past
+   * chat.fullLeavePx) holds it off for now, in this transient state only:
+   * nothing is written until the drop commits (codex review, 2026-11-27), so
+   * a cancel just lets go of the hold.
+   */
+  const [fullHeld, setFullHeld] = useState(false);
+  const fullHeldNow = useRef(fullHeld);
+  fullHeldNow.current = fullHeld;
+  /** Full screen as kept (the device's choice), the drag's hold aside. */
+  const fullKept = fullScreenOn({ allowed: fullAllowed, pref: fullPref, open });
+  const full = fullKept && !fullHeld;
   const fullOn = useRef(full);
   fullOn.current = full;
   /** Wider than SIDEBAR_QUERY (35em): full screen is a sidebar docked right; the media query's change event, no polling. */
@@ -1349,7 +1453,11 @@ export function DebugChat({
     mq.addEventListener("change", on);
     return () => mq.removeEventListener("change", on);
   }, []);
-  const asSidebar = full && sidebar;
+  /** How full screen is drawn (snap-targets.ts FullMode): the bottom zone's whole screen, the right zone's sidebar, or by width. */
+  const fullMode = useUi(chatPrefs(), (s) => s.fullMode ?? "auto");
+  const fullModeNow = useRef(fullMode);
+  fullModeNow.current = fullMode;
+  const asSidebar = sidebarNow({ full, mode: fullMode, wide: sidebar });
   const dockSavedWidth = useUi(chatDock(), (s) => s.width);
   const dockSaved = useRef(dockSavedWidth);
   dockSaved.current = dockSavedWidth;
@@ -1402,19 +1510,51 @@ export function DebugChat({
   const onDrop = useRef((_at: DropSpan) => {});
   /** A drag up out of full screen (set once setFull exists below). */
   const leaveFull = useRef(() => {});
-  /** A drag of the box moved (useDrag): the full-screen hint (set below, where its rule is). */
-  const onDragMove = useRef((_at: DropSpan | null) => {});
-  const { offset, handle, begin, moveTo, end, shift, moved, wasDrag, holding, fit } = useDrag(
+  /** The drop zones' side of a drag (set below, where the fold and full screen are). */
+  const snapHooks = useRef<DragSnapHooks>({
+    enabled: () => movable,
+    thresholdPx: () => publicCfg("chat.dragThresholdPx"),
+    start: () => {},
+    move: () => {},
+    drop: () => "free",
+    cancelled: () => {},
+  });
+  const {
+    offset,
+    handle,
+    begin,
+    moveTo,
+    end,
+    cancel: cancelDrag,
+    dragging: dragActive,
+    posNow,
+    shift,
+    moved,
+    wasDrag,
+    holding,
+    fit,
+  } = useDrag(
     (bar) => onDrop.current(bar),
-    { now: () => fullOn.current, leave: () => leaveFull.current() },
-    (bar) => onDragMove.current(bar),
+    {
+      now: () => fullOn.current,
+      leave: () => leaveFull.current(),
+      leavePx: () => publicCfg("chat.fullLeavePx"),
+    },
+    undefined,
+    {
+      enabled: () => snapHooks.current.enabled(),
+      thresholdPx: () => snapHooks.current.thresholdPx(),
+      start: (x, y) => snapHooks.current.start(x, y),
+      move: (x, y) => snapHooks.current.move(x, y),
+      drop: (x, y) => snapHooks.current.drop(x, y),
+      cancelled: () => snapHooks.current.cancelled(),
+    },
   );
   /**
-   * The drag would enter full screen if let go now (owner, 2026-11-10): the
-   * bottom edge grows toward full screen as a preview, with a light haptic.
+   * The drag overlay (SnapOverlay.tsx; owner, 2026-11-27): every drop zone
+   * from the drag's start, the hovered one's result as a preview. Null at rest.
    */
-  const [fullHint, setFullHint] = useState(false);
-  const fullHintRef = useRef(false);
+  const [snapView, setSnapView] = useState<SnapOverlayState | null>(null);
   /**
    * How far the chat is folded (fold.ts): open, a pill, or tucked into the
    * screen edge, and the edge it keeps to (on the left, everything mirrors).
@@ -1588,14 +1728,9 @@ export function DebugChat({
     if (fullOn.current) {
       if (asSidebarNow.current) {
         const viewport = dockViewport(innerWidth, vv);
-        const bounds = dockBounds(
-          viewport.width,
-          SIDEBAR_MIN_REM * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16),
-        );
-        const desired = dockPreview.current ?? dockSaved.current;
-        const width = desired === null
-          ? `min(${SIDEBAR_W}, ${viewport.width}px)`
-          : `${clampDockWidth(desired, bounds)}px`;
+        const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+        // The same width the drag's preview drew (dockWidthNow), saved or default.
+        const width = `${dockWidthNow(dockPreview.current ?? dockSaved.current, rem)}px`;
         box.style.setProperty(DOCK_WIDTH_VAR, width);
         box.style.setProperty(DOCK_RIGHT_VAR, `${viewport.right}px`);
         document.documentElement.style.setProperty(SIDEBAR_RESERVE_VAR, width);
@@ -3121,13 +3256,30 @@ export function DebugChat({
   const fullAnchor = useRef<ReturnType<typeof anchorNow>>(null);
   /** Entered by a tap in this page: it owns one history entry (Back leaves full screen). */
   const fullByTap = useRef(false);
-  const setFull = (on: boolean, byTap = false) => {
-    if (on === fullOn.current) return;
-    fullAnchor.current = atEnd.current ? null : anchorNow();
+  /**
+   * Full screen on or off; `mode` how it is drawn (snap-targets.ts FullMode):
+   * the menu and the double tap keep `auto`, the drop zones pick `screen` or
+   * `side`, also while it is already on (the sidebar dropped on the bottom).
+   */
+  const setFull = (on: boolean, byTap = false, mode: FullMode = "auto") => {
+    // A drag's hold (fullHeld) is let go here: the drop commits what it chose.
+    const held = fullHeldNow.current;
+    if (held) {
+      fullHeldNow.current = false;
+      setFullHeld(false);
+    }
+    if (!held && on === fullOn.current && (!on || mode === fullModeNow.current)) return;
+    if (on !== fullOn.current) fullAnchor.current = atEnd.current ? null : anchorNow();
     fullByTap.current = on && byTap;
-    chatPrefs().setState({ full: on });
+    chatPrefs().setState(on ? { full: true, fullMode: mode } : { full: false });
   };
-  leaveFull.current = () => setFull(false);
+  // A drag up out of full screen: held off for the drag only, nothing written yet.
+  leaveFull.current = () => {
+    fullHeldNow.current = true;
+    setFullHeld(true);
+    // Out of full screen now: its zone is back on offer (measured after this render).
+    snapDrag.current?.remeasure();
+  };
   useLayoutEffect(() => {
     const el = log.current;
     const a = fullAnchor.current;
@@ -3148,8 +3300,9 @@ export function DebugChat({
   // Back leaves full screen (docs/ui-state.md, "Back closes an overlay";
   // full-screen.ts fullScreenBack): its entry is taken at once after a tap,
   // else at the first gesture. Left any other way, the entry is consumed.
+  // Follows full screen as kept, so a drag's transient hold leaves the history alone.
   useEffect(() => {
-    if (!full || !backToClose) return;
+    if (!fullKept || !backToClose) return;
     const close = fullScreenBack(
       window,
       backToClose,
@@ -3163,7 +3316,7 @@ export function DebugChat({
       fullByTap.current = false;
       close();
     };
-  }, [full]);
+  }, [fullKept]);
   /** The + menu or the inbox is up: their own Escape closes them first. */
   const attachMenuNow = useRef(false);
   const attachButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -3175,6 +3328,8 @@ export function DebugChat({
     if (!full) return;
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
+      // Mid-drag, Escape cancels the drag (its own listener), never full screen.
+      if (dragActive()) return;
       // Native message popovers dismiss before the surrounding full-screen chat.
       if (document.querySelector(":popover-open")) return;
       if (!escapeLeaves({ full: fullOn.current, panelOpen: panelNow.current !== "none", plusMenu: attachMenuNow.current }))
@@ -3698,38 +3853,222 @@ export function DebugChat({
       cueStop.current?.();
     };
   }, []);
-  // While dragging: the moment letting go would enter full screen, preview it.
-  onDragMove.current = (bar) => {
-    const on =
-      !!bar &&
-      dropEntersFull({
-        allowed: fullAllowed && !tucked,
-        open,
-        full: fullOn.current,
-        barBottom: bar.bottom,
-        vh: innerHeight,
-      });
-    const step = fullHintStep(fullHintRef.current, on);
-    if (!step) return;
-    fullHintRef.current = on;
-    setFullHint(on);
-    // A light tick on the way in (Android; navigator.vibrate is absent on iOS).
-    if (step === "enter") navigator.vibrate?.(FULL_HINT_HAPTIC_MS);
+  /**
+   * The drop zones (snap-targets.ts; docs/chat-drag-ux.md). At the drag's
+   * start: the snapshot to come back to, the viewport (snap-viewport.ts, the
+   * one definition), every zone with its result, and the overlay. Each move:
+   * the zone under the pointer (a render only when it changes). The drop: a
+   * zone's result, a free move, or (released off-screen) the snapshot again.
+   */
+  const snapDrag = useRef<{
+    vp: SnapViewport;
+    targets: SnapTarget[];
+    hot: SnapTarget | null;
+    rect0: Rect;
+    p0: { x: number; y: number };
+    /** The pointer's latest point (a re-measure hits it again). */
+    last: { x: number; y: number } | null;
+    /** Measure the viewport and zones again (next frame). */
+    remeasure: () => void;
+    off: () => void;
+  } | null>(null);
+  /** The drag's snapshot (codex review, 2026-11-27): a cancel puts exactly this back. */
+  const dragSnapshot = useRef<DragSnapshot | null>(null);
+  /** The overlay and its listeners go (the snapshot stays until the outcome is known). */
+  const snapEnd = () => {
+    const s = snapDrag.current;
+    snapDrag.current = null;
+    s?.off();
+    setSnapView(null);
+    return s;
   };
-  // A drag of the box ended: it follows its nearest edge (no tuck: that level is removed).
+  useEffect(() => () => void snapDrag.current?.off(), []);
+  snapHooks.current.start = (px, py) => {
+    snapEnd();
+    const box = root.current;
+    const bar = barEl.current?.getBoundingClientRect();
+    if (!box || !bar) return;
+    const b = box.getBoundingClientRect();
+    const saved = dockSaved.current;
+    const pillH = Math.max(32, Math.min(64, bar.height));
+    /**
+     * The viewport and its zones, from one measure (snap-viewport.ts): at
+     * the start, and again whenever the visual viewport resizes or scrolls
+     * mid-drag (the keyboard opening, a pinch). Preview and landing both come
+     * from this one snapTargets() output.
+     */
+    const measure = () => {
+      const vp = measureSnapViewport(window, SIDEBAR_QUERY);
+      const css = getComputedStyle(document.documentElement);
+      const rem = parseFloat(css.fontSize) || 16;
+      const reserve = parseFloat(css.getPropertyValue("--lk-bottom-reserve")) || 0;
+      // The sidebar's width exactly as liftRef applies it (dockWidthNow: one function).
+      const dockWidth = dockWidthNow(saved, rem);
+      const targets = snapTargets(vp, {
+        fullAllowed: fullAllowed && !tucked,
+        dockAllowed: fullAllowed && !tucked,
+        open: openRef.current,
+        full: fullOn.current,
+        dockWidth,
+        pill: { w: Math.min(bar.width, pillH * 3), h: pillH },
+        home: {
+          right: vp.x + vp.w - vp.safe.right - rem / 2,
+          bottom: vp.y + vp.h - vp.safe.bottom - rem / 2 - reserve,
+        },
+        edgePx: publicCfg("chat.snapZoneEdgePx"),
+        cornerPx: publicCfg("chat.snapZoneCornerPx"),
+      });
+      return { vp, targets };
+    };
+    const { vp, targets } = measure();
+    // The visual viewport moved mid-drag: the zones are measured again (once a frame).
+    let queued = 0;
+    const remeasure = () => {
+      if (queued) return;
+      queued = requestAnimationFrame(() => {
+        queued = 0;
+        const s = snapDrag.current;
+        if (!s) return;
+        const m = measure();
+        s.vp = m.vp;
+        s.targets = m.targets;
+        const hot = s.last ? snapAt(m.targets, s.last.x, s.last.y) : null;
+        s.hot = hot;
+        setSnapView({ vp: m.vp, targets: m.targets, hot: hot?.id ?? null, from: null });
+      });
+    };
+    // A rotation turns the screen under the drag: it is cancelled (the snapshot back).
+    const rotated = () => cancelDrag();
+    // Escape cancels the drag, before full screen's own Escape (which skips while dragging).
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      cancelDrag();
+    };
+    const vv = window.visualViewport;
+    window.addEventListener("resize", remeasure);
+    window.addEventListener("orientationchange", rotated);
+    vv?.addEventListener("resize", remeasure);
+    vv?.addEventListener("scroll", remeasure);
+    window.addEventListener("keydown", key, true);
+    dragSnapshot.current = {
+      mode: snapshotMode({ open: openRef.current, full: fullOn.current, sidebar: asSidebarNow.current }),
+      rect: { x: b.left, y: b.top, w: b.width, h: b.height },
+      pos: { ...posNow() },
+      edge: foldNow.current.edge,
+      dockWidth: saved,
+      pagePadding: document.documentElement.style.paddingRight,
+      fullMode: fullModeNow.current,
+    };
+    snapDrag.current = {
+      vp,
+      targets,
+      hot: null,
+      rect0: { x: b.left, y: b.top, w: b.width, h: b.height },
+      p0: { x: px, y: py },
+      last: null,
+      remeasure,
+      off: () => {
+        if (queued) cancelAnimationFrame(queued);
+        queued = 0;
+        window.removeEventListener("resize", remeasure);
+        window.removeEventListener("orientationchange", rotated);
+        vv?.removeEventListener("resize", remeasure);
+        vv?.removeEventListener("scroll", remeasure);
+        window.removeEventListener("keydown", key, true);
+      },
+    };
+    setSnapView({ vp, targets, hot: null, from: null });
+  };
+  snapHooks.current.move = (cx, cy) => {
+    const s = snapDrag.current;
+    if (!s) return;
+    s.last = { x: cx, y: cy };
+    const t = snapAt(s.targets, cx, cy);
+    if (t?.id === s.hot?.id) return;
+    s.hot = t;
+    // A light tick on the way in (Android; navigator.vibrate is absent on iOS).
+    const haptic = publicCfg("chat.snapHapticMs");
+    if (t && haptic > 0) navigator.vibrate?.(haptic);
+    const r = s.rect0;
+    setSnapView({
+      vp: s.vp,
+      targets: s.targets,
+      hot: t?.id ?? null,
+      from: { x: r.x + cx - s.p0.x, y: r.y + cy - s.p0.y, w: r.w, h: r.h },
+    });
+  };
+  snapHooks.current.drop = (cx, cy) => {
+    const s = snapEnd();
+    // A free drop after leaving full screen commits leaving it, only now.
+    const free = () => {
+      dragSnapshot.current = null;
+      if (fullHeldNow.current) setFull(false);
+      return "free" as const;
+    };
+    if (!s) return free();
+    if (pointerOffScreen(s.vp, cx, cy)) return "cancel";
+    const t = snapAt(s.targets, cx, cy);
+    if (!t) return free();
+    dragSnapshot.current = null;
+    applySnap(t);
+    return "snap";
+  };
+  snapHooks.current.cancelled = () => {
+    snapEnd();
+    const snap = dragSnapshot.current;
+    dragSnapshot.current = null;
+    if (!snap) return;
+    // Nothing was written during the drag (mode, edge, dock width and place
+    // commit only on a drop), so a cancel only lets go of the drag's hold on
+    // full screen; the page's padding follows the sidebar back.
+    if (fullHeldNow.current) {
+      fullHeldNow.current = false;
+      setFullHeld(false);
+    }
+    requestAnimationFrame(() => {
+      const root = document.documentElement;
+      if (root.style.paddingRight !== snap.pagePadding) root.style.paddingRight = snap.pagePadding;
+    });
+  };
+  /** A zone took the drop: its result (snap-targets.ts), as the preview showed it. */
+  const applySnap = (t: SnapTarget) => {
+    const mode = fullModeFor(t.id);
+    if (mode) {
+      setPanel("none");
+      if (!openRef.current) foldBy({ type: "restore" });
+      setFull(true, true, mode);
+      return;
+    }
+    // Minimize: the pill folds, then goes to its corner (the preview's rect).
+    if (fullOn.current || fullHeldNow.current) setFull(false);
+    setPanel("none");
+    foldBy({ type: "dropped", nearest: "right", against: null });
+    foldBy({ type: "minimize" });
+    const home = t.result;
+    const place = () => {
+      const r = barEl.current?.getBoundingClientRect();
+      if (!r) return;
+      shift(Math.round(home.x + home.w - r.right), Math.round(home.y + home.h - r.bottom));
+    };
+    const bar = barEl.current;
+    if (!bar || reducedMotion()) return void requestAnimationFrame(place);
+    // After the fold's own transition (its width), else in case none comes.
+    let done = false;
+    const once = (e?: Event) => {
+      if (done || (e && e.target !== bar)) return;
+      done = true;
+      bar.removeEventListener("transitionend", once);
+      clearTimeout(timer);
+      place();
+    };
+    bar.addEventListener("transitionend", once);
+    const timer = setTimeout(once, 400);
+  };
+  // A free drop: the box follows its nearest edge (no tuck: that level is removed).
   onDrop.current = (bar) => {
     const vw = innerWidth;
-    // Dropped flush against the bottom: full screen (full-screen.ts dropEntersFull).
-    if (
-      dropEntersFull({
-        allowed: fullAllowed && !tucked,
-        open,
-        full: fullOn.current,
-        barBottom: bar.bottom,
-        vh: innerHeight,
-      })
-    )
-      setFull(true, true);
     foldBy({
       type: "dropped",
       nearest: nearestEdge(bar.boxLeft, bar.boxRight, vw),
@@ -4154,6 +4493,15 @@ export function DebugChat({
         onClick={() => gripGesture.current?.click(wasDrag())}
         onDoubleClick={(e) => e.preventDefault()}
         onContextMenu={(e) => { e.preventDefault(); gripGesture.current?.context(); }}
+        // The keyboard moves it too (docs/chat-drag-ux.md): arrows 16 px, Shift 48, kept on screen.
+        onKeyDown={(e) => {
+          const step = e.shiftKey ? 48 : 16;
+          const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+          if (!d || !movable || fullOn.current) return;
+          e.preventDefault();
+          shift(d[0]!, d[1]!);
+          requestAnimationFrame(() => fit(root.current, openRef.current));
+        }}
         style={{
           ...handle.style,
           ...BAR_CONTROL,
@@ -5471,7 +5819,7 @@ export function DebugChat({
         // Only the slide into or out of the edge animates: a drag follows the finger.
         transition: sliding && !holding ? "opacity 150ms, transform 220ms ease-out" : undefined,
         // Full screen: the visible area, edge to edge (the panel's place is kept).
-        ...(full ? (sidebar ? FULL_SIDEBAR_STYLE : FULL_SCREEN_STYLE) : {}),
+        ...(full ? (asSidebar ? FULL_SIDEBAR_STYLE : FULL_SCREEN_STYLE) : {}),
       }}
       className={`fixed right-[calc(0.5rem+env(safe-area-inset-right))] bottom-[calc(0.5rem+env(safe-area-inset-bottom)+var(--lk-bottom-reserve,0px))] z-[var(--lk-z-chat,80)] flex w-[min(20rem,calc(100vw-1rem))] flex-col rounded-xl transition-opacity ${panelOpaque({ typing: typingNow, plusMenu, micActive, fullLog: fullLog !== "off" || full }) ? "opacity-100" : "opacity-60 focus-within:opacity-100 active:opacity-100"} ${full ? "pointer-events-auto" : "pointer-events-none"} lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100`}
     >
@@ -6033,7 +6381,7 @@ export function DebugChat({
         style={{
           gridTemplateColumns: open ? "1fr 0fr" : "0fr 1fr",
           direction: mirrorRow && !full ? "rtl" : undefined,
-          ...(full ? fullBarSpan(sidebar) : {}),
+          ...(full ? fullBarSpan(asSidebar) : {}),
         }}
       >
         {strip && (
@@ -6544,16 +6892,15 @@ export function DebugChat({
       </div>
     </section>
     {tuckEl}
-    {fullAllowed && (
-      // The full-screen preview (full-screen.ts FULL_HINT_STYLE): outside the
-      // section, whose transform would make it the box of a fixed child.
-      <div
-        aria-hidden
-        data-testid="debug-chat-full-hint"
-        data-on={fullHint || undefined}
-        style={FULL_HINT_STYLE(fullHint, reducedMotion())}
-      />
-    )}
+    {/* The drag overlay (SnapOverlay.tsx): outside the section, whose
+    transform would make it the box of a fixed child. */}
+    <SnapOverlay
+      state={snapView}
+      labels={{ fullscreen: t.snapFullscreen, "dock-right": t.snapDockRight, minimize: t.snapMinimize }}
+      ms={reducedMotion() ? 0 : publicCfg("chat.snapHintMs")}
+      alpha={publicCfg("chat.snapPreviewPct") / 100}
+      reduce={reducedMotion()}
+    />
     </>
   );
 }
