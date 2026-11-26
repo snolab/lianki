@@ -9,7 +9,7 @@ import { importReactDomClient, stubGlobals } from "./support/globals";
 
 const { createRoot } = await importReactDomClient();
 const desktop = "在新标签页打开网页。读完按 {shortcut} 回到这里，再打分。";
-const mobile = "在新标签页打开网页。读完按返回回到这里，再打分。";
+const mobile = "在新标签页打开网页。读完按返回或关闭这个标签页，回到这里再打分。";
 const cases: { name: string; ua: string; touch: number; shortcut: ReviewReturnShortcut }[] = [
   {
     name: "Windows",
