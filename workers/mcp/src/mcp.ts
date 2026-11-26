@@ -3,7 +3,8 @@
  * (docs/api-for-agents.md, "Connect via MCP").
  *
  * Transport: MCP Streamable HTTP, stateless. One endpoint; a POST carries one
- * JSON-RPC message (initialize, ping, tools/list, tools/call; a notification
+ * JSON-RPC message (initialize, ping, tools/list, tools/call, and events/* for
+ * MCP Events, forwarded to the main Worker, docs/mcp-events.md; a notification
  * or a response is accepted with 202). The answer is JSON, or one
  * `text/event-stream` event when the client's Accept prefers that. There is
  * no session and nothing to stream unasked, so GET (the server-to-client
@@ -236,6 +237,49 @@ function listed(t: (typeof TOOLS)[number]) {
   };
 }
 
+/**
+ * MCP Events (docs/mcp-events.md): events/* go to the main Worker with the
+ * caller's own token (POST /api/mcp-events), which holds the subscriptions in
+ * D1 and decides everything (the flag mcp.events, the token, its thread). This
+ * Worker still holds no data. A refused token is a 401 as for any call; any
+ * other failure is null.
+ */
+export const EVENTS_PATH = "/api/mcp-events";
+export const EVENT_METHODS = ["events/list", "events/subscribe", "events/unsubscribe"];
+
+async function eventsCall(
+  env: Env,
+  token: string,
+  method: string,
+  params: unknown,
+): Promise<{ result?: unknown; error?: { code: number; message: string; data?: unknown } } | null> {
+  const res = await env.MAIN.fetch(
+    new Request(new URL(EVENTS_PATH, SITE), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        [CLIENT_HEADER]: `mcp-remote/${SERVER_VERSION} ${method}`,
+      },
+      body: JSON.stringify({ method, params }),
+    }),
+  );
+  if (res.status === 401) throw new Unauthorized();
+  if (!res.ok) return null;
+  const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  return body && typeof body === "object" ? body : null;
+}
+
+/** Does this token's account have events now? Never fails initialize: an error is "no". */
+async function eventsOn(env: Env, token: string): Promise<boolean> {
+  try {
+    const out = await eventsCall(env, token, "events/probe", {});
+    return (out?.result as { on?: unknown } | undefined)?.on === true;
+  } catch {
+    return false;
+  }
+}
+
 async function dispatch(
   msg: Rpc,
   id: Id,
@@ -252,6 +296,7 @@ async function dispatch(
     case "initialize": {
       // The token is checked once here, so a bad one fails at connect.
       await identityOf(c, token);
+      const events = await eventsOn(env, token);
       const asked = params.protocolVersion;
       const version =
         typeof asked === "string" && PROTOCOL_VERSIONS.includes(asked)
@@ -262,7 +307,7 @@ async function dispatch(
         id,
         result: {
           protocolVersion: version,
-          capabilities: { tools: { listChanged: false } },
+          capabilities: { tools: { listChanged: false }, ...(events ? { events: {} } : {}) },
           serverInfo: { name: "lianki", title: "Lianki", version: SERVER_VERSION },
           instructions: INSTRUCTIONS,
         },
@@ -306,8 +351,16 @@ async function dispatch(
       if (seen.unauthorized) throw new Unauthorized();
       return { jsonrpc: "2.0", id, result };
     }
-    default:
+    default: {
+      if (typeof msg.method === "string" && EVENT_METHODS.includes(msg.method)) {
+        const out = await eventsCall(env, token, msg.method, params);
+        if (!out) return rpcError(id, -32603, "Events are unavailable right now");
+        if (out.error && typeof out.error === "object")
+          return { jsonrpc: "2.0", id, error: out.error };
+        return { jsonrpc: "2.0", id, result: out.result ?? {} };
+      }
       return rpcError(id, -32601, "Method not found");
+    }
   }
 }
 

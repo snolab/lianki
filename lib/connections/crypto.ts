@@ -13,7 +13,7 @@
 
 import { base64url } from "@/lib/cli-login";
 
-export type SealPurpose = "google-refresh" | "google-oauth-state";
+export type SealPurpose = "google-refresh" | "google-oauth-state" | "mcp-events-secret";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();

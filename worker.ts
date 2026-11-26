@@ -40,6 +40,9 @@ import { type PlayCheckAnswer, type PlayCheckDb, playCheck } from "./lib/play-ch
 import { type EvalTokenAnswer, type EvalTokenDb, evalTokenCheck } from "./lib/eval-token";
 import type { InboxDb } from "./lib/inbox/store";
 import { type ChatLogDb, chatLogOp } from "./lib/chat-log";
+import { mentionEvents } from "./lib/mcp-events/server";
+import { eventsDeps } from "./lib/mcp-events/deps";
+import type { D1Like } from "./lib/d1/types";
 import type { ChatLogAnswer } from "./lib/chat-log-line";
 
 import {
@@ -359,7 +362,21 @@ export class DebugSessions extends WorkerEntrypoint<Env> {
    */
   async chatLog(req: unknown): Promise<ChatLogAnswer> {
     if (!allowChatLog()) return { ok: false, error: "busy" };
-    return chatLogOp(this.env.DB as unknown as ChatLogDb, req);
+    const out = await chatLogOp(this.env.DB as unknown as ChatLogDb, req);
+    // MCP Events (docs/mcp-events.md): a person's new line naming a subscribed
+    // token wakes it. After the write, never holding the hub's answer up;
+    // a line with no "@" reads nothing from D1.
+    if (out.ok && this.env.DB && (req as { op?: unknown } | null)?.op === "put")
+      (this.ctx as Ctx).waitUntil(
+        mentionEvents(
+          eventsDeps(
+            this.env.DB as unknown as D1Like,
+            (this.env as { AUTH_SECRET?: string }).AUTH_SECRET ?? process.env.AUTH_SECRET,
+          ),
+          req,
+        ),
+      );
+    return out;
   }
 
   /**

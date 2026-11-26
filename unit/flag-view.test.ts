@@ -102,7 +102,8 @@ describe("grouping", () => {
     const g = assignGroups();
     expect(g.get("my-box")).toBe(g.get("box.oauth")!);
     // 8 since 2026-11-15: the login-streak and sign-up bonus share a 积分 section.
-    expect(new Set(g.values()).size).toBeLessThan(9);
+    // 9 since 2026-11-27: mcp.oauth and mcp.events share an MCP section.
+    expect(new Set(g.values()).size).toBeLessThan(10);
   });
 
   test("其他, then shipped, come last", () => {
