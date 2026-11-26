@@ -131,6 +131,11 @@ describe("the frame's language and capability", () => {
 
 describe("the frame shell is see-through", () => {
   test("the iframe's color-scheme matches the lianki.com page inside, so no opaque canvas is painted", async () => {
+    const { readFileSync } = await import("node:fs");
+    // The embed side: /embed/partner's document says "normal" too.
+    expect(readFileSync("app/globals.css", "utf8")).toMatch(
+      /html\[data-embed\] \{\s*color-scheme: normal !important;/,
+    );
     const { Window } = await import("happy-dom");
     const { frameShell } = await import("../src/partner-frame");
     const win = new Window({ url: "https://example.org/" });
@@ -145,7 +150,7 @@ describe("the frame shell is see-through", () => {
       capMs: 10,
     });
     try {
-      expect(shell.iframe.style.getPropertyValue("color-scheme")).toBe("light dark");
+      expect(shell.iframe.style.getPropertyValue("color-scheme")).toBe("normal");
       expect(shell.iframe.style.getPropertyValue("background")).toContain("transparent");
       expect(shell.iframe.style.getPropertyValue("width")).toBe("420px");
     } finally {

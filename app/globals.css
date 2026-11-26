@@ -1617,6 +1617,14 @@ html[data-embed],
 html[data-embed] body {
   background: transparent !important;
 }
+/* The embed document's color-scheme must match its iframe element's
+ * ("normal", src/partner-frame.ts): when they differ the browser paints an
+ * opaque canvas behind the frame (the dark box over other sites in dark
+ * mode). Dark colours still follow prefers-color-scheme through the tokens,
+ * so the chat keeps its dark glass. */
+html[data-embed] {
+  color-scheme: normal !important;
+}
 
 /* "Turn off animations" (/words Settings; lib/motion-pref.ts): this device
  * asked for none. Every transition and animation ends at once, in its final

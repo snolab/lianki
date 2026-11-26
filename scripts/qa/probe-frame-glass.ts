@@ -16,6 +16,8 @@ import { launchSilent, newSilentContext } from "./silent.mjs";
 
 const at = Bun.argv.indexOf("--out");
 const out = at > -1 ? Bun.argv[at + 1] : "/private/tmp/portable-li-frame-probe";
+/** --embed-normal: inject the embed-side fix (html[data-embed] color-scheme: normal) into the live frame. */
+const EMBED_NORMAL = Bun.argv.includes("--embed-normal");
 const browser = await launchSilent(chromium);
 try {
   for (const scheme of ["dark", "light"] as const) {
@@ -25,7 +27,12 @@ try {
     });
     const p = await ctx.newPage();
     await p.goto("https://example.com/");
-    for (const cs of ["light dark", "normal"]) {
+    // A busy page behind the frame: stripes, so glass and opacity are visible.
+    await p.addStyleTag({
+      content:
+        "body{background:repeating-linear-gradient(45deg,oklch(0.7 0.15 250) 0 24px,oklch(0.85 0.12 90) 24px 48px)!important}",
+    });
+    for (const cs of EMBED_NORMAL ? ["normal"] : ["light dark", "normal"]) {
       await p.evaluate((cs) => {
         document.querySelectorAll("iframe").forEach((f) => f.remove());
         const f = document.createElement("iframe");
@@ -53,6 +60,9 @@ try {
       }, cs);
       await p.waitForTimeout(8000);
       const fr = p.frames().find((f) => f.url().includes("/embed/partner"));
+      if (fr && EMBED_NORMAL)
+        await fr.addStyleTag({ content: "html[data-embed]{color-scheme:normal!important}" });
+      await p.waitForTimeout(500);
       const info = fr
         ? await fr.evaluate(() => {
             const s = (e: Element) => {
@@ -77,7 +87,9 @@ try {
           })
         : null;
       console.log(scheme, JSON.stringify(cs), JSON.stringify(info));
-      await p.screenshot({ path: `${out}-${scheme}-${cs.replace(" ", "-")}.png` });
+      await p.screenshot({
+        path: `${out}-${scheme}-${cs.replace(" ", "-")}${EMBED_NORMAL ? "-embed-normal" : ""}.png`,
+      });
     }
     await ctx.close();
   }

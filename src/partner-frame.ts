@@ -124,10 +124,10 @@ export function frameShell(d: FrameShellDeps): FrameShell {
     ["width", d.fixedSize?.w ?? `${MIN_W}px`],
     ["height", d.fixedSize?.h ?? `${MIN_H}px`],
     ["background", "transparent"],
-    // The same color-scheme as the lianki.com page inside (globals.css: light,
-    // or dark in dark mode). A mismatch makes the browser paint an opaque
-    // canvas behind the frame: the dark 420×560 box seen on 2.24.58.
-    ["color-scheme", "light dark"],
+    // The same color-scheme as the page inside: /embed/partner forces
+    // "normal" (globals.css html[data-embed]). A mismatch makes the browser
+    // paint an opaque canvas behind the frame (the dark box seen on 2.24.58).
+    ["color-scheme", "normal"],
   ]);
   box.append(grip, iframe);
   root.append(box);
