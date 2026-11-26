@@ -120,6 +120,32 @@ describe("the frame shell's drag on the host page", () => {
     t.s.destroy();
   });
 
+  it("the host's visual viewport moving mid-drag (keyboard pan, pinch) cancels it, unsaved", async () => {
+    const win = page();
+    const vv = Object.assign(new win.EventTarget(), {
+      offsetLeft: 0,
+      offsetTop: 0,
+      width: 1024,
+      height: 768,
+      scale: 1,
+    });
+    Object.defineProperty(win, "visualViewport", { value: vv, configurable: true });
+    const t = shell(win);
+    const right = (t.s.host as HTMLElement).style.getPropertyValue("right");
+    for (const type of ["scroll", "resize"]) {
+      t.ptr("pointerdown", 500, 400);
+      t.ptr("pointermove", 700, 500);
+      await tick();
+      expect((t.s.host as HTMLElement).style.getPropertyValue("right")).not.toBe(right);
+      vv.dispatchEvent(new win.Event(type) as never);
+      expect((t.s.host as HTMLElement).style.getPropertyValue("right")).toBe(right);
+      expect(t.overlay.children.length).toBe(0);
+      t.ptr("pointerup", 700, 500);
+    }
+    expect(t.saved).toEqual([]);
+    t.s.destroy();
+  });
+
   it("a free drop is kept", async () => {
     const win = page();
     const t = shell(win);

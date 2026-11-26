@@ -14,7 +14,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.72
+// @version     2.24.73
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -69551,6 +69551,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       if (drew) overlay.replaceChildren();
       view?.removeEventListener("keydown", onKey, true);
       view?.removeEventListener("resize", cancelDrag);
+      view?.visualViewport?.removeEventListener("resize", cancelDrag);
+      view?.visualViewport?.removeEventListener("scroll", cancelDrag);
     };
     function cancelDrag() {
       if (!drag) return;
@@ -69619,6 +69621,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           drawOverlay();
           view.addEventListener("keydown", onKey, true);
           view.addEventListener("resize", cancelDrag);
+          view.visualViewport?.addEventListener("resize", cancelDrag);
+          view.visualViewport?.addEventListener("scroll", cancelDrag);
         }
       }
       if (!g.frame) g.frame = raf(step);

@@ -11,8 +11,26 @@
 import { describe, expect, it } from "bun:test";
 import { Window } from "happy-dom";
 
-async function page() {
+type VV = { offsetLeft: number; offsetTop: number; width: number; height: number; scale: number };
+
+async function page(vvInit?: VV) {
   const win = new Window({ url: "https://lianki.com/en", width: 1024, height: 768 });
+  // Every storage write, by key (codex review: none during a drag or a cancel).
+  const writes: string[] = [];
+  for (const s of [win.localStorage, win.sessionStorage]) {
+    const set = s.setItem.bind(s);
+    const del = s.removeItem.bind(s);
+    s.setItem = (k: string, v: string) => {
+      writes.push(k);
+      set(k, v);
+    };
+    s.removeItem = (k: string) => {
+      writes.push(k);
+      del(k);
+    };
+  }
+  // A visual viewport (pinch zoom, keyboard) when asked for; happy-dom has none.
+  const vv = vvInit ? Object.assign(new win.EventTarget(), vvInit) : null;
   const g = globalThis as Record<string, unknown>;
   const w = win as unknown as Record<string, unknown>;
   const own = [
@@ -34,10 +52,11 @@ async function page() {
   const saved = new Map(keys.map((k) => [k, Object.getOwnPropertyDescriptor(g, k)]));
   for (const k of keys)
     Object.defineProperty(g, k, {
-      value: k === "IS_REACT_ACT_ENVIRONMENT" ? true : k === "visualViewport" ? null : w[k],
+      value: k === "IS_REACT_ACT_ENVIRONMENT" ? true : k === "visualViewport" ? vv : w[k],
       configurable: true,
       writable: true,
     });
+  Object.defineProperty(win, "visualViewport", { value: vv, configurable: true });
   // happy-dom may lack pointer capture; the drag only needs the calls to exist.
   const proto = (win as unknown as { HTMLElement: { prototype: Record<string, unknown> } })
     .HTMLElement.prototype;
@@ -45,6 +64,8 @@ async function page() {
   proto.releasePointerCapture ??= () => {};
   return {
     win,
+    vv,
+    writes,
     async close() {
       for (const [k, d] of saved)
         if (d) Object.defineProperty(g, k, d);
@@ -67,8 +88,11 @@ const ptr = (p: P, type: string, x: number, y: number) =>
     pointerType: "mouse",
   }) as never;
 
-async function mount(full?: "screen" | "side") {
-  const p = await page();
+/** The chat's own persisted keys: the view (full screen, its mode), the place, the dock width, the fold. */
+const CHAT_KEYS = /chat-view|debug-chat-pos|chat-dock|chat-fold/;
+
+async function mount(full?: "screen" | "side", vv?: VV, allow = !!full) {
+  const p = await page(vv);
   const { act } = await import("react");
   const { createRoot } = await import("react-dom/client");
   const { DebugChat } = await import("../../packages/debug-chat/src/DebugChat");
@@ -80,7 +104,7 @@ async function mount(full?: "screen" | "side") {
   chatPrefs().setState(full ? { full: true, fullMode: full } : { full: false });
   await act(() =>
     root.render(
-      <DebugChat live listeners={1} messages={[]} onSend={() => true} fullScreen={!!full} />,
+      <DebugChat live listeners={1} messages={[]} onSend={() => true} fullScreen={allow} />,
     ),
   );
   const grip = host.querySelector('[data-testid="debug-chat-pill-min"]') as unknown as HTMLElement;
@@ -177,6 +201,8 @@ describe("the drag overlay", () => {
     try {
       m.p.win.localStorage.removeItem("lk:debug-chat-pos");
       expect(m.host.querySelector("[data-fullscreen]")).not.toBeNull();
+      // From here on: no write to the chat's keys, during the drag or the cancel.
+      m.p.writes.length = 0;
       const b = m.grip.getBoundingClientRect();
       await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointerdown", b.left + 5, 700)));
       await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointermove", b.left + 5, 600)));
@@ -187,7 +213,7 @@ describe("the drag overlay", () => {
       // Only transiently (codex review): nothing persisted while the drag lasts.
       const { chatPrefs } = await import("../../packages/debug-chat/src/ui-store");
       expect(chatPrefs().getState().full).toBe(true);
-      expect(m.p.win.localStorage.getItem("lk:pref:chat-view") ?? "").not.toContain('"full":false');
+      expect(m.p.writes.filter((k) => CHAT_KEYS.test(k))).toEqual([]);
       // A resize mid-drag measures the zones again; the drag goes on.
       await m.act(async () => void m.p.win.dispatchEvent(new m.p.win.Event("resize") as never));
       await m.frames();
@@ -202,6 +228,8 @@ describe("the drag overlay", () => {
       expect(m.host.querySelector("[data-fullscreen]")).not.toBeNull();
       expect(m.q('[data-testid="debug-chat-snap"]')).toBeNull();
       expect(m.p.win.localStorage.getItem("lk:debug-chat-pos")).toBeNull();
+      // Not one write to the view, the place, the dock or the fold, drag and cancel together.
+      expect(m.p.writes.filter((k) => CHAT_KEYS.test(k))).toEqual([]);
     } finally {
       await m.act(() => m.root.unmount());
       await m.p.close();
@@ -215,6 +243,7 @@ describe("the drag overlay", () => {
       await m.frames();
       const padding = html.style.paddingRight;
       expect(padding).not.toBe("");
+      m.p.writes.length = 0;
       const b = m.grip.getBoundingClientRect();
       await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointerdown", b.left + 5, 700)));
       await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointermove", b.left + 5, 600)));
@@ -227,6 +256,52 @@ describe("the drag overlay", () => {
       expect(m.host.querySelector("[data-fullscreen]")).not.toBeNull();
       expect(html.style.paddingRight).toBe(padding);
       expect(m.p.win.localStorage.getItem("lk:debug-chat-pos")).toBeNull();
+      expect(m.p.writes.filter((k) => CHAT_KEYS.test(k))).toEqual([]);
+    } finally {
+      await m.act(() => m.root.unmount());
+      await m.p.close();
+    }
+  }, 20_000);
+
+  // codex review: one zoom policy for the preview and the landing.
+  it("pinch zoom (scale 2): the full-screen preview is exactly where full screen lands", async () => {
+    const vv = { offsetLeft: 80, offsetTop: 100, width: 512, height: 384, scale: 2 };
+    const m = await mount(undefined, vv, true);
+    try {
+      const { snapLanding } = await import("../../packages/debug-chat/src/snap-viewport");
+      const land = snapLanding(1024, 768, vv).full;
+      const b = m.grip.getBoundingClientRect();
+      await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointerdown", b.left + 5, 300)));
+      await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointermove", 300, 250)));
+      // The bottom of what is visible: the zone follows the visual viewport.
+      await m.act(
+        async () => void m.grip.dispatchEvent(ptr(m.p, "pointermove", 300, 100 + 384 - 4)),
+      );
+      await m.frames();
+      const pv = m.q('[data-testid="debug-chat-snap-preview"]') as unknown as HTMLElement | null;
+      expect(pv?.dataset.zone).toBe("fullscreen");
+      const px = (v: string) => Number.parseFloat(v);
+      const preview = {
+        x: px(pv!.style.left),
+        y: px(pv!.style.top),
+        w: px(pv!.style.width),
+        h: px(pv!.style.height),
+      };
+      // Zoomed in, full screen is the layout viewport (fullScreenBox): so is the preview.
+      expect(preview).toEqual(land);
+      expect(land).toEqual({ x: 0, y: 0, w: 1024, h: 768 });
+      await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointerup", 300, 100 + 384 - 4)));
+      await m.frames();
+      // Landed: full screen, its box from the same function (the section's own variables).
+      const section = m.host.querySelector("[data-fullscreen]") as unknown as HTMLElement | null;
+      expect(section).not.toBeNull();
+      const top = section!.style.getPropertyValue("--lk-full-top");
+      const h = section!.style.getPropertyValue("--lk-full-h");
+      if (top) expect(px(top)).toBe(land.y);
+      if (h) expect(px(h)).toBe(land.h);
+      // FULL_SCREEN_STYLE: left 0, right 0, i.e. the layout width.
+      expect(section!.style.left).toBe("0px");
+      expect(section!.style.right).toBe("0px");
     } finally {
       await m.act(() => m.root.unmount());
       await m.p.close();

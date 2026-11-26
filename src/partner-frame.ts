@@ -283,6 +283,8 @@ export function frameShell(d: FrameShellDeps): FrameShell {
     if (drew) overlay.replaceChildren();
     view?.removeEventListener("keydown", onKey, true);
     view?.removeEventListener("resize", cancelDrag);
+    view?.visualViewport?.removeEventListener("resize", cancelDrag);
+    view?.visualViewport?.removeEventListener("scroll", cancelDrag);
   };
   /** Back to where the drag found it, nothing saved. */
   function cancelDrag() {
@@ -353,7 +355,12 @@ export function frameShell(d: FrameShellDeps): FrameShell {
         g.hot = null;
         drawOverlay();
         view.addEventListener("keydown", onKey, true);
+        // The host page's viewport changing under the drag (a resize, the
+        // keyboard panning or a pinch: visualViewport resize/scroll) cancels it,
+        // the shell back where it was (docs/chat-drag-ux.md, "Resize & rotation").
         view.addEventListener("resize", cancelDrag);
+        view.visualViewport?.addEventListener("resize", cancelDrag);
+        view.visualViewport?.addEventListener("scroll", cancelDrag);
       }
     }
     if (!g.frame) g.frame = raf(step);
