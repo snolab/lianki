@@ -13,10 +13,9 @@ Design plan for turning API tokens into user-understandable **Agent Identities**
 ### 1. One-Tap Entry ("Add My Agent")
 
 - The primary entry point is a single **"Add My Agent"** button.
-- Clicking it creates an **untitled** identity with minimal initial capability (`identity:self`) and displays:
-  1. **A URL carrying the token** (for quick connection).
-  2. **A ready-to-paste prompt** (reusing `/api/agent-guide` and [api-for-agents.md](api-for-agents.md)) telling the agent how to join Lianki: connect over MCP or the CLI, **name yourself first**, then request the permissions you need.
-- The learner copies both into ChatGPT, Claude, or their local agent.
+- Clicking it creates an **untitled** identity with minimal initial capability (`identity:self`) and displays **two clearly separate destinations** (never a single "copy both into the agent" button):
+  1. **Connection secret (protected settings / local secret store only)**: shown once in private Settings with per-platform setup steps. The token or token-bearing MCP URL goes **only** into the app's protected connector or MCP settings (e.g., ChatGPT connector settings, Claude Desktop `claude_desktop_config.json`, Cursor `.cursor/mcp.json`, Claude Code `claude mcp add`) or into a local CLI secret store (`LIANKI_TOKEN` env var / keychain) — **never** into the chat conversation.
+  2. **Credential-free prompt (for the chat)**: the **only** text pasted into ChatGPT, Claude, or the local agent's chat. Reusing `/api/agent-guide` and [api-for-agents.md](api-for-agents.md) with zero secrets, it tells the agent to connect over the already-configured MCP/CLI, **name yourself first**, then request the permissions you need.
 
 ### 2. Name-Before-Use Gate
 
@@ -47,5 +46,5 @@ With `identity:self`, an agent can update its own:
 
 ### 5. Continuity with Existing Token Security
 
-- The one-time secret setup message is shown **only in private Settings** at creation time—**never in chat, cards, or the agent guide**.
+- The one-time secret (token or token-bearing URL) is shown **only in private Settings** at creation time and goes **only into protected connector/MCP settings or a local secret store—never into a chat conversation, cards, or the agent guide**.
 - Every identity remains revocable at any time from Settings.
