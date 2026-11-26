@@ -10,23 +10,31 @@ Design plan for turning API tokens into user-understandable **Agent Identities**
 
 ## Core Design
 
-### 1. Untitled Creation & Name-Before-Use Gate
+### 1. One-Tap Entry ("Add My Agent")
 
-- An identity (or underlying token) can be created **untitled** so setup requires minimal upfront friction.
-- **Name-before-use**: Until the identity has a non-empty name, **every other API/MCP call is refused**.
-- An agent holding the `identity:self` scope can name itself on first connect before using any other capability.
+- The primary entry point is a single **"Add My Agent"** button.
+- Clicking it creates an **untitled** identity with minimal initial capability (`identity:self`) and displays:
+  1. **A URL carrying the token** (for quick connection).
+  2. **A ready-to-paste prompt** (reusing `/api/agent-guide` and [api-for-agents.md](api-for-agents.md)) telling the agent how to join Lianki: connect over MCP or the CLI, **name yourself first**, then request the permissions you need.
+- The learner copies both into ChatGPT, Claude, or their local agent.
 
-### 2. Self-Profile (`identity:self`)
+### 2. Name-Before-Use Gate
+
+- Until the identity has a non-empty name, **every other API/MCP call is refused** (including permission requests).
+- Requiring the name first guarantees that when the agent later requests permissions, the Li Chat approval prompt always shows the agent's real name rather than `"untitled"`.
+- An agent holding the `identity:self` scope names itself on first connect before using any other capability.
+
+### 3. Self-Profile (`identity:self`)
 
 With `identity:self`, an agent can update its own:
 
-- **Display name** (shown on chat messages and in the identity list).
+- **Display name** (shown on chat messages, permission prompts, and the identity list).
 - **Avatar** (user-friendly visual identity in Li Chat).
 - **Aliases / Wakewords** (so the user can address or trigger that agent by name/alias in Li Chat).
 
 `identity:self` only mutates the calling token's own identity record—never another identity or account setting.
 
-### 3. Self-Requested Permissions (In-Chat Prompt)
+### 4. Self-Requested Permissions (In-Chat Prompt)
 
 - Each identity can **request additional permissions itself** (e.g., via an MCP tool or API endpoint).
 - **Rate-limited**: Permission requests are rate-limited per identity to prevent prompt spam.
@@ -36,7 +44,7 @@ With `identity:self`, an agent can update its own:
   - Explicit **Approve** and **Deny** actions.
 - **Fail-closed**: Nothing is granted until the user explicitly taps **Approve**. Owner-only capabilities (such as `eval`) remain gated and cannot be self-requested by ordinary accounts.
 
-### 4. Continuity with Existing Token Security
+### 5. Continuity with Existing Token Security
 
 - Secrets are still shown once at creation (or in the one-time setup message) and never stored in plain guide pointers.
 - Every identity remains revocable at any time from Settings.
