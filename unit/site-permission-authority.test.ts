@@ -61,6 +61,28 @@ const grant = (site: string, revision: number, enabled = true): SitePermissionGr
 });
 
 describe("independent dictation grants and serialized private actions", () => {
+  it("the production clock validates fresh receipts and invalid private selectors fail before storage or callbacks", async () => {
+    const storage = new Memory();
+    const authority = new SitePermissionAuthority(storage);
+    expect(await authority.execute(sub, { op: "list" }, receipt(1, Date.now()))).toMatchObject({
+      ok: true,
+      kind: "list",
+    });
+    let called = false;
+    for (const args of [
+      ["bad account", origin, "page.dictation"],
+      [sub, "http://example.test", "page.dictation"],
+      [sub, origin, "chat.consent"],
+    ] as const) {
+      expect(
+        await authority.withGrant(args[0], args[1], args[2] as "page.dictation", undefined, () => {
+          called = true;
+        }),
+      ).toEqual({ ok: false, error: "denied" });
+    }
+    expect(called).toBe(false);
+    expect(storage.writes).toBe(1);
+  });
   it("page.read never authorizes dictation; inspecting and revoking either scope leaves the other intact", async () => {
     const { authority } = fixture();
     await authority.execute(sub, set(true), receipt(1));

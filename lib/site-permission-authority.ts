@@ -37,6 +37,8 @@ const validJti = (value: unknown): value is string =>
   typeof value === "string" && /^[A-Za-z0-9_-]{22}$/.test(value);
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
+// Both completion paths release the queue; share the same no-op handler.
+const settled = () => {};
 /** Reconstruct fresh objects: storage adapters and returned results must not alias mutable authority state. */
 function storedState(value: unknown): SitePermissionState | null {
   if (value === undefined) return { revision: 0, grants: [], used: [] };
@@ -122,10 +124,7 @@ export class SitePermissionAuthority {
         return { ok: false as const, error: "unavailable" as const };
       }
     });
-    this.pending = result.then(
-      () => {},
-      () => {},
-    );
+    this.pending = result.then(settled, settled);
     return result;
   }
   execute(
@@ -137,10 +136,7 @@ export class SitePermissionAuthority {
     const input = parseSitePermissionAction(action);
     const proof = receipt && { jti: receipt.jti, exp: receipt.exp };
     const result = this.pending.then(() => this.apply(sub, input, proof));
-    this.pending = result.then(
-      () => {},
-      () => {},
-    );
+    this.pending = result.then(settled, settled);
     return result;
   }
   private async apply(
