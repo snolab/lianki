@@ -29,7 +29,14 @@ import {
   subscriptionId,
   type EventsLimits,
 } from "../lib/mcp-events/rules";
-import { eventsRpc, mentionEvents, type EventsDeps } from "../lib/mcp-events/server";
+import {
+  MAX_ANSWER_BYTES,
+  eventsRpc,
+  mentionEvents,
+  type EventsDeps,
+} from "../lib/mcp-events/server";
+import { resolveDoh } from "../lib/mcp-events/deps";
+import { addressVerdict, dohAddresses, publicAddress } from "../lib/mcp-events/rules";
 import { handle, type Env } from "../workers/mcp/src/mcp";
 
 const SEAL = "s".repeat(40);
@@ -45,6 +52,10 @@ let flag: boolean;
 let sent: Sent[];
 let respond: (s: Sent) => Response | Promise<Response>;
 let slept: number[];
+let onSleep: () => void | Promise<void>;
+/** What the callback's host resolves to now (DNS over HTTPS in production). */
+let addrs: string[] | null;
+let resolved: string[];
 let limits: EventsLimits;
 let ownerToken: string;
 let ownerHash: string;
@@ -62,9 +73,14 @@ function deps(over: Partial<EventsDeps> = {}): EventsDeps {
       sent.push(s);
       return respond(s);
     },
+    resolve: async (host) => {
+      resolved.push(host);
+      return addrs;
+    },
     now: () => now,
     sleep: async (ms) => {
       slept.push(ms);
+      await onSleep();
     },
     ...over,
   };
@@ -105,6 +121,9 @@ beforeEach(async () => {
   flag = true;
   sent = [];
   slept = [];
+  onSleep = () => {};
+  addrs = ["203.0.114.7", "2606:4700:10::6816:1"];
+  resolved = [];
   respond = echo;
   limits = { ...eventsLimits(defaultConfig()), timeoutMs: 200 };
   const t = await createToken(
@@ -550,5 +569,250 @@ describe("the remote MCP server", () => {
     const sub = await (await handle(rpc("events/subscribe", subscribeParams()), e)).json();
     expect(sub.error.code).toBe(-32015);
     expect(calls.filter((c) => c.path === "/api/mcp-events")).toHaveLength(2);
+  });
+});
+
+const count = () =>
+  (db.raw().prepare("SELECT COUNT(*) AS n FROM mcp_event_subscription").get() as { n: number }).n;
+
+describe("review fix 1: the callback's resolved addresses", () => {
+  test("publicAddress: private, loopback, link-local, CGNAT, ULA, metadata, mapped are refused", () => {
+    for (const ip of [
+      "10.1.2.3",
+      "127.0.0.1",
+      "169.254.169.254",
+      "172.20.0.1",
+      "192.168.1.1",
+      "100.64.0.1",
+      "0.0.0.0",
+      "224.0.0.1",
+      "255.255.255.255",
+      "198.18.0.1",
+      "::",
+      "::1",
+      "fe80::1",
+      "fd00:ec2::254",
+      "fc00::1",
+      "ff02::1",
+      "::ffff:10.0.0.1",
+      "::ffff:127.0.0.1",
+      "64:ff9b::a9fe:a9fe",
+      "2002:0a00:0001::1",
+      "2001:db8::1",
+      "not an ip",
+    ])
+      expect([ip, publicAddress(ip)]).toEqual([ip, false]);
+    for (const ip of ["203.0.114.7", "8.8.4.4", "2606:4700:10::6816:1", "::ffff:203.0.114.7"])
+      expect([ip, publicAddress(ip)]).toEqual([ip, true]);
+  });
+
+  test("a verdict needs at least one answer, and every answer public", () => {
+    expect(addressVerdict(null)).toBe("unresolved");
+    expect(addressVerdict([])).toBe("unresolved");
+    expect(addressVerdict(["203.0.114.7", "10.0.0.1"])).toBe("private_address");
+    expect(addressVerdict(["203.0.114.7"])).toBe("ok");
+  });
+
+  test("DNS over HTTPS: A and AAAA both asked; CNAMEs ignored; a resolver failure is null", async () => {
+    const asked: string[] = [];
+    const doh = async (url: string) => {
+      const u = new URL(url);
+      asked.push(`${u.searchParams.get("name")}/${u.searchParams.get("type")}`);
+      return Response.json(
+        u.searchParams.get("type") === "A"
+          ? {
+              Status: 0,
+              Answer: [
+                { type: 5, data: "edge.example.net." },
+                { type: 1, data: "203.0.114.7" },
+              ],
+            }
+          : { Status: 0, Answer: [{ type: 28, data: "fd00::5" }] },
+      );
+    };
+    const got = await resolveDoh("receiver.example.net", doh);
+    expect(got).toEqual(["203.0.114.7", "fd00::5"]);
+    expect(addressVerdict(got)).toBe("private_address");
+    expect(asked.sort()).toEqual(["receiver.example.net/A", "receiver.example.net/AAAA"]);
+    expect(await resolveDoh("x.example.net", async () => Response.json({ Status: 2 }))).toBeNull();
+    expect(dohAddresses({ Status: 3 })).toEqual([]);
+  });
+
+  test("subscribe: a private or unresolvable host is refused before any POST", async () => {
+    addrs = ["203.0.114.7", "169.254.169.254"];
+    const bad = (await subscribe()).body as { error: { code: number; data?: unknown } };
+    expect(bad.error.code).toBe(-32015);
+    expect(bad.error.data).toEqual({ reason: "private_address" });
+    addrs = [];
+    const none = (await subscribe()).body as { error: { data?: unknown } };
+    expect(none.error.data).toEqual({ reason: "unresolved" });
+    expect(sent).toEqual([]);
+    expect(resolved).toEqual(["receiver.example.net", "receiver.example.net"]);
+    expect(count()).toBe(0);
+  });
+
+  test("delivery: re-resolved before every attempt; a host re-pointed at a private address gets nothing", async () => {
+    await subscribe();
+    sent = [];
+    resolved = [];
+    addrs = ["10.0.0.9"];
+    const r = await mentionEvents(deps(), ownerLine("@Arden"));
+    expect(r.delivered).toBe(0);
+    expect(sent).toEqual([]);
+    expect(resolved).toEqual(["receiver.example.net"]);
+    // Public again, with a 503 then a 200: resolved once per attempt.
+    addrs = ["203.0.114.7"];
+    resolved = [];
+    let n = 0;
+    respond = () => new Response("", { status: ++n === 1 ? 503 : 200 });
+    expect((await mentionEvents(deps(), ownerLine("@Arden", "l9"))).delivered).toBe(1);
+    expect(resolved).toHaveLength(2);
+  });
+});
+
+describe("review fix 2: a retry re-checks everything live", () => {
+  async function retried(change: () => void | Promise<void>) {
+    await subscribe();
+    sent = [];
+    respond = () => new Response("", { status: 503 });
+    onSleep = change;
+    const r = await mentionEvents(deps(), ownerLine("@Arden"));
+    return { r, posts: sent.length };
+  }
+  test("token revoked during the backoff: no second POST", async () => {
+    const { r, posts } = await retried(async () => {
+      await revokeToken(D(), { userId: "owner1", email: "owner@example.com" }, ownerHash);
+    });
+    expect(r.delivered).toBe(0);
+    expect(posts).toBe(1);
+  });
+  test("token expired during the backoff", async () => {
+    const { posts } = await retried(() => {
+      db.raw().exec(`UPDATE api_tokens SET expires_at = '2026-11-26T00:00:00.000Z'`);
+    });
+    expect(posts).toBe(1);
+  });
+  test("chat:read removed during the backoff", async () => {
+    const { posts } = await retried(() => {
+      db.raw().exec(`UPDATE api_tokens SET scopes = '["chat:write"]'`);
+    });
+    expect(posts).toBe(1);
+  });
+  test("unsubscribed during the backoff", async () => {
+    const { posts } = await retried(() => {
+      db.raw().exec(`DELETE FROM mcp_event_subscription`);
+    });
+    expect(posts).toBe(1);
+  });
+  test("subscription expired during the backoff", async () => {
+    const { posts } = await retried(() => {
+      now += limits.maxTtlMs + 1;
+    });
+    expect(posts).toBe(1);
+  });
+  test("flag turned off during the backoff", async () => {
+    const { posts } = await retried(() => {
+      flag = false;
+    });
+    expect(posts).toBe(1);
+  });
+  test("audience lost during the backoff", async () => {
+    const { posts } = await retried(() => {
+      db.raw().exec(`UPDATE account_permission SET revoked_at = 2`);
+    });
+    expect(posts).toBe(1);
+  });
+  test("nothing changed: every retry is sent", async () => {
+    const { posts } = await retried(() => {});
+    expect(posts).toBe(limits.retries + 1);
+  });
+});
+
+describe("review fix 3: the answer is read bounded, under the deadline", () => {
+  /** A body that streams `chunks`, then waits forever (or ends with `end`). */
+  function streamed(chunks: string[], end: boolean) {
+    const enc = new TextEncoder();
+    let i = 0;
+    return new ReadableStream<Uint8Array>({
+      pull(c) {
+        if (i < chunks.length) c.enqueue(enc.encode(chunks[i++]));
+        else if (end) c.close();
+        else return new Promise(() => {});
+      },
+    });
+  }
+  test("an answer past 4096 bytes fails verification, without reading it all", async () => {
+    let pulled = 0;
+    const big = "x".repeat(1024);
+    respond = () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(c) {
+            pulled++;
+            c.enqueue(new TextEncoder().encode(big));
+          },
+        }),
+      );
+    const out = (await subscribe()).body as { error: { data?: unknown } };
+    expect(out.error.data).toEqual({ reason: "challenge_failed" });
+    expect(pulled).toBeLessThan(MAX_ANSWER_BYTES / 1024 + 3);
+    expect(count()).toBe(0);
+  });
+  test("a body that trickles past the deadline is a timeout", async () => {
+    limits = { ...limits, timeoutMs: 30 };
+    respond = () => new Response(streamed(['{"chall'], false));
+    const out = (await subscribe()).body as { error: { data?: unknown } };
+    expect(out.error.data).toEqual({ reason: "timeout" });
+  });
+  test("a well-formed echo split over chunks still verifies", async () => {
+    respond = (s) => {
+      const c = JSON.stringify({ challenge: JSON.parse(s.body).challenge });
+      return new Response(streamed([c.slice(0, 5), c.slice(5)], true));
+    };
+    expect((await subscribe()).body).toHaveProperty("result");
+  });
+});
+
+describe("review fix 4: the per-token cap holds under concurrency", () => {
+  test("two subscribes racing for the last slot: exactly one row", async () => {
+    limits = { ...limits, maxPerToken: 1 };
+    const other = subscribeParams({
+      delivery: { mode: "webhook", url: "https://receiver2.example.net/cb", secret: SECRET },
+    });
+    const [a, b] = await Promise.all([subscribe(), subscribe(ownerToken, other)]);
+    const oks = [a, b].filter((x) => "result" in x.body);
+    expect(oks).toHaveLength(1);
+    const refused = [a, b].find((x) => !("result" in x.body))!.body as { error: { code: number } };
+    expect(refused.error.code).toBe(-32005);
+    expect(count()).toBe(1);
+  });
+  test("a refresh of an existing row is never blocked by the cap", async () => {
+    limits = { ...limits, maxPerToken: 1 };
+    await subscribe();
+    expect((await subscribe()).body).toHaveProperty("result");
+    expect(count()).toBe(1);
+  });
+});
+
+describe("review fix 5: the lifetime never exceeds the configured longest", () => {
+  test("a default above the max is cut to the max, absent, null or asked", () => {
+    const c = { ...defaultConfig(), "mcp.eventsTtlMin": 1440, "mcp.eventsMaxTtlMin": 60 };
+    const l = eventsLimits(c);
+    expect(l.maxTtlMs).toBe(60 * 60_000);
+    expect(l.ttlMs).toBe(60 * 60_000);
+    expect(grantedTtl(undefined, l)).toBe(60 * 60_000);
+    expect(grantedTtl(null, l)).toBe(60 * 60_000);
+    expect(grantedTtl(24 * 3600_000, l)).toBe(60 * 60_000);
+    // Even when handed limits whose default is above the max.
+    expect(grantedTtl(undefined, { ...l, ttlMs: 10 * 3600_000 })).toBe(60 * 60_000);
+  });
+  test("subscribe's refreshBefore follows the capped lifetime", async () => {
+    limits = { ...limits, ttlMs: 24 * 3600_000, maxTtlMs: 3600_000 };
+    const out = (await subscribe()).body as { result: { refreshBefore: string } };
+    expect(Date.parse(out.result.refreshBefore) - now).toBeLessThanOrEqual(3600_000);
+    const row = db.raw().prepare("SELECT expires_at_ms FROM mcp_event_subscription").get() as {
+      expires_at_ms: number;
+    };
+    expect(row.expires_at_ms - now).toBe(3600_000);
   });
 });

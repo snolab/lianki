@@ -136,20 +136,69 @@ is turned on.
    `.internal`, `.local`, `.ts.net` and the like, and never `lianki.com` or a
    subdomain (that could loop).
 5. Secret: `whsec_` + base64 of 24–64 bytes.
-6. Rate limit `mcp.eventsSubscribePerHour` per token, and at most
-   `mcp.eventsMaxPerToken` live subscriptions per token.
-7. **Verification**: a signed POST `{type:"verification", challenge}` (random,
+6. Rate limit `mcp.eventsSubscribePerHour` per token. An early check refuses
+   a token already at `mcp.eventsMaxPerToken` live subscriptions before any
+   network call.
+7. **Verification**: first the host is resolved and checked (see "Callback
+   addresses"). Then a signed POST `{type:"verification", challenge}` (random,
    single use) with the same headers as an event. Success is only a 2xx whose
-   JSON echoes `challenge`, compared in constant time. Failure: JSON-RPC
-   `-32015` (`CallbackEndpointError`) with `data.reason` set to `challenge_failed`,
-   `timeout` or `unreachable`, and nothing stored. Success is cached per token
-   and URL for `mcp.eventsVerifyCacheMin`, so a refresh with the same secret
-   does not re-verify.
-8. Upsert; answer `{id, refreshBefore, cursor: null, truncated: false}`.
-   Lifetime: `ttlMs` absent → `mcp.eventsTtlMin`; a number → capped at
-   `mcp.eventsMaxTtlMin`; `null` ("no expiry") → granted as the longest, with a
-   real `refreshBefore`, since we never grant unbounded subscriptions.
+   JSON echoes `challenge`, compared in constant time. The answer is read as a
+   stream, at most 4096 bytes (`MAX_ANSWER_BYTES`; past that the read is
+   cancelled). One deadline, `mcp.eventsTimeoutMs`, covers the request, the
+   status and the whole body read, so a body that trickles in is a timeout.
+   Failure: JSON-RPC `-32015` (`CallbackEndpointError`) with `data.reason` set
+   to `challenge_failed`, `timeout`, `unreachable`, `unresolved` or
+   `private_address`, and nothing stored. Success is cached per token and URL
+   for `mcp.eventsVerifyCacheMin`, so a refresh with the same secret does not
+   re-verify.
+8. Only after verification, one statement writes the row and enforces the cap:
+   `INSERT … SELECT … WHERE EXISTS (this id) OR (SELECT COUNT(*) of the token's
+live rows) < cap … ON CONFLICT(id) DO UPDATE … RETURNING id`. No row
+   returned means the cap was reached (`-32005`), so concurrent subscribes that
+   all passed the early check cannot exceed it. A refresh of an existing row is
+   never blocked.
+9. Answer `{id, refreshBefore, cursor: null, truncated: false}`. Lifetime:
+   `min(asked ?? mcp.eventsTtlMin, mcp.eventsMaxTtlMin)`. `null` ("no expiry")
+   is granted as the longest, with a real `refreshBefore`, since we never grant
+   unbounded subscriptions. The default is capped by the longest too, so
+   setting the longest below the default shortens every subscription.
    `refreshBefore` = 90% of the lifetime.
+
+## Callback addresses
+
+The spelling rule (`callbackUrl`) is only the first layer. Right before **each
+verification and each delivery attempt**, the host is resolved fresh through
+DNS over HTTPS (`https://cloudflare-dns.com/dns-query`, A and AAAA together,
+`deps.ts resolveDoh`). The attempt goes ahead only when there is at least one
+answer and **every** answer is public (`rules.ts publicAddress`). Refused:
+
+- IPv4 private (10/8, 172.16/12, 192.168/16), loopback (127/8), link-local
+  (169.254/16, including the 169.254.169.254 cloud metadata address), CGNAT
+  (100.64/10), "this network" (0/8), multicast and reserved (224/3), and the
+  documentation and benchmarking ranges;
+- IPv6 `::`, `::1`, ULA (fc00::/7, including the fd00:ec2::254 metadata
+  address), link-local, site-local, multicast, documentation and discard, and
+  anything outside global unicast 2000::/3;
+- any IPv6 form carrying an IPv4 address (mapped, compatible, NAT64, 6to4,
+  Teredo), judged by that IPv4.
+
+A name with no A or AAAA answer, or a resolver failure, is `unresolved`. At
+verification that refuses the subscription. At delivery, a private answer ends
+the delivery and an unresolved one counts as a failed attempt, retried.
+
+**Second layer.** A Worker's outbound `fetch` leaves through Cloudflare's edge
+to the public internet. It cannot reach a private network (RFC 1918, loopback,
+link-local) of Cloudflare's or anyone's, unless a binding such as a Tunnel or
+VPC service is attached, and lianki's main Worker has none for this. So even a
+name that slips past the check cannot reach an internal service.
+
+**What remains: the rebinding window.** Workers have no fetch pinned to an IP:
+`fetch` takes a URL and resolves the name itself, and `cf.resolveOverride`
+only re-points to hosts in our own zone. Between our DoH answer and fetch's
+own lookup, a name with a short TTL can change. The window is one lookup,
+milliseconds long, and on the far side is only the public internet (the second
+layer). We accept it and say so. A pinned fetch, if Workers ever offer one, is
+the fix.
 
 **Secret rotation**: a re-subscribe with a new secret keeps the old one for
 `mcp.eventsRotationOverlapMin`. During that time every delivery carries both
@@ -181,14 +230,21 @@ For a `put` of lines in thread T:
    Webhooks, key = the decoded `whsec_` bytes), and `X-MCP-Subscription-Id`.
    `eventId` = `evt_` + a hash of the subscription and line id, so a retry or a
    repeated `put` of the same line has the same id and the receiver dedupes it.
-7. **Timeout** `mcp.eventsTimeoutMs` (default 8 s; the spec's example is
-   10 s). `redirect: "manual"`, so a 3xx is a failure and is never followed.
+7. **Before every attempt** the host is resolved and checked again ("Callback
+   addresses"). **Timeout** `mcp.eventsTimeoutMs` (default 6 s; the spec's
+   example is 10 s) covers the whole exchange; the answer's body is cancelled
+   unread. `redirect: "manual"`, so a 3xx is a failure and is never followed.
 8. **Retries**: 408, 429, 5xx, a timeout or a network error retry up to
    `mcp.eventsRetries` times. The waits are `mcp.eventsRetryBaseMs` × 1, 2, 4.
-   Each retry has the same eventId, a fresh timestamp and a fresh signature.
-   **410** deletes the subscription. **413** and other 4xx give up at once.
-   The defaults (8 s × 3 + 1 s + 2 s = 27 s) fit inside the Worker's
-   `waitUntil` budget.
+   After each wait and before the retry, everything is re-checked live: the
+   flag, the row (not unsubscribed, not expired), the token (known, unexpired,
+   `chat:read`, not revoked), the audience, and that its thread is still the
+   subscription's. If anything fails, it stops without sending, and the put's
+   other lines are not sent to that subscription either. Each retry has the same
+   eventId, a fresh timestamp and a fresh signature. **410** deletes the
+   subscription. **413** and other 4xx give up at once. The defaults (per
+   attempt 2 s DNS + 6 s POST, × 3, plus 1 s + 2 s of backoff = 27 s) fit inside
+   the Worker's `waitUntil` budget.
 
 The mention match (`mentions`): NFKC and lower case on both sides (so `＠Ａｒｄｅｎ`
 counts). The `@` must not follow a letter or digit (`bob@arden.example` is not
@@ -226,18 +282,18 @@ live, so a rename takes effect at the next line.
 
 ## Config keys (lib/config.ts, group `mcp`, /dev/config)
 
-| key                            | default | meaning                                      |
-| ------------------------------ | ------- | -------------------------------------------- |
-| `mcp.eventsSubscribePerHour`   | 30      | subscribe / refresh calls per token per hour |
-| `mcp.eventsMaxPerToken`        | 3       | live subscriptions per token                 |
-| `mcp.eventsPerMinute`          | 10      | deliveries per subscription per minute       |
-| `mcp.eventsTtlMin`             | 1440    | lifetime when ChatGPT asks none              |
-| `mcp.eventsMaxTtlMin`          | 10080   | the longest lifetime granted                 |
-| `mcp.eventsTimeoutMs`          | 8000    | per POST (verification and events)           |
-| `mcp.eventsRetries`            | 2       | retries after a transient failure            |
-| `mcp.eventsRetryBaseMs`        | 1000    | first backoff, doubling                      |
-| `mcp.eventsVerifyCacheMin`     | 60      | re-use a verification for the same token+URL |
-| `mcp.eventsRotationOverlapMin` | 60      | old secret keeps signing after a rotation    |
+| key                            | default | meaning                                       |
+| ------------------------------ | ------- | --------------------------------------------- |
+| `mcp.eventsSubscribePerHour`   | 30      | subscribe / refresh calls per token per hour  |
+| `mcp.eventsMaxPerToken`        | 3       | live subscriptions per token                  |
+| `mcp.eventsPerMinute`          | 10      | deliveries per subscription per minute        |
+| `mcp.eventsTtlMin`             | 1440    | lifetime when ChatGPT asks none               |
+| `mcp.eventsMaxTtlMin`          | 10080   | the longest lifetime granted                  |
+| `mcp.eventsTimeoutMs`          | 6000    | per POST incl. the body read (verify, events) |
+| `mcp.eventsRetries`            | 2       | retries after a transient failure             |
+| `mcp.eventsRetryBaseMs`        | 1000    | first backoff, doubling                       |
+| `mcp.eventsVerifyCacheMin`     | 60      | re-use a verification for the same token+URL  |
+| `mcp.eventsRotationOverlapMin` | 60      | old secret keeps signing after a rotation     |
 
 ## Rollout
 
@@ -252,11 +308,9 @@ live, so a rename takes effect at the next line.
 
 - **Voice**: see "Voice (ChatGPT Live)". Events are documented for Work chats
   and dots only.
-- **Resolved-IP check**: the spec asks to resolve the callback host and refuse
-  private addresses at connect time. A Worker's `fetch` cannot pin a resolved
-  IP. We refuse every IP literal and internal name, and Cloudflare's egress
-  reaches only the public internet, but a public name pointing at a private IP
-  is not checked by us.
+- **DNS rebinding**: the host is resolved (DoH) and checked right before every
+  verification and attempt, but `fetch` resolves again and cannot be pinned.
+  The window is one lookup; see "Callback addresses".
 - **Retries in-isolate**: retries run inside `waitUntil`, so a Worker restart
   loses them. A Cloudflare Queue would make them durable (a new binding).
 - **Audience**: the owner audience is enforced as "the account holds `dev`".

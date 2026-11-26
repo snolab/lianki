@@ -427,7 +427,7 @@ export const CONFIG = {
     description: "MCP 事件订阅最长能有多久（分钟）；要求更久或永不过期时，按这个值给。",
   }),
   "mcp.eventsTimeoutMs": int({
-    default: 8000,
+    default: 6000,
     min: 1000,
     max: 10000,
     unit: "ms",

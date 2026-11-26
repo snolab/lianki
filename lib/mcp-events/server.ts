@@ -29,6 +29,7 @@ import {
   type EventsLimits,
   type MentionLine,
   type Refusal,
+  addressVerdict,
   anyCandidate,
   backoffMs,
   b64encode,
@@ -56,6 +57,11 @@ export type EventsDeps = {
   sealSecret: string | undefined;
   /** The network: a callback POST. Never follows a redirect (`redirect: "manual"`). */
   fetch: (url: string, init: RequestInit) => Promise<Response>;
+  /**
+   * A host's A and AAAA addresses, resolved now (DNS over HTTPS; deps.ts
+   * resolveDoh); [] for a name with none, null when the resolver failed.
+   */
+  resolve: (host: string) => Promise<string[] | null>;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
 };
@@ -215,15 +221,23 @@ async function subscribe(
     prevUntil = now + l.rotationOverlapMs;
   }
   const ttl = grantedTtl(q.ttlMs, l);
-  await d.db
+  // One statement enforces the cap: the row is written only when it already
+  // exists (a refresh) or the token holds fewer than the cap live ones, so two
+  // subscribes racing past the early check above cannot both get in.
+  // RETURNING says whether it was written.
+  const written = await d.db
     .prepare(
       `INSERT INTO mcp_event_subscription
          (id, token_hash, user_id, thread, name, arguments, url, secret_sealed,
           prev_secret_sealed, prev_until_ms, expires_at_ms, verified_at_ms, created_at_ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13
+       WHERE EXISTS (SELECT 1 FROM mcp_event_subscription WHERE id = ?1)
+          OR (SELECT COUNT(*) FROM mcp_event_subscription
+              WHERE token_hash = ?2 AND expires_at_ms > ?13) < ?14
        ON CONFLICT(id) DO UPDATE SET thread = excluded.thread, secret_sealed = excluded.secret_sealed,
          prev_secret_sealed = excluded.prev_secret_sealed, prev_until_ms = excluded.prev_until_ms,
-         expires_at_ms = excluded.expires_at_ms, verified_at_ms = excluded.verified_at_ms, failures = 0`,
+         expires_at_ms = excluded.expires_at_ms, verified_at_ms = excluded.verified_at_ms, failures = 0
+       RETURNING id`,
     )
     .bind(
       id,
@@ -239,8 +253,10 @@ async function subscribe(
       now + ttl,
       verifiedAt,
       now,
+      l.maxPerToken,
     )
-    .run();
+    .first<{ id: string }>();
+  if (!written) return err(-32005, "This token has as many subscriptions as it may hold");
   // Not replayable: a line missed while nobody listened is not sent later.
   return ok({
     id,
@@ -259,29 +275,112 @@ async function openSecret(d: EventsDeps, row: Row, sealed: string): Promise<stri
   );
 }
 
-/** One POST with a timeout and no redirects. */
+/** The most of a callback's answer ever read (a verification echo is far smaller). */
+export const MAX_ANSWER_BYTES = 4096;
+
+/**
+ * The callback's host, resolved now: every address must be public
+ * (rules.ts publicAddress). Run right before each verification and each
+ * delivery attempt, so a name re-pointed at a private address since the last
+ * one is refused. A Worker's fetch cannot be pinned to the address checked
+ * here; docs/mcp-events.md, "Callback addresses", names the window left.
+ */
+async function checkHost(
+  d: EventsDeps,
+  url: string,
+): Promise<"ok" | "unresolved" | "private_address"> {
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return "unresolved";
+  }
+  return addressVerdict(await d.resolve(host).catch(() => null));
+}
+
+class TooLarge extends Error {}
+
+/**
+ * Read at most `limit` bytes of a body as a stream; past it, cancel and throw
+ * TooLarge. Each read races `aborted`, so the overall deadline holds while a
+ * body trickles in.
+ */
+async function readBounded(res: Response, limit: number, aborted: Promise<never>) {
+  const reader = res.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await Promise.race([reader.read(), aborted]);
+      if (done) break;
+      size += value.byteLength;
+      if (size > limit) throw new TooLarge();
+      chunks.push(value);
+    }
+  } catch (e) {
+    await reader.cancel().catch(() => {});
+    throw e;
+  }
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    all.set(c, at);
+    at += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+
+/**
+ * One POST, no redirects, one deadline for the whole exchange: the request,
+ * the status and (with `read`) the answer's body, read as a bounded stream.
+ * Without `read` the body is cancelled unread.
+ */
 async function post(
   d: EventsDeps,
   url: string,
   headers: Record<string, string>,
   body: string,
   timeoutMs: number,
-): Promise<{ attempt: Attempt; res?: Response }> {
+  read = false,
+): Promise<{ attempt: Attempt; text?: string; tooLarge?: true }> {
   const ac = new AbortController();
   let timedOut = false;
+  let onAbort: (e: Error) => void = () => {};
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = reject;
+  });
+  aborted.catch(() => {});
   const timer = setTimeout(() => {
     timedOut = true;
     ac.abort();
+    onAbort(new Error("deadline"));
   }, timeoutMs);
   try {
-    const res = await d.fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", ...headers },
-      body,
-      redirect: "manual",
-      signal: ac.signal,
-    });
-    return { attempt: { status: res.status }, res };
+    const res = await Promise.race([
+      d.fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body,
+        redirect: "manual",
+        signal: ac.signal,
+      }),
+      aborted,
+    ]);
+    const attempt = { status: res.status };
+    if (!read) {
+      await res.body?.cancel().catch(() => {});
+      return { attempt };
+    }
+    try {
+      return { attempt, text: await readBounded(res, MAX_ANSWER_BYTES, aborted) };
+    } catch (e) {
+      if (e instanceof TooLarge) {
+        ac.abort();
+        return { attempt, tooLarge: true };
+      }
+      throw e;
+    }
   } catch {
     return { attempt: { error: timedOut ? "timeout" : "network" } };
   } finally {
@@ -300,12 +399,16 @@ async function verifyCallback(
   url: string,
   key: Uint8Array,
   l: EventsLimits,
-): Promise<"ok" | "challenge_failed" | "timeout" | "unreachable"> {
+): Promise<
+  "ok" | "challenge_failed" | "timeout" | "unreachable" | "unresolved" | "private_address"
+> {
+  const host = await checkHost(d, url);
+  if (host !== "ok") return host;
   const challenge = randomToken();
   const msgId = `msg_verification_${randomToken(12)}`;
   const body = JSON.stringify({ type: "verification", challenge });
   const ts = Math.floor(d.now() / 1000);
-  const { attempt, res } = await post(
+  const { attempt, text, tooLarge } = await post(
     d,
     url,
     {
@@ -316,11 +419,11 @@ async function verifyCallback(
     },
     body,
     l.timeoutMs,
+    true,
   );
   if ("error" in attempt) return attempt.error === "timeout" ? "timeout" : "unreachable";
-  if (attempt.status < 200 || attempt.status >= 300 || !res) return "challenge_failed";
-  const text = await res.text().catch(() => "");
-  if (text.length > 4096) return "challenge_failed";
+  if (attempt.status < 200 || attempt.status >= 300 || tooLarge || text === undefined)
+    return "challenge_failed";
   let echoed: unknown;
   try {
     echoed = (JSON.parse(text) as { challenge?: unknown }).challenge;
@@ -406,6 +509,10 @@ export async function mentionEvents(d: EventsDeps, raw: unknown): Promise<Mentio
           await drop(d, sub.id);
           report.dropped++;
           break;
+        } else if (r === "stopped") {
+          // No longer allowed: none of this put's other lines go either.
+          report.skipped++;
+          break;
         } else report.skipped++;
       }
     }
@@ -431,13 +538,30 @@ async function keysOf(d: EventsDeps, sub: Row): Promise<Uint8Array[]> {
   return keys;
 }
 
+/**
+ * Before a retry: is everything that allowed the first attempt still true,
+ * read live? The flag; the row (not unsubscribed, not expired); the token
+ * (known, unexpired, chat:read, not revoked); the audience; and the token's
+ * thread still the subscription's.
+ */
+async function stillLive(d: EventsDeps, sub: Row): Promise<boolean> {
+  if (!(await d.flagOn())) return false;
+  const row = await d.db
+    .prepare("SELECT id FROM mcp_event_subscription WHERE id = ? AND expires_at_ms > ?")
+    .bind(sub.id, d.now())
+    .first<{ id: string }>();
+  if (!row) return false;
+  const p = await principal(d, sub.token_hash, true);
+  return p.ok && p.thread === sub.thread;
+}
+
 async function deliver(
   d: EventsDeps,
   sub: Row,
   data: ReturnType<typeof mentionData>,
   lineId: string,
   l: EventsLimits,
-): Promise<"ok" | "gone" | "failed"> {
+): Promise<"ok" | "gone" | "failed" | "stopped"> {
   const keys = await keysOf(d, sub);
   // A secret that no longer opens (AUTH_SECRET rotated): the client re-subscribes.
   if (!keys.length) return "gone";
@@ -451,7 +575,15 @@ async function deliver(
   });
   if (new TextEncoder().encode(body).length > MAX_EVENT_BODY) return "failed";
   for (let attempt = 0; attempt <= l.retries; attempt++) {
-    if (attempt) await d.sleep(backoffMs(attempt - 1, l.retryBaseMs));
+    if (attempt) {
+      await d.sleep(backoffMs(attempt - 1, l.retryBaseMs));
+      // Anything may have changed while waiting: revoked, unsubscribed, flag off.
+      if (!(await stillLive(d, sub))) return "stopped";
+    }
+    // The callback's addresses, now, before every attempt.
+    const host = await checkHost(d, sub.url);
+    if (host === "private_address") break;
+    if (host !== "ok") continue;
     // Same eventId every attempt; a fresh timestamp and signature each time.
     const ts = Math.floor(d.now() / 1000);
     const { attempt: a } = await post(

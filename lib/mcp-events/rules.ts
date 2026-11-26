@@ -66,8 +66,9 @@ export function eventsLimits(c: ConfigValues): EventsLimits {
     subscribePerHour: c["mcp.eventsSubscribePerHour"],
     maxPerToken: c["mcp.eventsMaxPerToken"],
     perMinute: c["mcp.eventsPerMinute"],
-    ttlMs: c["mcp.eventsTtlMin"] * MIN,
-    maxTtlMs: Math.max(c["mcp.eventsMaxTtlMin"], c["mcp.eventsTtlMin"]) * MIN,
+    // The configured longest always wins: a default above it is cut down to it.
+    ttlMs: Math.min(c["mcp.eventsTtlMin"], c["mcp.eventsMaxTtlMin"]) * MIN,
+    maxTtlMs: c["mcp.eventsMaxTtlMin"] * MIN,
     timeoutMs: c["mcp.eventsTimeoutMs"],
     retries: c["mcp.eventsRetries"],
     retryBaseMs: c["mcp.eventsRetryBaseMs"],
@@ -138,9 +139,10 @@ export function mentionData(l: MentionLine & { from: "owner" | "friend" }) {
  * or mapped address can be named), no localhost or internal suffix, and never
  * lianki.com itself (a callback into Lianki could loop).
  *
- * The spec also asks to check the resolved address at connect time; a Worker
- * cannot resolve before fetch, and Cloudflare's egress reaches only the
- * public internet (docs/mcp-events.md, "Open questions").
+ * This is the spelling only. The address is checked at connect time too:
+ * every verification and every delivery attempt resolves the host (A and
+ * AAAA, DNS over HTTPS) and refuses any non-public answer (`publicAddress`,
+ * server.ts `checkHost`; docs/mcp-events.md, "Callback addresses").
  */
 export function callbackUrl(raw: unknown): { ok: true; url: string } | { ok: false; why: string } {
   if (typeof raw !== "string" || !raw || raw.length > MAX_CALLBACK_URL)
@@ -168,6 +170,123 @@ export function callbackUrl(raw: unknown): { ok: true; url: string } | { ok: fal
   if (host === "lianki.com" || host.endsWith(".lianki.com"))
     return { ok: false, why: "not Lianki itself" };
   return { ok: true, url: u.toString() };
+}
+
+// ------------------------------------------------------------ resolved addresses
+
+/** IPv4 ranges that are not the public internet: [base, prefix length]. */
+const V4_BLOCKED: [number, number][] = [
+  [0x00000000, 8], // "this network"
+  [0x0a000000, 8], // private
+  [0x64400000, 10], // CGNAT
+  [0x7f000000, 8], // loopback
+  [0xa9fe0000, 16], // link-local, incl. 169.254.169.254 (cloud metadata)
+  [0xac100000, 12], // private
+  [0xc0000000, 24], // IETF protocol assignments
+  [0xc0000200, 24], // documentation
+  [0xc0586300, 24], // 6to4 relay anycast
+  [0xc0a80000, 16], // private
+  [0xc6120000, 15], // benchmarking
+  [0xc6336400, 24], // documentation
+  [0xcb007100, 24], // documentation
+  [0xe0000000, 4], // multicast
+  [0xf0000000, 4], // reserved, broadcast
+];
+
+function parseV4(s: string): number | null {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s);
+  if (!m) return null;
+  const p = m.slice(1).map(Number);
+  if (p.some((x) => x > 255)) return null;
+  return ((p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3]) >>> 0;
+}
+
+const v4Public = (a: number) =>
+  !V4_BLOCKED.some(([base, bits]) => a >>> (32 - bits) === base >>> (32 - bits));
+
+/** Eight 16-bit groups, or null. Accepts `::` and a dotted IPv4 tail. */
+function parseV6(raw: string): number[] | null {
+  let s = raw.toLowerCase();
+  if (s.includes("%")) return null; // a zone id: link-local by definition
+  let tail: number[] = [];
+  if (s.includes(".")) {
+    // "<hex groups>:a.b.c.d": the dotted part is the last two groups.
+    const colon = s.lastIndexOf(":");
+    if (colon < 0) return null;
+    const v4 = parseV4(s.slice(colon + 1));
+    if (v4 === null) return null;
+    tail = [v4 >>> 16, v4 & 0xffff];
+    s = s.slice(0, colon + 1);
+    if (!s.endsWith("::")) s = s.slice(0, -1);
+  }
+  const halves = s.split("::");
+  if (halves.length > 2) return null;
+  const part = (x: string) => (x ? x.split(":") : []);
+  const head = part(halves[0]);
+  const rest = halves.length === 2 ? part(halves[1]) : [];
+  const groups = [...head, ...rest];
+  if (groups.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return null;
+  const want = 8 - tail.length;
+  if (halves.length === 1 && groups.length !== want) return null;
+  if (groups.length > want) return null;
+  const fill = halves.length === 2 ? Array(want - groups.length).fill(0) : [];
+  return [
+    ...head.map((g) => parseInt(g, 16)),
+    ...fill,
+    ...rest.map((g) => parseInt(g, 16)),
+    ...tail,
+  ];
+}
+
+/**
+ * Is this resolved address on the public internet? Refused: private,
+ * loopback, link-local, CGNAT, multicast, documentation, benchmarking and
+ * reserved IPv4; IPv6 unspecified, loopback, ULA (fc00::/7, so also the
+ * fd00:ec2::254 metadata address), link-local, site-local, multicast,
+ * documentation and discard; and any IPv6 form carrying an IPv4 address
+ * (mapped, compatible, NAT64, 6to4, Teredo) by that IPv4. Anything that does
+ * not parse is not public.
+ */
+export function publicAddress(ip: string): boolean {
+  if (typeof ip !== "string") return false;
+  const v4 = parseV4(ip);
+  if (v4 !== null) return v4Public(v4);
+  const g = parseV6(ip.replace(/^\[|\]$/g, ""));
+  if (!g) return false;
+  const embedded = (hi: number, lo: number) => v4Public(((hi << 16) | lo) >>> 0);
+  if (g.every((x) => x === 0)) return false; // ::
+  if (g.slice(0, 7).every((x) => x === 0) && g[7] === 1) return false; // ::1
+  if (g.slice(0, 5).every((x) => x === 0) && (g[5] === 0xffff || g[5] === 0))
+    return embedded(g[6], g[7]); // ::ffff:a.b.c.d, ::a.b.c.d
+  if (g[0] === 0x64 && g[1] === 0xff9b) return embedded(g[6], g[7]); // NAT64
+  if (g[0] === 0x2002) return embedded(g[1], g[2]); // 6to4
+  if (g[0] === 0x2001 && g[1] === 0) return false; // Teredo
+  if (g[0] === 0x2001 && g[1] === 0x0db8) return false; // documentation
+  if (g[0] === 0x0100 && g[1] === 0 && g[2] === 0 && g[3] === 0) return false; // discard
+  if ((g[0] & 0xfe00) === 0xfc00) return false; // ULA
+  if ((g[0] & 0xffc0) === 0xfe80) return false; // link-local
+  if ((g[0] & 0xffc0) === 0xfec0) return false; // site-local
+  if ((g[0] & 0xff00) === 0xff00) return false; // multicast
+  // Global unicast is 2000::/3; anything else is not ours to reach.
+  return (g[0] & 0xe000) === 0x2000;
+}
+
+/** A DNS-over-HTTPS JSON answer (RFC 8427 style): its A (1) and AAAA (28) data. */
+export function dohAddresses(json: unknown): string[] {
+  const a = (json as { Answer?: unknown })?.Answer;
+  if (!Array.isArray(a)) return [];
+  return a
+    .filter(
+      (r): r is { type: number; data: string } =>
+        !!r && (r.type === 1 || r.type === 28) && typeof r.data === "string",
+    )
+    .map((r) => r.data.trim());
+}
+
+/** The verdict on a host's resolved addresses: all public, or why not. */
+export function addressVerdict(addrs: string[] | null): "ok" | "unresolved" | "private_address" {
+  if (!addrs || !addrs.length) return "unresolved";
+  return addrs.every(publicAddress) ? "ok" : "private_address";
 }
 
 // ------------------------------------------------------------ the secret and signature
@@ -344,9 +463,10 @@ export function parseSubscribe(raw: unknown, withSecret: boolean) {
 
 /** The lifetime granted: our default when none is asked, at most the longest. */
 export function grantedTtl(asked: number | null | undefined, l: EventsLimits): number {
-  if (asked === undefined) return l.ttlMs;
-  if (asked === null) return l.maxTtlMs;
-  return Math.max(MIN, Math.min(Math.floor(asked), l.maxTtlMs));
+  // min(asked ?? default, max): never longer than the configured longest,
+  // whatever was asked and whatever the default is.
+  const want = asked === undefined ? l.ttlMs : asked === null ? l.maxTtlMs : Math.floor(asked);
+  return Math.min(Math.max(MIN, want), l.maxTtlMs);
 }
 
 /** Ask for a refresh a tenth of the lifetime before it ends. */
