@@ -1158,6 +1158,27 @@ describe("chat attachment get", () => {
     expect(r.out + r.err).not.toContain(TICKET);
   });
 
+  test("without a writer of its own it saves to disk, making --out", async () => {
+    const h = harness({
+      env,
+      server: {
+        "POST /api/version/chat": () =>
+          json({
+            ok: true,
+            item: { id: ID, name: "photo.png", type: "image/png", size: 3 },
+            ticket: TICKET,
+            exp: 1,
+            path: `/api/my/inbox/${ID}`,
+            header: "x-inbox-ticket",
+          }),
+        [`GET /api/my/inbox/${ID}`]: () => new Response(new Uint8Array([7, 8, 9])),
+      },
+    });
+    const out = join(tmp(), "new", "dir");
+    expect((await h.run("chat", "attachment", "get", ID, "--out", out)).code).toBe(0);
+    expect([...readFileSync(join(out, "photo.png"))]).toEqual([7, 8, 9]);
+  });
+
   test("a bad id never reaches the server; a refusal is an error", async () => {
     const h = harness({
       env,
