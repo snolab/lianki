@@ -472,12 +472,12 @@ export function estimateVsActual(
 
 /** "45s", "12m", "1h30m", "2d4h": the --eta grammar (lib/progress.ts parseEta) reads it back. */
 export function formatDuration(ms: number): string {
-  const m = Math.max(1, Math.round(ms / MIN));
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return m % 60 ? `${h}h${m % 60}m` : `${h}h`;
-  const d = Math.floor(h / 24);
-  return h % 24 ? `${d}d${h % 24}h` : `${d}d`;
+  const total = Math.max(1, Math.round(ms / MIN));
+  const d = Math.floor(total / (24 * 60));
+  const h = Math.floor(total / 60) % 24;
+  const m = total % 60;
+  // Every non-zero unit, none dropped: 24h59m → "1d59m" (parseEta reads it back exactly).
+  return `${d ? `${d}d` : ""}${h ? `${h}h` : ""}${m ? `${m}m` : ""}`;
 }
 
 /** The --eta range of an estimate: "P5-P95". */

@@ -286,6 +286,11 @@ describe("helpers", () => {
     expect(formatDuration(90 * M)).toBe("1h30m");
     expect(formatDuration(120 * M)).toBe("2h");
     expect(formatDuration(26 * 60 * M)).toBe("1d2h");
+    expect(formatDuration(24 * 60 * M)).toBe("1d");
+    expect(formatDuration((24 * 60 + 59) * M)).toBe("1d59m");
+    expect(formatDuration((49 * 60 + 1) * M)).toBe("2d1h1m");
+    for (const min of [1, 59, 60, 61, 1439, 1440, 1441, 1499, 2941, 10_079])
+      expect(parseEta(formatDuration(min * M))).toEqual({ in: min * M });
     for (const ms of [M, 45 * M, 90 * M, 26 * 60 * M])
       expect(parseEta(formatDuration(ms))).toEqual({ in: ms });
   });
