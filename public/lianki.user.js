@@ -14,7 +14,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.51
+// @version     2.24.52
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -4928,7 +4928,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         return (UL.set(e, t), t);
       },
       UL,
-      Wo = (e, t) => () => (t || e((t = { exports: {} }).exports, t), t.exports);
+      Ko = (e, t) => () => (t || e((t = { exports: {} }).exports, t), t.exports);
     var sZ = (e) => e;
     function lZ(e, t) {
       this[e] = sZ.bind(null, t);
@@ -4937,7 +4937,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
       for (var n in t)
         Td(e, n, { get: t[n], enumerable: true, configurable: true, set: lZ.bind(t, n) });
     };
-    var QL = Wo(function (Be) {
+    var QL = Ko(function (Be) {
       var Wk = Symbol.for("react.transitional.element"),
         uZ = Symbol.for("react.portal"),
         dZ = Symbol.for("react.fragment"),
@@ -5360,10 +5360,10 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
       };
       Be.version = "19.2.4";
     });
-    var We = Wo(function (vfe, eC) {
+    var We = Ko(function (vfe, eC) {
       eC.exports = QL();
     });
-    var sC = Wo(function (Pt) {
+    var sC = Ko(function (Pt) {
       function Jk(e, t) {
         var n = e.length;
         e.push(t);
@@ -5374,7 +5374,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
           else break e;
         }
       }
-      function Ko(e) {
+      function Yo(e) {
         return e.length === 0 ? null : e[0];
       }
       function Cg(e) {
@@ -5430,18 +5430,18 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         rC = typeof clearTimeout === "function" ? clearTimeout : null,
         tC = typeof setImmediate < "u" ? setImmediate : null;
       function Rg(e) {
-        for (var t = Ko(Pa); t !== null; ) {
+        for (var t = Yo(Pa); t !== null; ) {
           if (t.callback === null) Cg(Pa);
           else if (t.startTime <= e) (Cg(Pa), (t.sortIndex = t.expirationTime), Jk(Ai, t));
           else break;
-          t = Ko(Pa);
+          t = Yo(Pa);
         }
       }
       function ox(e) {
         if (((Ed = false), Rg(e), !Ad))
-          if (Ko(Ai) !== null) ((Ad = true), bc || ((bc = true), hc()));
+          if (Yo(Ai) !== null) ((Ad = true), bc || ((bc = true), hc()));
           else {
-            var t = Ko(Pa);
+            var t = Yo(Pa);
             t !== null && ix(ox, t.startTime - e);
           }
       }
@@ -5464,7 +5464,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
               try {
                 t: {
                   Rg(e);
-                  for (Wr = Ko(Ai); Wr !== null && !(Wr.expirationTime > e && aC()); ) {
+                  for (Wr = Yo(Ai); Wr !== null && !(Wr.expirationTime > e && aC()); ) {
                     var r = Wr.callback;
                     if (typeof r === "function") {
                       ((Wr.callback = null), (Fn = Wr.priorityLevel));
@@ -5473,13 +5473,13 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
                         ((Wr.callback = o), Rg(e), (t = true));
                         break t;
                       }
-                      (Wr === Ko(Ai) && Cg(Ai), Rg(e));
+                      (Wr === Yo(Ai) && Cg(Ai), Rg(e));
                     } else Cg(Ai);
-                    Wr = Ko(Ai);
+                    Wr = Yo(Ai);
                   }
                   if (Wr !== null) t = true;
                   else {
-                    var i = Ko(Pa);
+                    var i = Yo(Pa);
                     (i !== null && ix(ox, i.startTime - e), (t = false));
                   }
                 }
@@ -5611,8 +5611,8 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
           n > r
             ? ((e.sortIndex = n),
               Jk(Pa, e),
-              Ko(Ai) === null &&
-                e === Ko(Pa) &&
+              Yo(Ai) === null &&
+                e === Yo(Pa) &&
                 (Ed ? (rC(_d), (_d = -1)) : (Ed = true), ix(ox, n - r)))
             : ((e.sortIndex = o), Jk(Ai, e), Ad || tx || ((Ad = true), bc || ((bc = true), hc()))),
           e
@@ -5632,10 +5632,10 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         };
       };
     });
-    var cC = Wo(function (xfe, lC) {
+    var cC = Ko(function (xfe, lC) {
       lC.exports = sC();
     });
-    var dC = Wo(function (Wn) {
+    var dC = Ko(function (Wn) {
       var _Z = We();
       function uC(e) {
         var t = "https://react.dev/errors/" + e;
@@ -5793,7 +5793,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
       };
       Wn.version = "19.2.4";
     });
-    var Rd = Wo(function (Sfe, fC) {
+    var Rd = Ko(function (Sfe, fC) {
       function pC() {
         if (
           typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ > "u" ||
@@ -5808,7 +5808,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
       }
       (pC(), (fC.exports = dC()));
     });
-    var SP = Wo(function (eb) {
+    var SP = Ko(function (eb) {
       var mn = cC(),
         zN = We(),
         LZ = Rd();
@@ -6001,7 +6001,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         tl = { pending: false, data: null, method: null, action: null },
         Vx = [],
         Tc = -1;
-      function Jo(e) {
+      function Qo(e) {
         return { current: e };
       }
       function vn(e) {
@@ -6010,12 +6010,12 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
       function Et(e, t) {
         (Tc++, (Vx[Tc] = e.current), (e.current = t));
       }
-      var Xo = Jo(null),
-        op = Jo(null),
-        Ka = Jo(null),
-        ch = Jo(null);
+      var Jo = Qo(null),
+        op = Qo(null),
+        Ka = Qo(null),
+        ch = Qo(null);
       function uh(e, t) {
-        switch ((Et(Ka, t), Et(op, e), Et(Xo, null), t.nodeType)) {
+        switch ((Et(Ka, t), Et(op, e), Et(Jo, null), t.nodeType)) {
           case 9:
           case 11:
             e = (e = t.documentElement) ? ((e = e.namespaceURI) ? kN(e) : 0) : 0;
@@ -6034,19 +6034,19 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
                   e = 0;
               }
         }
-        (vn(Xo), Et(Xo, e));
+        (vn(Jo), Et(Jo, e));
       }
       function Bc() {
-        (vn(Xo), vn(op), vn(Ka));
+        (vn(Jo), vn(op), vn(Ka));
       }
       function jx(e) {
         e.memoizedState !== null && Et(ch, e);
-        var t = Xo.current,
+        var t = Jo.current,
           n = cP(t, e.type);
-        t !== n && (Et(op, e), Et(Xo, n));
+        t !== n && (Et(op, e), Et(Jo, n));
       }
       function dh(e) {
-        (op.current === e && (vn(Xo), vn(op)),
+        (op.current === e && (vn(Jo), vn(op)),
           ch.current === e && (vn(ch), (gp._currentValue = tl)));
       }
       var ax, hC;
@@ -7818,7 +7818,7 @@ Error generating stack: ` +
         var a = 0;
         if (((r = e), typeof e === "function")) Zw(e) && (a = 1);
         else if (typeof e === "string")
-          a = jq(e, n, Xo.current) ? 26 : e === "html" || e === "head" || e === "body" ? 27 : 5;
+          a = jq(e, n, Jo.current) ? 26 : e === "html" || e === "head" || e === "body" ? 27 : 5;
         else
           e: switch (e) {
             case Fx:
@@ -7895,15 +7895,15 @@ Error generating stack: ` +
         Zr = [],
         qr = 0,
         ns = null,
-        Yo = 1,
-        Zo = "";
+        Zo = 1,
+        qo = "";
       function Ci(e, t) {
         ((Nc[Oc++] = lp), (Nc[Oc++] = hh), (hh = e), (lp = t));
       }
       function AO(e, t, n) {
-        ((Zr[qr++] = Yo), (Zr[qr++] = Zo), (Zr[qr++] = ns), (ns = e));
-        var r = Yo;
-        e = Zo;
+        ((Zr[qr++] = Zo), (Zr[qr++] = qo), (Zr[qr++] = ns), (ns = e));
+        var r = Zo;
+        e = qo;
         var o = 32 - Ar(r) - 1;
         ((r &= ~(1 << o)), (n += 1));
         var i = 32 - Ar(t) + o;
@@ -7912,9 +7912,9 @@ Error generating stack: ` +
           ((i = (r & ((1 << a) - 1)).toString(32)),
             (r >>= a),
             (o -= a),
-            (Yo = (1 << (32 - Ar(t) + o)) | (n << o) | r),
-            (Zo = i + e));
-        } else ((Yo = (1 << i) | (n << o) | r), (Zo = e));
+            (Zo = (1 << (32 - Ar(t) + o)) | (n << o) | r),
+            (qo = i + e));
+        } else ((Zo = (1 << i) | (n << o) | r), (qo = e));
       }
       function qw(e) {
         e.return !== null && (Ci(e, 1), AO(e, 1, 0));
@@ -7924,17 +7924,17 @@ Error generating stack: ` +
         for (; e === ns; )
           ((ns = Zr[--qr]),
             (Zr[qr] = null),
-            (Zo = Zr[--qr]),
+            (qo = Zr[--qr]),
             (Zr[qr] = null),
-            (Yo = Zr[--qr]),
+            (Zo = Zr[--qr]),
             (Zr[qr] = null));
       }
       function EO(e, t) {
-        ((Zr[qr++] = Yo),
-          (Zr[qr++] = Zo),
+        ((Zr[qr++] = Zo),
+          (Zr[qr++] = qo),
           (Zr[qr++] = ns),
-          (Yo = t.id),
-          (Zo = t.overflow),
+          (Zo = t.id),
+          (qo = t.overflow),
           (ns = e));
       }
       var Ln = null,
@@ -8052,7 +8052,7 @@ Error generating stack: ` +
       function cp(e) {
         Ya === null ? (Ya = [e]) : Ya.push(e);
       }
-      var nw = Jo(null),
+      var nw = Qo(null),
         gl = null,
         Di = null;
       function $a(e, t, n) {
@@ -8261,7 +8261,7 @@ Error generating stack: ` +
           typeof t === "object" && t !== null && typeof t.then === "function" && G7(e, t),
           UC !== null && UC(e, t));
       };
-      var rl = Jo(null);
+      var rl = Qo(null);
       function Qw() {
         var e = rl.current;
         return e !== null ? e : wt.pooledCache;
@@ -8832,8 +8832,8 @@ Error generating stack: ` +
         var n = e.callbacks;
         if (n !== null) for (e.callbacks = null, e = 0; e < n.length; e++) NO(n[e], t);
       }
-      var Wc = Jo(null),
-        vh = Jo(0);
+      var Wc = Qo(null),
+        vh = Qo(0);
       function jC(e, t) {
         ((e = Vi), Et(vh, e), Et(Wc, t), (Vi = e | t.baseLanes));
       }
@@ -8843,7 +8843,7 @@ Error generating stack: ` +
       function nS() {
         ((Vi = vh.current), vn(Wc), vn(vh));
       }
-      var Mr = Jo(null),
+      var Mr = Qo(null),
         eo = null;
       function Ha(e) {
         var t = e.alternate;
@@ -8864,7 +8864,7 @@ Error generating stack: ` +
       function kr(e) {
         (vn(Mr), eo === e && (eo = null), vn(Zt));
       }
-      var Zt = Jo(0);
+      var Zt = Qo(0);
       function kh(e) {
         for (var t = e; t !== null; ) {
           if (t.tag === 13) {
@@ -9844,8 +9844,8 @@ Error generating stack: ` +
             var e = Kn(),
               t = wt.identifierPrefix;
             if (et) {
-              var n = Zo,
-                r = Yo;
+              var n = qo,
+                r = Zo;
               ((n = (r & ~(1 << (32 - Ar(r) - 1))).toString(32) + n),
                 (t = "_" + t + "R_" + n),
                 (n = wh++),
@@ -10335,7 +10335,7 @@ Error generating stack: ` +
                   e !== null &&
                     ((t.memoizedState = {
                       dehydrated: e,
-                      treeContext: ns !== null ? { id: Yo, overflow: Zo } : null,
+                      treeContext: ns !== null ? { id: Zo, overflow: qo } : null,
                       retryLane: 536870912,
                       hydrationErrors: null,
                     }),
@@ -10584,7 +10584,7 @@ Error generating stack: ` +
                   e !== null &&
                     ((t.memoizedState = {
                       dehydrated: e,
-                      treeContext: ns !== null ? { id: Yo, overflow: Zo } : null,
+                      treeContext: ns !== null ? { id: Zo, overflow: qo } : null,
                       retryLane: 536870912,
                       hydrationErrors: null,
                     }),
@@ -11224,7 +11224,7 @@ Error generating stack: ` +
                 if (t.stateNode === null) throw Error(ne(166));
                 return (Rt(t), null);
               }
-              ((e = Xo.current), yc(t) ? zC(t, e) : ((e = pP(o, r, n)), (t.stateNode = e), _i(t)));
+              ((e = Jo.current), yc(t) ? zC(t, e) : ((e = pP(o, r, n)), (t.stateNode = e), _i(t)));
             }
             return (Rt(t), null);
           case 5:
@@ -11235,7 +11235,7 @@ Error generating stack: ` +
                 if (t.stateNode === null) throw Error(ne(166));
                 return (Rt(t), null);
               }
-              if (((i = Xo.current), yc(t))) zC(t, i);
+              if (((i = Jo.current), yc(t))) zC(t, i);
               else {
                 var a = Nh(Ka.current);
                 switch (i) {
@@ -11673,7 +11673,7 @@ Error generating stack: ` +
           mt(e, t, o);
         }
       }
-      function qo(e, t) {
+      function Xo(e, t) {
         var n = e.ref,
           r = e.refCleanup;
         if (n !== null)
@@ -12010,14 +12010,14 @@ Error generating stack: ` +
           } catch (i) {}
         switch (n.tag) {
           case 26:
-            (on || qo(n, t),
+            (on || Xo(n, t),
               Mi(e, t, n),
               n.memoizedState
                 ? n.memoizedState.count--
                 : n.stateNode && ((n = n.stateNode), n.parentNode.removeChild(n)));
             break;
           case 27:
-            on || qo(n, t);
+            on || Xo(n, t);
             var r = Dt,
               o = or;
             (ss(n.type) && ((Dt = n.stateNode), (or = false)),
@@ -12027,7 +12027,7 @@ Error generating stack: ` +
               (or = o));
             break;
           case 5:
-            on || qo(n, t);
+            on || Xo(n, t);
           case 6:
             if (((r = Dt), (o = or), (Dt = null), Mi(e, t, n), (Dt = r), (or = o), Dt !== null))
               if (or)
@@ -12076,7 +12076,7 @@ Error generating stack: ` +
             break;
           case 1:
             (on ||
-              (qo(n, t),
+              (Xo(n, t),
               (r = n.stateNode),
               typeof r.componentWillUnmount === "function" && A2(n, t, r)),
               Mi(e, t, n));
@@ -12194,7 +12194,7 @@ Error generating stack: ` +
           case 1:
             (nr(t, e),
               rr(e),
-              r & 512 && (on || n === null || qo(n, n.return)),
+              r & 512 && (on || n === null || Xo(n, n.return)),
               r & 64 &&
                 Ni &&
                 ((e = e.updateQueue),
@@ -12206,7 +12206,7 @@ Error generating stack: ` +
             break;
           case 26:
             var o = ho;
-            if ((nr(t, e), rr(e), r & 512 && (on || n === null || qo(n, n.return)), r & 4)) {
+            if ((nr(t, e), rr(e), r & 512 && (on || n === null || Xo(n, n.return)), r & 4)) {
               var i = n !== null ? n.memoizedState : null;
               if (((r = e.memoizedState), n === null))
                 if (r === null)
@@ -12287,11 +12287,11 @@ Error generating stack: ` +
           case 27:
             (nr(t, e),
               rr(e),
-              r & 512 && (on || n === null || qo(n, n.return)),
+              r & 512 && (on || n === null || Xo(n, n.return)),
               n !== null && r & 4 && Mx(e, e.memoizedProps, n.memoizedProps));
             break;
           case 5:
-            if ((nr(t, e), rr(e), r & 512 && (on || n === null || qo(n, n.return)), e.flags & 32)) {
+            if ((nr(t, e), rr(e), r & 512 && (on || n === null || Xo(n, n.return)), e.flags & 32)) {
               o = e.stateNode;
               try {
                 jc(o, "");
@@ -12500,7 +12500,7 @@ Error generating stack: ` +
               (os(4, t, t.return), el(t));
               break;
             case 1:
-              qo(t, t.return);
+              Xo(t, t.return);
               var n = t.stateNode;
               (typeof n.componentWillUnmount === "function" && A2(t, t.return, n), el(t));
               break;
@@ -12508,7 +12508,7 @@ Error generating stack: ` +
               rp(t.stateNode);
             case 26:
             case 5:
-              (qo(t, t.return), el(t));
+              (Xo(t, t.return), el(t));
               break;
             case 22:
               t.memoizedState === null && el(t);
@@ -12915,7 +12915,7 @@ Error generating stack: ` +
         if ((e === wt && (ft === 2 || ft === 9)) || e.cancelPendingCommit !== null)
           (qc(e, 0), Ga(e, Qe, wr, false));
         if ((xp(e, n), (lt & 2) === 0 || e !== wt))
-          (e === wt && ((lt & 2) === 0 && (il |= n), Gt === 4 && Ga(e, Qe, wr, false)), Qo(e));
+          (e === wt && ((lt & 2) === 0 && (il |= n), Gt === 4 && Ga(e, Qe, wr, false)), ei(e));
       }
       function j2(e, t, n) {
         if ((lt & 6) !== 0) throw Error(ne(327));
@@ -12993,7 +12993,7 @@ Error generating stack: ` +
           }
           break;
         } while (1);
-        Qo(e);
+        ei(e);
       }
       function uN(e, t, n, r, o, i, a, s, l, c, u, f, p, m) {
         if (
@@ -13221,7 +13221,7 @@ Error generating stack: ` +
                     break;
                   }
                   ((t = function () {
-                    ((ft !== 2 && ft !== 9) || wt !== e || (ft = 7), Qo(e));
+                    ((ft !== 2 && ft !== 9) || wt !== e || (ft = 7), ei(e));
                   }),
                     i.then(t, t));
                   break e;
@@ -13520,7 +13520,7 @@ Error generating stack: ` +
             }
           }
           (($i & 3) !== 0 && Jh(),
-            Qo(e),
+            ei(e),
             (o = e.pendingLanes),
             (n & 261930) !== 0 && (o & 42) !== 0
               ? e === xw
@@ -13571,7 +13571,7 @@ Error generating stack: ` +
         ((t = Jr(n, t)),
           (t = mw(e.stateNode, t, 2)),
           (e = qa(e, t, 2)),
-          e !== null && (xp(e, 2), Qo(e)));
+          e !== null && (xp(e, 2), ei(e)));
       }
       function mt(e, t, n) {
         if (e.tag === 3) fN(e, e, n);
@@ -13589,7 +13589,7 @@ Error generating stack: ` +
                 ((e = Jr(n, e)),
                   (n = h2(2)),
                   (r = qa(t, n, 2)),
-                  r !== null && (b2(n, r, t, e), xp(r, 2), Qo(r)));
+                  r !== null && (b2(n, r, t, e), xp(r, 2), ei(r)));
                 break;
               }
             }
@@ -13616,10 +13616,10 @@ Error generating stack: ` +
               ? (lt & 2) === 0 && qc(e, 0)
               : (xS |= n),
             Yc === Qe && (Yc = 0)),
-          Qo(e));
+          ei(e));
       }
       function nP(e, t) {
-        (t === 0 && (t = KN()), (e = ml(e, t)), e !== null && (xp(e, t), Qo(e)));
+        (t === 0 && (t = KN()), (e = ml(e, t)), e !== null && (xp(e, t), ei(e)));
       }
       function gq(e) {
         var t = e.memoizedState,
@@ -13654,7 +13654,7 @@ Error generating stack: ` +
         Lh = false,
         Ox = false,
         Wa = 0;
-      function Qo(e) {
+      function ei(e) {
         (e !== xc && e.next === null && (xc === null ? (Rh = xc = e) : (xc = xc.next = e)),
           (Lh = true),
           ww || ((ww = true), vq()));
@@ -16045,7 +16045,7 @@ Error generating stack: ` +
                           var l = 1 << (31 - Ar(a));
                           ((s.entanglements[1] |= l), (a &= ~l));
                         }
-                        (Qo(i), (lt & 6) === 0 && ((Eh = Sr() + 500), _p(0, false)));
+                        (ei(i), (lt & 6) === 0 && ((Eh = Sr() + 500), _p(0, false)));
                       }
                     }
                     break;
@@ -16509,7 +16509,7 @@ Error generating stack: ` +
           (n = r),
           (t.current.lanes = n),
           xp(t, n),
-          Qo(t),
+          ei(t),
           (e[Qc] = t.current),
           TS(e),
           new Qh(t)
@@ -16517,7 +16517,7 @@ Error generating stack: ` +
       };
       eb.version = "19.2.4";
     });
-    var EP = Wo(function (Afe, AP) {
+    var EP = Ko(function (Afe, AP) {
       function TP() {
         if (
           typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ > "u" ||
@@ -16532,7 +16532,7 @@ Error generating stack: ` +
       }
       (TP(), (AP.exports = SP()));
     });
-    var DP = Wo(function (nb) {
+    var DP = Ko(function (nb) {
       var oX = Symbol.for("react.transitional.element"),
         iX = Symbol.for("react.fragment");
       function PP(e, t, n) {
@@ -16551,7 +16551,7 @@ Error generating stack: ` +
       nb.jsx = PP;
       nb.jsxs = PP;
     });
-    var we = Wo(function (Rfe, IP) {
+    var we = Ko(function (Rfe, IP) {
       IP.exports = DP();
     });
     var mfe = {};
@@ -19869,7 +19869,7 @@ Error generating stack: ` +
         shareNoPage: "This page has no web link to share.",
         sendFailed: "Your message was not sent. Try again.",
       },
-      ei = 2000,
+      ti = 2000,
       DS = 200,
       ib = 300,
       Cp = 160;
@@ -19913,7 +19913,7 @@ Error generating stack: ` +
       if (a && a.width > 0 && a.height > 0) n.viewport = a;
       return Object.keys(n).length > 1 ? n : undefined;
     }
-    var IS = ei;
+    var IS = ti;
     function rD(e) {
       if (!e || typeof e !== "object" || Array.isArray(e)) return;
       let t = e,
@@ -19973,7 +19973,7 @@ Error generating stack: ` +
           typeof l === "string"
             ? l.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").slice(0, c)
             : "",
-        r = n(t.selection, ei).trim();
+        r = n(t.selection, ti).trim();
       if (!r) return;
       let o = n(t.path, ib).split(/[?#]/)[0].trim(),
         i = n(t.title, DS).replace(/\s+/g, " ").trim(),
@@ -20111,11 +20111,11 @@ ${t.url}`
           : ""
       }${r}`.slice(0, n);
     }
-    function cD(e, t = ei) {
+    function cD(e, t = ti) {
       if (e.what !== "selection" || !e.selection) return;
       let n = new URL(e.url);
       return Lr({
-        selection: e.selection.slice(0, Math.max(1, Math.min(t, ei))),
+        selection: e.selection.slice(0, Math.max(1, Math.min(t, ti))),
         title: e.title,
         path: SX(n.pathname),
         host: n.host,
@@ -20840,7 +20840,7 @@ ${t.url}`
       }
       return n;
     }
-    function ti(e, t, n, r) {
+    function ni(e, t, n, r) {
       let o = zX(e, r.storage),
         i = typeof window < "u";
       if (i) {
@@ -20982,10 +20982,10 @@ ${t.url}`
       return { focus: RD(t.focus), expanded: n, scroll: r };
     }
     var VX = { compact: false, full: false, etaFolded: false },
-      bl = () => ti("chat-view", 1, VX, { storage: "local" }),
+      bl = () => ni("chat-view", 1, VX, { storage: "local" }),
       jX = { tucked: false, edge: "right" },
       ub = () =>
-        ti("chat-fold", 1, jX, {
+        ni("chat-fold", 1, jX, {
           storage: "local",
           clean: (e) => {
             let t = e && typeof e === "object" ? e : {};
@@ -20998,7 +20998,7 @@ ${t.url}`
       GX = { scale: "log" },
       LD = (e) => (typeof e === "number" && e > 0 && e <= 1 ? e : undefined),
       Op = () =>
-        ti("gantt", 1, GX, {
+        ni("gantt", 1, GX, {
           storage: "local",
           clean: (e) => {
             let t = e && typeof e === "object" ? e : {},
@@ -21018,15 +21018,15 @@ ${t.url}`
       let n = t.open.filter((r) => typeof r === "string" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(r));
       return { open: [...new Set(n)].slice(0, 50) };
     }
-    var ni = () => ti("gantt-groups", 1, WX, { storage: "session", clean: KX }),
+    var ri = () => ni("gantt-groups", 1, WX, { storage: "session", clean: KX }),
       CD = (e) =>
-        ti(e ? `${AD}:${encodeURIComponent(e)}` : AD, ED, FX, {
+        ni(e ? `${AD}:${encodeURIComponent(e)}` : AD, ED, FX, {
           storage: "session",
           clean: (t) => MD(t, ED),
           migrate: (t, n) => MD(t, n),
         }),
       WS = () =>
-        ti(
+        ni(
           "chat-dock",
           1,
           { width: null },
@@ -21443,7 +21443,7 @@ ${t.url}`
       Pp = { normal: tT, gfm: KS, breaks: CJ, pedantic: LJ },
       NJ = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" },
       PD = (e) => NJ[e];
-    function ri(e, t) {
+    function oi(e, t) {
       if (t) {
         if (Zn.escapeTest.test(e)) return e.replace(Zn.escapeReplace, PD);
       } else if (Zn.escapeTestNoEncode.test(e)) return e.replace(Zn.escapeReplaceNoEncode, PD);
@@ -22498,13 +22498,13 @@ ${u}`
 `;
           return r
             ? '<pre><code class="language-' +
-                ri(r) +
+                oi(r) +
                 '">' +
-                (n ? o : ri(o, true)) +
+                (n ? o : oi(o, true)) +
                 `</code></pre>
 `
             : "<pre><code>" +
-                (n ? o : ri(o, true)) +
+                (n ? o : oi(o, true)) +
                 `</code></pre>
 `;
         }
@@ -22607,7 +22607,7 @@ ${e}</tr>
           return `<em>${this.parser.parseInline(e)}</em>`;
         }
         codespan({ text: e }) {
-          return `<code>${ri(e, true)}</code>`;
+          return `<code>${oi(e, true)}</code>`;
         }
         br(e) {
           return "<br>";
@@ -22621,22 +22621,22 @@ ${e}</tr>
           if (o === null) return r;
           e = o;
           let i = '<a href="' + e + '"';
-          return (t && (i += ' title="' + ri(t) + '"'), (i += ">" + r + "</a>"), i);
+          return (t && (i += ' title="' + oi(t) + '"'), (i += ">" + r + "</a>"), i);
         }
         image({ href: e, title: t, text: n, tokens: r }) {
           r && (n = this.parser.parseInline(r, this.parser.textRenderer));
           let o = DD(e);
-          if (o === null) return ri(n);
+          if (o === null) return oi(n);
           e = o;
-          let i = `<img src="${e}" alt="${ri(n)}"`;
-          return (t && (i += ` title="${ri(t)}"`), (i += ">"), i);
+          let i = `<img src="${e}" alt="${oi(n)}"`;
+          return (t && (i += ` title="${oi(t)}"`), (i += ">"), i);
         }
         text(e) {
           return "tokens" in e && e.tokens
             ? this.parser.parseInline(e.tokens)
             : "escaped" in e && e.escaped
               ? e.text
-              : ri(e.text);
+              : oi(e.text);
         }
       },
       nT = class {
@@ -23107,7 +23107,7 @@ ${e}</tr>
 Please report this to https://github.com/markedjs/marked.`),
               e)
             ) {
-              let r = "<p>An error occurred:</p><pre>" + ri(n.message + "", true) + "</pre>";
+              let r = "<p>An error occurred:</p><pre>" + oi(n.message + "", true) + "</pre>";
               return t ? Promise.resolve(r) : r;
             }
             if (t) return Promise.reject(n);
@@ -24741,7 +24741,7 @@ Please report this to https://github.com/markedjs/marked.`),
     }
     var ZI = 1e4;
     var qI = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
-    function oi(e) {
+    function ii(e) {
       return e
         .normalize("NFKC")
         .toLowerCase()
@@ -24767,7 +24767,7 @@ Please report this to https://github.com/markedjs/marked.`),
       return n + r ? (2 * o) / (n + r) : 0;
     }
     function VQ(e, t) {
-      let n = oi(e),
+      let n = ii(e),
         r = { score: 0, against: null, drop: false };
       if (!n || !t.length) return r;
       let o = qI.test(n) ? 2 : 3,
@@ -24777,7 +24777,7 @@ Please report this to https://github.com/markedjs/marked.`),
       let s = Vp(n, o),
         l = r;
       for (let c of a) {
-        let u = oi(c);
+        let u = ii(c);
         if (!u) continue;
         let f;
         if (u === n || (!i && u.includes(n))) f = 1;
@@ -24788,8 +24788,8 @@ Please report this to https://github.com/markedjs/marked.`),
       return { ...l, score: Math.round(l.score * 1000) / 1000, drop: l.score >= 0.6 };
     }
     function Db(e, t) {
-      let n = oi(e),
-        r = t.map(oi).join("");
+      let n = ii(e),
+        r = t.map(ii).join("");
       if (!n || !r) return 0;
       let o = qI.test(n) ? 2 : 3;
       if ([...n].length < o) return r.includes(n) ? 1 : 0;
@@ -24808,7 +24808,7 @@ Please report this to https://github.com/markedjs/marked.`),
         c = t.some((h) => h.start <= r && (h.end ?? o) >= n),
         u = VQ(e, l),
         f = t.filter((h) => h.start <= r + s && (h.end ?? o) + s >= n),
-        p = [...oi(e)].length >= 4,
+        p = [...ii(e)].length >= 4,
         m =
           f.length && p
             ? Db(
@@ -24833,7 +24833,7 @@ Please report this to https://github.com/markedjs/marked.`),
       return (t >>> 0).toString(36);
     }
     function lT(e, t) {
-      return [...new Set([...Vp(oi(e), t).keys()].map(GQ))];
+      return [...new Set([...Vp(ii(e), t).keys()].map(GQ))];
     }
     function WQ(e, t, n, r) {
       if (![e, t, n, r].every(Number.isFinite)) return null;
@@ -25151,7 +25151,7 @@ Please report this to https://github.com/markedjs/marked.`),
           if (l === null) return;
           let c = l.trim();
           if (c) {
-            let u = Lr({ ...e.where(), selection: c.slice(0, ei), location: e.locate?.() });
+            let u = Lr({ ...e.where(), selection: c.slice(0, ti), location: e.locate?.() });
             if (u) i({ ...u, at: t() });
             return;
           }
@@ -25351,13 +25351,13 @@ Please report this to https://github.com/markedjs/marked.`),
       },
       mee = (e) => [...e].map((t) => Az[t] ?? t).join(""),
       Sz = Object.entries(Az).reduce((e, [t, n]) => ({ ...e, [n]: (e[n] ?? "") + t }), {});
-    function ii(e) {
+    function ai(e) {
       return e
         .normalize("NFKC")
         .toLowerCase()
         .replace(/[\p{P}\p{S}\s]/gu, "");
     }
-    var fu = (e) => mee(ii(e)),
+    var fu = (e) => mee(ai(e)),
       Vb = (e) => e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
       qp = (e) =>
         new RegExp(
@@ -25396,7 +25396,7 @@ Please report this to https://github.com/markedjs/marked.`),
       return Math.sqrt(n);
     }
     function xT(e, t, n = Bb) {
-      if (!ii(e)) return null;
+      if (!ai(e)) return null;
       if (t.frameRms !== undefined && t.frameRms < n.minFrameRms) return "silent-audio";
       let r = t.answer ? (t.answerMinSpeechMs ?? 0) : n.minSpeechMs;
       if (t.prob !== undefined && t.speechMs < r) return "no-speech-frames";
@@ -27234,7 +27234,7 @@ Please report this to https://github.com/markedjs/marked.`),
       nf = 30000,
       v$ = 320,
       Kte = 30000,
-      ai = 16000,
+      si = 16000,
       qT = 2500,
       XT = 3000,
       Yte = 1500,
@@ -27374,7 +27374,7 @@ Please report this to https://github.com/markedjs/marked.`),
       let t = une.exec(e);
       if (!t || t.index === 0) return e;
       let n = e.slice(0, t.index).trimEnd();
-      return ii(n) ? n : e;
+      return ai(n) ? n : e;
     }
     function pne(e) {
       let t = fu(e);
@@ -27392,10 +27392,10 @@ Please report this to https://github.com/markedjs/marked.`),
     var mne = 4,
       gne = 8;
     function hne(e) {
-      let t = ii(e),
+      let t = ai(e),
         n = e
           .split(/[。，,.!?！？]/u)
-          .map(ii)
+          .map(ai)
           .filter((r) => r.length >= mne);
       return {
         whole: t,
@@ -27459,8 +27459,8 @@ Please report this to https://github.com/markedjs/marked.`),
     var ZT = (e) => e.map((t) => t.body + t.end).join("");
     function w$(e, t = Gp, n = true) {
       let r = { text: e, drop: false, prompt: 0, phrase: 0, repeat: 0, removed: [] };
-      if (!ii(e)) return r;
-      let o = t.filter((g) => ii(g)).map(hne),
+      if (!ai(e)) return r;
+      let o = t.filter((g) => ai(g)).map(hne),
         i = Ane(e),
         a = i.text;
       ((r.repeat = i.runs.length), r.removed.push(...i.runs));
@@ -27475,7 +27475,7 @@ Please report this to https://github.com/markedjs/marked.`),
         l = [],
         c = true;
       for (let g = 0; g < s.length; ) {
-        let h = ii(s[g].body);
+        let h = ai(s[g].body);
         if (!h) {
           g++;
           continue;
@@ -27501,7 +27501,7 @@ Please report this to https://github.com/markedjs/marked.`),
       if (f !== u) (r.phrase++, r.removed.push(u.slice(f.length).trim()), (u = f));
       if (!r.prompt && !r.phrase && !r.repeat) return r;
       let p = x$(u)
-          .map((g) => ii(g.body))
+          .map((g) => ai(g.body))
           .filter(Boolean),
         m = r.prompt > 0 && p.every((g) => o.some((h) => h.whole.includes(g)));
       return { ...r, text: u, drop: !p.length || m };
@@ -27536,7 +27536,7 @@ Please report this to https://github.com/markedjs/marked.`),
       }
       return o;
     }
-    function Ll(e, t = ai) {
+    function Ll(e, t = si) {
       let n = new ArrayBuffer(44 + e.length * 2),
         r = new DataView(n),
         o = (i, a) => {
@@ -27667,8 +27667,8 @@ Please report this to https://github.com/markedjs/marked.`),
         he = false,
         Me = 0,
         pe = Promise.resolve(),
-        Re = (D) => Math.round((D / ai) * 1000),
-        ke = (D) => (D * ai) / 1000,
+        Re = (D) => Math.round((D / si) * 1000),
+        ke = (D) => (D * si) / 1000,
         Q = (D) => {
           ((i = D), e.onState(D));
         },
@@ -28078,20 +28078,20 @@ Please report this to https://github.com/markedjs/marked.`),
                   ...($t?.action === "trim" ? { repeat: "trimmed" } : {}),
                 });
                 let gi = y$(ye?.decision),
-                  Lo = !$n && !Ae && !!ve && Ve.trim() === At?.trim() ? ve : undefined;
-                if (!$n && Ve.trim() && !Lo) e.speaker?.(ye, K);
+                  Co = !$n && !Ae && !!ve && Ve.trim() === At?.trim() ? ve : undefined;
+                if (!$n && Ve.trim() && !Co) e.speaker?.(ye, K);
                 if (!Oe)
                   e.wake?.verdict(
                     !$n && !!Ve.trim() && !gi,
                     $n ? "hallucination" : !Ve.trim() ? "empty" : gi ? "other" : "ok",
                   );
-                if ((o.resolve(D, $n ? null : Lo ? Ve : s$(Ve, Ae), Lo), !e.record || Oe)) return;
-                let Co = Re(F.length);
-                if (Fe?.filtered) return I(q, Co, Ke, "active");
+                if ((o.resolve(D, $n ? null : Co ? Ve : s$(Ve, Ae), Co), !e.record || Oe)) return;
+                let No = Re(F.length);
+                if (Fe?.filtered) return I(q, No, Ke, "active");
                 if ($n || !Ve.trim()) return;
                 be({
                   wav: q,
-                  durationMs: Co,
+                  durationMs: No,
                   at: Ke,
                   text: Ve,
                   source: Fe ? "local" : "cloud",
@@ -30270,7 +30270,7 @@ ${q}`;
             let F = r(),
               H = G.filter((se) => se.start <= D + $H && (se.end ?? F) + $H >= N),
               ae = H.length > 0,
-              de = oi(z) !== "",
+              de = ii(z) !== "",
               Ae =
                 ae && de
                   ? Db(
@@ -30287,7 +30287,7 @@ ${q}`;
                 paused: false,
               };
             if (O || !de || !u() || !T || !ae) return q;
-            if (Ae >= Yre || oi(z).length < Zre)
+            if (Ae >= Yre || ii(z).length < Zre)
               return (f({ ev: "voice-talk-over-unsure", score: q.score, chars: z.length }), q);
             if (
               (f({ ev: "voice-talk-over", score: q.score, chars: z.length }),
@@ -31110,7 +31110,7 @@ ${q}`;
       Aoe,
       Eoe,
       So = () =>
-        (Aoe ??= ti("clips", 1, Toe, {
+        (Aoe ??= ni("clips", 1, Toe, {
           storage: "session",
           keys: ["sid", "stopPending", "stoppedSince"],
           clean: (e) => {
@@ -31123,7 +31123,7 @@ ${q}`;
           },
         })),
       C1 = () =>
-        (Eoe ??= ti("clips-device", 1, { device: "", autoStop: false }, { storage: "local" })),
+        (Eoe ??= ni("clips-device", 1, { device: "", autoStop: false }, { storage: "local" })),
       L1 = () => {};
     function _oe(e, t, n) {
       let r = So();
@@ -32521,7 +32521,7 @@ ${q}`;
             y = o.value.slice(h, o.selectionEnd);
           return (
             (l.start = h + y.length - y.trimStart().length),
-            (l.end = l.start + Math.min(y.trim().length, ei)),
+            (l.end = l.start + Math.min(y.trim().length, ti)),
             Np(l)
           );
         }
@@ -32545,7 +32545,7 @@ ${q}`;
             x = s.toString(),
             w = x.length - x.trimStart().length;
           ((l.start = b.length + w),
-            (l.end = l.start + Math.min(x.trim().length, ei)),
+            (l.end = l.start + Math.min(x.trim().length, ti)),
             (l.before = (b + x.slice(0, w)).slice(-Cp)),
             (l.after = (x.slice(w + l.end - l.start) + v).slice(0, Cp)));
         }
@@ -34720,7 +34720,7 @@ ${y}`
       });
     }
     function k6({ tasks: e, now: t, strings: n, onExpand: r, groups: o = n0, open: i }) {
-      let a = It(ni(), (p) => p.open),
+      let a = It(ri(), (p) => p.open),
         s = i ?? a,
         l = Yy(Ky(e, t), t),
         c = v5(l, t);
@@ -34915,7 +34915,7 @@ ${y}`
             "aria-label": a,
             title: a,
             onMouseDown: l0,
-            onClick: () => ni().setState((l) => ({ open: a0(l.open, e.def.id) })),
+            onClick: () => ri().setState((l) => ({ open: a0(l.open, e.def.id) })),
             className: "tap-40 shrink-0 border-0 bg-transparent px-1 py-0 leading-none",
             style: { color: st("text"), minWidth: 24 },
             children: me.jsx(hl, { open: e.open, size: 10 }),
@@ -35352,7 +35352,7 @@ ${y}`
       f.current = c;
       let p = He.useMemo(() => (i ? e.filter((O) => !O.done) : e), [e, i]),
         m = He.useMemo(() => Qy(Yy(p, t)), [p, t]),
-        g = It(ni(), (O) => O.open),
+        g = It(ri(), (O) => O.open),
         h = He.useMemo(() => o0(m, o, g, (O) => r0(O, n), t), [m, o, g, n, t]),
         y = He.useMemo(() => {
           let O = h.map((ye) => C6(ye, c)),
@@ -35504,11 +35504,11 @@ ${y}`
               if (An) ke(hA(q.from, va, Je(tt.cx), An.w, ie.current));
               let Rs = b.current.groups.map((ka) => ka.id),
                 hi = Q5({ open0: q.open0, targetGroup: q.targetGroup, allGroups: Rs, fy: uo }),
-                Ls = ni().getState().open;
+                Ls = ri().getState().open;
               if (hi.length !== Ls.length || hi.some((ka, xa) => ka !== Ls[xa]))
-                ni().setState({ open: hi });
-              let Oo = X5(q.rowH0, uo),
-                mr = b.current.lines.reduce((ka, xa) => ka + C6(xa, Oo) + ua, 0),
+                ri().setState({ open: hi });
+              let Po = X5(q.rowH0, uo),
+                mr = b.current.lines.reduce((ka, xa) => ka + C6(xa, Po) + ua, 0),
                 Iv = ca + ua + Math.round(Fu * O.clientHeight),
                 Cs = e6({
                   top0: q.top0,
@@ -35518,7 +35518,7 @@ ${y}`
                   total0: q.total0,
                   total1: mr,
                 });
-              if (Oo !== f.current) ((f.current = Oo), (R.current = Cs), u(Oo));
+              if (Po !== f.current) ((f.current = Po), (R.current = Cs), u(Po));
               else O.scrollTop = Cs;
               return;
             }
@@ -35544,16 +35544,16 @@ ${y}`
               uo = R.current ?? O.scrollTop,
               Rs = Ue(An.cy),
               hi = ca + ua + Math.round(Fu * O.clientHeight),
-              { lines: Ls, geo: Oo } = b.current;
+              { lines: Ls, geo: Po } = b.current;
             q = {
               from: gA(tt.axis, va, Je(An.cx), ie.current),
               p0: An,
               anchorY0: Rs,
               top0: uo,
               rowH0: f.current,
-              total0: Oo.total,
-              open0: ni().getState().open,
-              targetGroup: J5(Ls, Oo, uo + Rs - hi),
+              total0: Po.total,
+              open0: ri().getState().open,
+              targetGroup: J5(Ls, Po, uo + Rs - hi),
               now: An,
             };
           },
@@ -35607,11 +35607,11 @@ ${y}`
           gi = (fe) => {
             ((At = false), co(w6(Ke, $n(fe))));
           },
-          Lo = (fe) => {
+          Co = (fe) => {
             if (Ke.kind === "idle" || Ke.kind === "armed") return;
             co(S6(Ke, $n(fe)));
           },
-          Co = (fe) => co(T6(Ke, $n(fe))),
+          No = (fe) => co(T6(Ke, $n(fe))),
           Om = () => co(A6(Ke)),
           Te = (fe) => {
             if (!At) return;
@@ -35620,7 +35620,7 @@ ${y}`
           Pm = (fe) => {
             if (Ke.kind === "zoom" && fe.touches.length === 1) fe.preventDefault();
           },
-          No = (fe) => {
+          Oo = (fe) => {
             (fe.preventDefault(), (se = 1));
           },
           Dm = (fe) => {
@@ -35635,18 +35635,18 @@ ${y}`
           O.addEventListener("touchmove", Vt, { passive: false }),
           O.addEventListener("touchend", Kt),
           O.addEventListener("touchcancel", Kt),
-          O.addEventListener("gesturestart", No),
+          O.addEventListener("gesturestart", Oo),
           O.addEventListener("gesturechange", Dm),
           O.addEventListener("pointerdown", gi),
-          O.addEventListener("pointermove", Lo),
-          O.addEventListener("pointerup", Co),
+          O.addEventListener("pointermove", Co),
+          O.addEventListener("pointerup", No),
           O.addEventListener("pointercancel", Om),
           O.addEventListener("click", Te, true),
           O.addEventListener("touchmove", Pm, { passive: false }),
           () => {
             (O.removeEventListener("pointerdown", gi),
-              O.removeEventListener("pointermove", Lo),
-              O.removeEventListener("pointerup", Co),
+              O.removeEventListener("pointermove", Co),
+              O.removeEventListener("pointerup", No),
               O.removeEventListener("pointercancel", Om),
               O.removeEventListener("click", Te, true),
               O.removeEventListener("touchmove", Pm),
@@ -35657,7 +35657,7 @@ ${y}`
               O.removeEventListener("touchmove", Vt),
               O.removeEventListener("touchend", Kt),
               O.removeEventListener("touchcancel", Kt),
-              O.removeEventListener("gesturestart", No),
+              O.removeEventListener("gesturestart", Oo),
               O.removeEventListener("gesturechange", Dm),
               cancelAnimationFrame(Fe));
           }
@@ -35704,11 +35704,11 @@ ${y}`
             onReveal: () => Tt(O),
           });
         },
-        zn = (O) => ni().setState((q) => ({ open: a0(q.open, O) })),
+        zn = (O) => ri().setState((q) => ({ open: a0(q.open, O) })),
         [Tn, z] = He.useState(null),
         N = He.useRef(null),
         D = (O, q) => {
-          let se = ni();
+          let se = ri();
           if (!se.getState().open.includes(O)) se.setState((ye) => ({ open: [...ye.open, O] }));
           ((N.current = q), z(q));
         };
@@ -36315,21 +36315,21 @@ ${y}`
         ],
       });
     }
-    var si = ee(We(), 1);
+    var li = ee(We(), 1);
     function O6(e, t, n = { sec: Hu, keep: qy }) {
       let r = n.sec * 1000,
-        o = si.useRef(null),
-        i = si.useRef(t),
-        [a, s] = si.useState($5),
-        [l, c] = si.useState(() => Date.now()),
+        o = li.useRef(null),
+        i = li.useRef(t),
+        [a, s] = li.useState($5),
+        [l, c] = li.useState(() => Date.now()),
         u = n.keep;
-      (si.useEffect(() => {
+      (li.useEffect(() => {
         if (!e) return;
         let p = Date.now(),
           m = I5(o.current, e, p);
         if (((o.current = e), m.length)) (s((g) => mA(g, m, p, u)), c(p));
       }, [e, u]),
-        si.useEffect(() => {
+        li.useEffect(() => {
           let p = i.current;
           if (((i.current = t), !e || t <= p)) return;
           let m = z5(e, p, t);
@@ -36338,7 +36338,7 @@ ${y}`
             (s((h) => mA(h, m, g, u)), c(g));
           }
         }, [t]),
-        si.useEffect(() => {
+        li.useEffect(() => {
           let p = U5(a, l, r);
           if (p === null) return;
           let m = setTimeout(() => c(Date.now()), Math.max(0, p - Date.now()));
@@ -37177,7 +37177,7 @@ Rules:
     function xs(e) {
       return e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     }
-    function li(e, t, n) {
+    function ci(e, t, n) {
       let r = new e._zod.constr(t ?? e._zod.def);
       if (!t || n?.parent) r._zod.parent = e;
       return r;
@@ -37222,7 +37222,7 @@ Rules:
       if (r && r.length > 0)
         throw Error(".pick() cannot be used on object schemas containing refinements");
       let i = {};
-      return (Fl(i, e, y0(e, t)), li(e, Ir(n, { shape: i, checks: [] })));
+      return (Fl(i, e, y0(e, t)), ci(e, Ir(n, { shape: i, checks: [] })));
     }
     function y0(e, t) {
       let n = pa(e),
@@ -37247,7 +37247,7 @@ Rules:
           e,
           Reflect.ownKeys(pa(e)).filter((s) => !i.has(s)),
         ),
-        li(e, Ir(n, { shape: a, checks: [] }))
+        ci(e, Ir(n, { shape: a, checks: [] }))
       );
     }
     function Bae(e, t) {
@@ -37261,7 +37261,7 @@ Rules:
               "Cannot overwrite keys on object schemas containing refinements. Use `.safeExtend()` instead.",
             );
       }
-      return li(e, Ir(e._zod.def, { shape: w3(e, t) }));
+      return ci(e, Ir(e._zod.def, { shape: w3(e, t) }));
     }
     function w3(e, t) {
       let n = {};
@@ -37269,7 +37269,7 @@ Rules:
     }
     function Vae(e, t) {
       if (!Bl(t)) throw Error("Invalid input to safeExtend: expected a plain object");
-      return li(e, Ir(e._zod.def, { shape: w3(e, t) }));
+      return ci(e, Ir(e._zod.def, { shape: w3(e, t) }));
     }
     function jae(e, t) {
       if (!t?._zod?.def)
@@ -37289,7 +37289,7 @@ Rules:
         },
         checks: t._zod.def.checks ?? [],
       });
-      return li(e, r);
+      return ci(e, r);
     }
     function S3(e, t, n, r = "partial") {
       let i = t._zod.def.checks;
@@ -37304,7 +37304,7 @@ Rules:
           Reflect.ownKeys(pa(t)),
           e && ((c, u) => (s && !s.has(u) ? c : new e({ type: "optional", innerType: c }))),
         ),
-        li(t, Ir(t._zod.def, { shape: l, checks: [] }))
+        ci(t, Ir(t._zod.def, { shape: l, checks: [] }))
       );
     }
     function Gae(e, t, n) {
@@ -37314,10 +37314,10 @@ Rules:
         Fl(o, t, Reflect.ownKeys(pa(t)), (i, a) =>
           r && !r.has(a) ? i : new e({ type: "nonoptional", innerType: i }),
         ),
-        li(t, Ir(t._zod.def, { shape: o }))
+        ci(t, Ir(t._zod.def, { shape: o }))
       );
     }
-    function ci(e, t = 0) {
+    function ui(e, t = 0) {
       if (e.aborted === true) return true;
       for (let n = t; n < e.issues.length; n++) if (e.issues[n]?.continue !== true) return true;
       return false;
@@ -37350,7 +37350,7 @@ Rules:
       var r;
       for (let o = t; o < e.length; o++) (r = e[o]).schema ?? (r.schema = n);
     }
-    function ui(e, t, n) {
+    function di(e, t, n) {
       var r;
       let o = e.inst?._zod?.traits;
       if (o?.has("$ZodType"))
@@ -37619,7 +37619,7 @@ Rules:
       );
     }
 
-    class di extends Error {
+    class pi extends Error {
       constructor() {
         super("Encountered Promise during synchronous parse. Use .parseAsync() instead.");
       }
@@ -37746,9 +37746,9 @@ Rules:
       let t = (n, r, o, i) => {
         let a = o ? { ...o, async: false } : { async: false },
           s = n._zod.run({ value: r, issues: [] }, a);
-        if (s instanceof Promise) throw new di();
+        if (s instanceof Promise) throw new pi();
         if (s.issues.length) {
-          let l = new (i?.Err ?? e)(s.issues.map((c) => ui(c, a, zr())));
+          let l = new (i?.Err ?? e)(s.issues.map((c) => di(c, a, zr())));
           throw (GA(l, i?.callee ?? t), l);
         }
         return s.value;
@@ -37761,7 +37761,7 @@ Rules:
           s = n._zod.run({ value: r, issues: [] }, a);
         if (s instanceof Promise) s = await s;
         if (s.issues.length) {
-          let l = new (i?.Err ?? e)(s.issues.map((c) => ui(c, a, zr())));
+          let l = new (i?.Err ?? e)(s.issues.map((c) => di(c, a, zr())));
           throw (GA(l, i?.callee ?? t), l);
         }
         return s.value;
@@ -37771,7 +37771,7 @@ Rules:
     var E0 = (e) => (t, n, r) => {
       let o = r ? { ...r, async: false } : { async: false },
         i = t._zod.run({ value: n, issues: [] }, o);
-      if (i instanceof Promise) throw new di();
+      if (i instanceof Promise) throw new pi();
       return i.issues.length ? I3(e, i.issues, o) : { success: true, data: i.value };
     };
     function I3(e, t, n) {
@@ -37779,7 +37779,7 @@ Rules:
       return {
         success: false,
         get error() {
-          if (!r) ((r = new e(t.map((o) => ui(o, n, zr())))), (t = undefined), (n = undefined));
+          if (!r) ((r = new e(t.map((o) => di(o, n, zr())))), (t = undefined), (n = undefined));
           return r;
         },
         set error(o) {
@@ -37809,7 +37809,7 @@ Rules:
         i;
       if (o) ((r[ose] = true), (i = o({ value: t, issues: [] }, r)));
       else i = e._zod.run({ value: t, issues: [] }, r);
-      if (i instanceof Promise) throw new di();
+      if (i instanceof Promise) throw new pi();
       return i.issues.length === 0;
     }
     var eE = async (e, t, n) => {
@@ -38274,7 +38274,7 @@ ${t.join(`
           else {
             let i = (s, l, c) => {
                 if (s.memo) return s;
-                let u = ci(s),
+                let u = ui(s),
                   f;
                 for (let p of l) {
                   if (p._zod.def.when) {
@@ -38283,25 +38283,25 @@ ${t.join(`
                   } else if (u) continue;
                   let m = s.issues.length,
                     g = p._zod.check(s);
-                  if (g instanceof Promise && c?.async === false) throw new di();
+                  if (g instanceof Promise && c?.async === false) throw new pi();
                   if (f || g instanceof Promise)
                     f = (f ?? Promise.resolve()).then(async () => {
                       if ((await g, s.issues.length === m)) return;
-                      if ((v0(s.issues, m, e), !u)) u = ci(s, m);
+                      if ((v0(s.issues, m, e), !u)) u = ui(s, m);
                     });
                   else {
                     if (s.issues.length === m) continue;
-                    if ((v0(s.issues, m, e), !u)) u = ci(s, m);
+                    if ((v0(s.issues, m, e), !u)) u = ui(s, m);
                   }
                 }
                 if (f) return f.then(() => s);
                 return s;
               },
               a = (s, l, c) => {
-                if (ci(s)) return ((s.aborted = true), s);
+                if (ui(s)) return ((s.aborted = true), s);
                 let u = i(l, o, c);
                 if (u instanceof Promise) {
-                  if (c.async === false) throw new di();
+                  if (c.async === false) throw new pi();
                   return u.then((f) => e._zod.parse(f, c));
                 }
                 return e._zod.parse(u, c);
@@ -38315,7 +38315,7 @@ ${t.join(`
               }
               let c = e._zod.parse(s, l);
               if (c instanceof Promise) {
-                if (l.async === false) throw new di();
+                if (l.async === false) throw new pi();
                 return c.then((u) => i(u, o, l));
               }
               return i(c, o, l);
@@ -38332,7 +38332,7 @@ ${t.join(`
         },
       ),
       BU = (e, t) =>
-        e.issues.length ? { issues: e.issues.map((n) => ui(n, t, zr())) } : { value: e.value };
+        e.issues.length ? { issues: e.issues.map((n) => di(n, t, zr())) } : { value: e.value };
     async function lse(e, t) {
       let n = { async: true };
       return BU(await e._zod.run({ value: t, issues: [] }, n), n);
@@ -38742,7 +38742,7 @@ ${t.join(`
             let c = i[l],
               u = t.element._zod.run({ value: c, issues: [] }, o);
             if (u instanceof Promise) a.push(u.then((f) => OU(f, r, l)));
-            else if ((OU(u, r, l), s && u.issues.length !== 0 && ci(u))) break;
+            else if ((OU(u, r, l), s && u.issues.length !== 0 && ui(u))) break;
           }
           if (a.length) return Promise.all(a).then(() => r);
           return r;
@@ -38799,7 +38799,7 @@ ${t.join(`
         m = 0;
       for (let g in t) {
         if (a && n.issues.length !== m) {
-          if (ci(n, m)) break;
+          if (ui(n, m)) break;
           m = n.issues.length;
         }
         if (l.has(g)) continue;
@@ -38864,7 +38864,7 @@ ${t.join(`
               h = c.issues.length;
             for (let y of s.allKeys) {
               if (g && c.issues.length !== h) {
-                if (ci(c, h)) break;
+                if (ui(c, h)) break;
                 h = c.issues.length;
               }
               if (y === "__proto__") continue;
@@ -38995,14 +38995,14 @@ ${t.join(`
       });
     function PU(e, t, n, r) {
       for (let i of e) if (i.issues.length === 0) return ((t.value = i.value), t);
-      let o = e.filter((i) => !ci(i));
+      let o = e.filter((i) => !ui(i));
       if (o.length === 1) return ((t.value = o[0].value), o[0]);
       return (
         t.issues.push({
           code: "invalid_union",
           input: t.value,
           inst: n,
-          errors: e.map((i) => i.issues.map((a) => ui(a, r, zr()))),
+          errors: e.map((i) => i.issues.map((a) => di(a, r, zr()))),
         }),
         t
       );
@@ -39117,7 +39117,7 @@ ${t.join(`
       }
       let l = lE(t.value, n.value);
       if (!l.valid) {
-        if (ci(e)) return e;
+        if (ui(e)) return e;
         throw Error(`Unmergable intersection. Error path: ${JSON.stringify(l.mergeErrorPath)}`);
       }
       return ((e.value = l.data), e);
@@ -39147,7 +39147,7 @@ ${t.join(`
                   r.issues.push({
                     code: "invalid_key",
                     origin: "record",
-                    issues: f.issues.map((g) => ui(g, o, zr())),
+                    issues: f.issues.map((g) => di(g, o, zr())),
                     input: u,
                     path: [u],
                     inst: e,
@@ -39206,7 +39206,7 @@ ${t.join(`
                   r.issues.push({
                     code: "invalid_key",
                     origin: "record",
-                    issues: u.issues.map((g) => ui(g, o, zr())),
+                    issues: u.issues.map((g) => di(g, o, zr())),
                     input: c,
                     path: [c],
                     inst: e,
@@ -39287,7 +39287,7 @@ ${t.join(`
           let o = t.transform(n.value, n);
           if (r.async)
             return (o instanceof Promise ? o : Promise.resolve(o)).then((a) => ((n.value = a), n));
-          if (o instanceof Promise) throw new di();
+          if (o instanceof Promise) throw new pi();
           return ((n.value = o), n);
         }));
     });
@@ -39394,7 +39394,7 @@ ${t.join(`
         (e.value = n.catchValue({
           ...t,
           value: e.value,
-          error: { issues: t.issues.map((o) => ui(o, r, zr())) },
+          error: { issues: t.issues.map((o) => di(o, r, zr())) },
           input: e.value,
         })),
         e
@@ -41062,7 +41062,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           return this.check(...e);
         },
         clone(e, t) {
-          return li(this, e, t);
+          return ci(this, e, t);
         },
         brand() {
           return this;
@@ -41512,7 +41512,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
     var mle = J("ZodBoolean", (e, t) => {
       (b8.init(e, t), Ut.init(e, t), (e._zod.processJSONSchema = (n, r, o) => GF(e, n, r, o)));
     });
-    function pi(e) {
+    function Eo(e) {
       return wF(mle, e);
     }
     var gle = J("ZodUnknown", (e, t) => {
@@ -41827,10 +41827,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           .regex(/^[a-z0-9_-]{1,24}$/)
           .optional(),
         lane: Le().regex(Ble, "a lane name: the token's name"),
-        resident: pi().optional(),
-        wake: pi().optional(),
+        resident: Eo().optional(),
+        wake: Eo().optional(),
         scope: ha(Fle).optional(),
-        answerUnnamed: pi().optional(),
+        answerUnnamed: Eo().optional(),
       }).strict(),
       ba = {
         "lanes.repos": ["lianki", "agent-yes", "liagent", "rechrome", "otoji", "rgui", "mimiai"],
@@ -41885,9 +41885,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         protocol: ha(["openai", "anthropic"]),
         baseUrl: Le().max(300).regex(Gle, "https://…, or http://localhost"),
         model: Le().regex(zB, "a model name"),
-        browser: pi(),
-        keyless: pi().optional(),
-        opaqueAuthErrors: pi().optional(),
+        browser: Eo(),
+        keyless: Eo().optional(),
+        opaqueAuthErrors: Eo().optional(),
         policyUrl: HE.optional(),
         pricingUrl: HE.optional(),
         keyUrl: HE.optional(),
@@ -42213,9 +42213,34 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           audience: "public",
           description: "单词原音载入、定位或播放停滞时等待多久再回退到合成音（毫秒）。",
         }),
+        "review.nextPreview": {
+          default: true,
+          schema: Eo(),
+          group: "review",
+          audience: "public",
+          description:
+            "复习网页卡片时，仅预载下一张网页的受限预览；关闭后不请求预览检查或加载预览网页。省流量模式下也不预载。",
+        },
+        "review.previewHeadTimeoutMs": W({
+          default: 5000,
+          min: 500,
+          max: 15000,
+          unit: "ms",
+          group: "review",
+          audience: "server",
+          description: "下一张网页预览的请求头和公开地址检查总等待时间；超时只显示标题链接。",
+        }),
+        "review.previewChecksPerMinute": W({
+          default: 30,
+          min: 1,
+          max: 120,
+          group: "review",
+          audience: "server",
+          description: "每个账号每分钟最多检查多少张下一页预览；超出后照常复习，只显示标题链接。",
+        }),
         "words.speak.skipForeignParens": {
           default: true,
-          schema: pi(),
+          schema: Eo(),
           group: "words",
           audience: "public",
           description:
@@ -42510,7 +42535,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
               term: Le().min(1).max(uf.term),
               say: Le().min(1).max(uf.say),
               lang: Le().regex(wy, "a language: zh, ja, zh-TW…").optional(),
-              ignoreCase: pi().optional(),
+              ignoreCase: Eo().optional(),
               ph: Le().min(1).max(uf.ph).optional(),
               alphabet: ha(["ipa", "x-sampa"]).optional(),
             }).strict(),
@@ -43822,7 +43847,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         }),
         "lanes.forwardUnknownVoice": {
           default: ba["lanes.forwardUnknownVoice"],
-          schema: pi(),
+          schema: Eo(),
           group: "lanes",
           audience: "server",
           description:
@@ -44069,7 +44094,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         },
         "partner.spokenNeedsName": {
           default: Y6,
-          schema: pi(),
+          schema: Eo(),
           group: "chat",
           audience: "server",
           description:
@@ -47949,7 +47974,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         e.connection?.effectiveType,
       ]);
 
-    class Eo extends Error {
+    class _o extends Error {
       constructor() {
         super("model-download-blocked");
       }
@@ -47991,7 +48016,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         c = t(),
         u = c.connection,
         f = bV(c),
-        p = () => s.abort(new Eo()),
+        p = () => s.abort(new _o()),
         m = () => {
           let g = t();
           if (g.online === false || (JE(g) !== "unmetered" && bV(g) !== f)) p();
@@ -48002,15 +48027,15 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         e.signal?.addEventListener("abort", p, { once: true }));
       try {
         if (e.signal?.aborted) p();
-        if (c.online === false) throw new Eo();
-        if (!Number.isFinite(e.estimatedMb) || e.estimatedMb <= 0) throw new Eo();
+        if (c.online === false) throw new _o();
+        if (!Number.isFinite(e.estimatedMb) || e.estimatedMb <= 0) throw new _o();
         let g = JE(c);
         if (g !== "unmetered") {
           let h = false;
           try {
             h = (await e.confirm?.({ estimatedMb: e.estimatedMb, risk: g })) === true;
           } catch {}
-          if (!h) throw new Eo();
+          if (!h) throw new _o();
         }
         (m(), s.signal.throwIfAborted());
         for (let h of i) {
@@ -48239,7 +48264,7 @@ self.onmessage = async (e) => {
             T = (S) =>
               new Promise((R, M) => {
                 try {
-                  if (w !== h) return M(new Eo());
+                  if (w !== h) return M(new _o());
                   r = t();
                 } catch (U) {
                   return (
@@ -48289,7 +48314,7 @@ self.onmessage = async (e) => {
             let S = y.signal,
               R = (e.allowed ? e.allowed() : Promise.resolve(true))
                 .then(async (M) => {
-                  if (!M) throw new Eo();
+                  if (!M) throw new _o();
                   let j = e.prepare
                     ? await e.prepare(S)
                     : e.worker
@@ -48305,11 +48330,11 @@ self.onmessage = async (e) => {
                 })
                 .catch((M) => {
                   if (w === h)
-                    (s(M instanceof Eo ? "needs-wifi" : "failed"),
+                    (s(M instanceof _o ? "needs-wifi" : "failed"),
                       e.log?.({
                         ev: "wake-kws",
                         ok: false,
-                        error: M instanceof Eo ? "needs-wifi" : "download-failed",
+                        error: M instanceof _o ? "needs-wifi" : "download-failed",
                       }));
                   throw M;
                 });
@@ -48356,7 +48381,7 @@ self.onmessage = async (e) => {
         dispose() {
           (m?.(),
             h++,
-            y?.abort(new Eo()),
+            y?.abort(new _o()),
             (u = null),
             r?.terminate(),
             (r = null),
@@ -49346,9 +49371,9 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               ((t = YB({
                 now: Date.now,
                 run: Zu(),
-                rate: ai,
+                rate: si,
                 startAt: s,
-                maxCaptureMs: e.maxCaptureMs ?? Math.floor(((d_ - 44) / 2 / ai) * 1000),
+                maxCaptureMs: e.maxCaptureMs ?? Math.floor(((d_ - 44) / 2 / si) * 1000),
                 localSegmentMs: nf,
                 partialMinMs: XT,
                 partialEveryMs: qT,
@@ -49372,8 +49397,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 },
               })),
                 (n = lj(l, u, (p) => {
-                  let m = ly(p, l.sampleRate, ai);
-                  t?.frame(m, Date.now() - (m.length * 1000) / ai);
+                  let m = ly(p, l.sampleRate, si);
+                  t?.frame(m, Date.now() - (m.length * 1000) / si);
                 })));
             })()),
             o.catch(() => {
@@ -49484,7 +49509,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         s = (l) => {
           if (l === "start") e.onSpeechStart();
           else if (l === "misfire") e.onMisfire();
-          else if (l) e.onSpeechEnd(ly(l, n.sampleRate, ai));
+          else if (l) e.onSpeechEnd(ly(l, n.sampleRate, si));
         };
       return (
         (o.onaudioprocess = (l) => {
@@ -49492,7 +49517,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           let c = new Float32Array(l.inputBuffer.getChannelData(0)),
             u = i.push(c);
           if (u === "start") s(u);
-          if ((e.onFrame?.(ly(c, n.sampleRate, ai)), u !== "start")) s(u);
+          if ((e.onFrame?.(ly(c, n.sampleRate, si)), u !== "start")) s(u);
         }),
         r.connect(o),
         o.connect(n.destination),
@@ -50259,7 +50284,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         !!e.recheck
       );
     }
-    var _o = ee(We(), 1);
+    var Mo = ee(We(), 1);
     var Rj = (e) => {
         let t = e.replace(/-/g, "+").replace(/_/g, "/"),
           n = atob(t + "=".repeat((4 - (t.length % 4)) % 4));
@@ -50556,27 +50581,27 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       };
     }
     function Hj({ t: e, deps: t, onClose: n }) {
-      let [r, o] = _o.useState({ step: "closed" }),
-        i = _o.useRef(r),
+      let [r, o] = Mo.useState({ step: "closed" }),
+        i = Mo.useRef(r),
         a = (w) => {
           ((i.current = w), o(w), cv());
         };
-      _o.useEffect(() => Oj(() => uV(i.current)), []);
-      let s = _o.useRef(null);
+      Mo.useEffect(() => Oj(() => uV(i.current)), []);
+      let s = Mo.useRef(null);
       if (!s.current) {
         let w = t();
         s.current = { c: dV(w, a), d: w };
       }
       let { c: l, d: c } = s.current,
-        [, u] = _o.useState(0),
+        [, u] = Mo.useState(0),
         f = Lj();
-      (_o.useEffect(() => Cj(() => u((w) => w + 1)), []),
-        _o.useEffect(() => {
+      (Mo.useEffect(() => Cj(() => u((w) => w + 1)), []),
+        Mo.useEffect(() => {
           if (!f) return;
           let w = setTimeout(() => u((T) => T + 1), Math.max(0, f - Date.now()) + 50);
           return () => clearTimeout(w);
         }, [f]),
-        _o.useEffect(
+        Mo.useEffect(
           () => (
             l.open(),
             () => {
@@ -54022,7 +54047,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         r = e.centerY - e.height / 2;
       return Math.round(n < t ? t : Math.min(n, Math.max(t, r)));
     }
-    var Mo = ee(We(), 1);
+    var Ro = ee(We(), 1);
     function _v(e, t) {
       let n = Number.isFinite(e) ? Math.max(0, e) : 0;
       return { min: Number.isFinite(t) ? Math.min(n, Math.max(0, t)) : 0, max: n };
@@ -54159,11 +54184,11 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
     }
     var hM = ee(we(), 1);
     function qW(e) {
-      let t = Mo.useRef(e);
+      let t = Ro.useRef(e);
       t.current = e;
-      let n = Mo.useRef(null),
-        [r, o] = Mo.useState(0),
-        [i, a] = Mo.useState({ min: 0, max: 0 }),
+      let n = Ro.useRef(null),
+        [r, o] = Ro.useState(0),
+        [i, a] = Ro.useState({ min: 0, max: 0 }),
         s = () =>
           _v(
             Mv(innerWidth, visualViewport).width,
@@ -54173,7 +54198,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           ((n.current = null), t.current.preview(null));
         };
       return (
-        Mo.useLayoutEffect(() => {
+        Ro.useLayoutEffect(() => {
           let c = t.current.box();
           if (!c) return;
           let u = () => {
@@ -54185,7 +54210,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           let f = new ResizeObserver(u);
           return (f.observe(c), () => f.disconnect());
         }, []),
-        Mo.useEffect(() => {
+        Ro.useEffect(() => {
           let c = () => {
             if (n.current) l();
           };
@@ -54198,7 +54223,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             }
           );
         }, []),
-        Mo.useEffect(
+        Ro.useEffect(
           () => () => {
             if (n.current) ((n.current = null), t.current.preview(null));
           },
@@ -56288,9 +56313,9 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       Cpe = 3,
       Dv = "lk:debug-chat-pos",
       Npe = 1500,
-      Ro = "color-mix(in oklch, var(--background) 55%, transparent)",
+      Lo = "color-mix(in oklch, var(--background) 55%, transparent)",
       Ope = {
-        background: Ro,
+        background: Lo,
         backdropFilter: "blur(12px) saturate(1.5)",
         WebkitBackdropFilter: "blur(12px) saturate(1.5)",
       };
@@ -56720,16 +56745,16 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         }, [ve, $n]));
       let gi = (d) =>
           d.lane && jn[d.lane] === d.id && Kt.has(`lane:${d.lane}`) ? vv(d.lane) : undefined,
-        Lo = It(So(), (d) => d.hub),
-        Co = It(C1(), (d) => d.autoStop),
-        Om = !!Lo?.canStart,
+        Co = It(So(), (d) => d.hub),
+        No = It(C1(), (d) => d.autoStop),
+        Om = !!Co?.canStart,
         [Te, Pm] = E.useState(() => {
           let d = MM(oK);
           return d === null ? !location.pathname.startsWith("/words") : d === "1";
         }),
-        No = zW({ flag: ae, owner: x, embedded: be }),
+        Oo = zW({ flag: ae, owner: x, embedded: be }),
         Dm = It(bl(), (d) => d.full),
-        fe = $W({ allowed: No, pref: Dm, open: Te }),
+        fe = $W({ allowed: Oo, pref: Dm, open: Te }),
         tt = E.useRef(fe);
       tt.current = fe;
       let [An, va] = E.useState(() => typeof matchMedia < "u" && matchMedia(fM).matches);
@@ -56744,8 +56769,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         hi = E.useRef(Rs);
       hi.current = Rs;
       let Ls = E.useRef(null),
-        Oo = E.useRef(uo);
-      ((Oo.current = uo),
+        Po = E.useRef(uo);
+      ((Po.current = uo),
         E.useEffect(() => {
           if (!uo || typeof document > "u") return;
           let d = BW(document.documentElement);
@@ -56805,7 +56830,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         KM = It($m, (d) => d.tucked),
         gr = It($m, (d) => d.edge),
         id = Te ? "open" : "pill",
-        Po = id === "tucked";
+        Do = id === "tucked";
       E.useEffect(() => {
         if (KM) $m.setState({ tucked: false });
       }, [KM]);
@@ -56820,22 +56845,22 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         },
         Ye = CD(o),
         hr = E.useRef(null),
-        [Do, PK] = E.useState(() => Ye.getState().panel),
-        Um = E.useRef(Do);
-      Um.current = Do;
-      let Io = (d) => {
+        [Io, PK] = E.useState(() => Ye.getState().panel),
+        Um = E.useRef(Io);
+      Um.current = Io;
+      let zo = (d) => {
         let k = Um.current,
           _ = typeof d === "function" ? d(k) : d;
         if (_ === k) return;
         if (k === "voiceprint" && !Pj()) return;
         ((Um.current = _), PK(_));
       };
-      E.useEffect(() => Ye.setState({ panel: Do === "tree" ? "tree" : "none" }), [Do]);
-      let zv = Do === "menu",
-        kt = Do === "tree",
-        zo = (d) => Io((k) => (d ? "menu" : k === "menu" ? "none" : k));
+      E.useEffect(() => Ye.setState({ panel: Io === "tree" ? "tree" : "none" }), [Io]);
+      let zv = Io === "menu",
+        kt = Io === "tree",
+        $o = (d) => zo((k) => (d ? "menu" : k === "menu" ? "none" : k));
       E.useLayoutEffect(() => {
-        if (!Po && !fe) jM(hr.current, Te);
+        if (!Do && !fe) jM(hr.current, Te);
       }, [Te, kt, fe]);
       let [Ns, DK] = E.useState({ side: "left", left: 0 }),
         XM = E.useRef(null),
@@ -56862,7 +56887,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         E.useLayoutEffect(() => sd.current()));
       let [Hv, IK] = E.useState(null);
       E.useLayoutEffect(() => {
-        if (!Po) return;
+        if (!Do) return;
         let d = () => {
           let k = ec.current?.getBoundingClientRect();
           if (!k) return;
@@ -56876,7 +56901,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           IK((Y) => (Y === _ ? Y : _));
         };
         return (d(), addEventListener("resize", d), () => removeEventListener("resize", d));
-      }, [Po]);
+      }, [Do]);
       let Fm = E.useRef(false),
         zK = (d) => {
           (Mm(), (Fm.current = false));
@@ -56887,7 +56912,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 if (Math.hypot(ce.clientX - k, ce.clientY - _) < 5) return;
                 ((Y = true),
                   (Fm.current = true),
-                  mi.flushSync(() => Go({ type: "handle" }, true)),
+                  mi.flushSync(() => Wo({ type: "handle" }, true)),
                   BM(k, _));
               }
               MK(hr.current, ce.clientX, ce.clientY);
@@ -56913,7 +56938,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           _ = typeof visualViewport > "u" ? null : visualViewport;
         if (!d || !k) return;
         if (tt.current) {
-          if (Oo.current) {
+          if (Po.current) {
             let ce = Mv(innerWidth, _),
               ot = _v(
                 ce.width,
@@ -56997,7 +57022,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       let wa = AM(oe, HK, he),
         FK = AM(Tt ? D : undefined, 0, he),
         Fv = D ? FK.root : wa.root,
-        $o = E.useMemo(() => (Tt && (D ?? oe) ? h5(Fv) : []), [Tt, D, oe, Fv]),
+        Ho = E.useMemo(() => (Tt && (D ?? oe) ? h5(Fv) : []), [Tt, D, oe, Fv]),
         [tc, QM] = E.useState(() => Date.now()),
         [BK, Vm] = E.useState(false),
         eR = E.useRef(N);
@@ -57014,9 +57039,9 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         );
       }, [Tt]),
         E.useEffect(() => {
-          (QM(Date.now()), Bv.current?.update($o));
-        }, [$o]));
-      let tR = O6(Tt && Fv ? $o : null, tc, c),
+          (QM(Date.now()), Bv.current?.update(Ho));
+        }, [Ho]));
+      let tR = O6(Tt && Fv ? Ho : null, tc, c),
         nR = T9(kt && !P && !oe),
         Ze = As(),
         rR = om[im()],
@@ -57129,7 +57154,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           locale: globalThis.document?.documentElement.lang,
           inProgress: Ze.nowDoing,
         }),
-        Gv = Tt ? x5($o, tc) : null,
+        Gv = Tt ? x5(Ho, tc) : null,
         Wv =
           B ??
           (Gv
@@ -57138,12 +57163,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 doing: {
                   text: w5(Gv),
                   parts: Gv,
-                  items: $o
-                    .filter((d) => !d.done)
-                    .map((d) => ({
-                      title: d.title,
-                      path: d.id.startsWith("/") ? d.id : undefined,
-                    })),
+                  items: Ho.filter((d) => !d.done).map((d) => ({
+                    title: d.title,
+                    path: d.id.startsWith("/") ? d.id : undefined,
+                  })),
                 },
               }
             : pR),
@@ -57173,7 +57196,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 Y = _?.getRootNode();
               if (!_ || !Y?.activeElement || !_.contains(Y.activeElement)) return;
             }
-            (k.stopPropagation(), Io("none"));
+            (k.stopPropagation(), zo("none"));
           };
           return (
             window.addEventListener("keydown", d, true),
@@ -57212,16 +57235,16 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             pureDictation: d && tr.current === d ? d : null,
             ...(d ? {} : { caret: null }),
           }),
-        Ho = B4(be, o ?? Ie?.scope),
+        Uo = B4(be, o ?? Ie?.scope),
         WK = V4(),
         hR = E.useRef(Br);
       hR.current = Br;
-      let Uo = It(Ye, (d) => d.attached);
+      let Fo = It(Ye, (d) => d.attached);
       E.useEffect(() => {
-        if (!X || w || !Ho.sel) return;
-        let { at: d, ...k } = Ho.sel;
+        if (!X || w || !Uo.sel) return;
+        let { at: d, ...k } = Uo.sel;
         Ye.setState({ attached: k });
-      }, [Ho.sel, X, w, Ye]);
+      }, [Uo.sel, X, w, Ye]);
       let bR = It(Ye, (d) => d.expandedOthers),
         KK = E.useMemo(() => new Set(bR), [bR]),
         yR = E.useCallback(
@@ -57236,11 +57259,11 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         ),
         [rc, vR] = E.useState(false),
         YK = E.useCallback(() => vR(false), []),
-        Fo = E.useRef(Ie);
-      Fo.current = X ? Ie : undefined;
+        Bo = E.useRef(Ie);
+      Bo.current = X ? Ie : undefined;
       let [pn] = E.useState(() =>
           P6({
-            files: () => Fo.current,
+            files: () => Bo.current,
             objectUrl:
               typeof URL < "u" && URL.createObjectURL
                 ? { create: (d) => URL.createObjectURL(d), revoke: (d) => URL.revokeObjectURL(d) }
@@ -57254,7 +57277,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         cd = X ? (Ie?.scope ?? null) : null,
         kR = E.useRef(cd);
       E.useEffect(() => {
-        if (kR.current !== cd) (Ye.setState({ attached: null }), Ho.clear(), (kR.current = cd));
+        if (kR.current !== cd) (Ye.setState({ attached: null }), Uo.clear(), (kR.current = cd));
         return (
           pn.take(),
           (oc.current = false),
@@ -57428,7 +57451,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             expanded: gd,
             typing: ki,
             scrolledUp: rk,
-            busy: Do !== "none" || Ht !== "off" || fe,
+            busy: Io !== "none" || Ht !== "off" || fe,
             holdUntil: lk.current,
             now: Date.now(),
           });
@@ -57436,7 +57459,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           if (d === "now") return sk(false);
           let k = setTimeout(() => aY((_) => _ + 1), d);
           return () => clearTimeout(k);
-        }, [Us, Te, gd, ki, rk, Do, Ht, fe, iY]));
+        }, [Us, Te, gd, ki, rk, Io, Ht, fe, iY]));
       let ck = ve.at(-1);
       E.useEffect(() => {
         if (!ck || !gd) return;
@@ -57816,11 +57839,11 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       ((Bs.current = ve), E.useEffect(() => u$(() => Bs.current), []));
       let VR = E.useRef(0),
         sg = E.useRef(null),
-        Bo = (d = false, k) => {
+        Vo = (d = false, k) => {
           if (!k && xt.current?.busy()) {
             if (xt.current.ready()) {
               let Ag = xt.current.retry();
-              if (Ag) jo.current();
+              if (Ag) Go.current();
               return Ag;
             }
             return false;
@@ -57838,7 +57861,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             text: _,
             files: pn.get(),
             attached: Ye.getState().attached,
-            candidate: X ? Ho.sel : null,
+            candidate: X ? Uo.sel : null,
             candidateTapped: d,
           });
           if (!ge) return false;
@@ -57900,7 +57923,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             let Ag = tK(++nY.current, _, Bs.current, Date.now(), Tg);
             mi.flushSync(() => nk((eZ) => [...eZ, Ag]));
           }
-          if (Oa) (Ye.setState({ attached: null }), Ho.clear());
+          if (Oa) (Ye.setState({ attached: null }), Uo.clear());
           if (pn.get().length) pn.take();
           if (!ce) fz(_);
           else
@@ -57920,7 +57943,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             true
           );
         };
-      SR.current = (d) => Bo(false, d);
+      SR.current = (d) => Vo(false, d);
       let tr = E.useRef(Ye.getState().pureDictation),
         jR = E.useRef(Ye.getState().interim);
       E.useEffect(() => {
@@ -57976,7 +57999,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         );
       }, [bk, hk]);
       let Vs = bk ? j_(ZR, NR) : [],
-        yk = Vs.length > 0 && !rc && !Jv && Do === "none",
+        yk = Vs.length > 0 && !rc && !Jv && Io === "none",
         qR = WG(Z?.askJump ? K.askJump : Ze.askJump, Vs.length),
         pY = () => {
           let d = Ot.current,
@@ -58163,7 +58186,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               ]
             : []),
         ],
-        Vo = Lu(
+        jo = Lu(
           { id: Em, from: v ? "friend" : "owner", label: "", text: "", at: 0 },
           {
             friend: v,
@@ -58197,17 +58220,17 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             className: `pointer-events-auto flex items-start gap-1.5 rounded-md border border-dashed border-current/30 px-1 leading-snug opacity-80 ${d.state === "sending" ? "" : "cursor-text"} ${k === "float" ? "py-0.5" : ""}`,
             children: [
               L.jsx(oo, {
-                src: Vo.src,
-                name: Vo.name,
-                initialFrom: Vo.initialFrom,
-                seed: Vo.seed,
+                src: jo.src,
+                name: jo.name,
+                initialFrom: jo.initialFrom,
+                seed: jo.seed,
                 size: Rm,
                 hidden: true,
               }),
               L.jsxs("div", {
                 className: "m-0 min-w-0 flex-1 whitespace-pre-wrap break-words pt-px",
                 children: [
-                  L.jsxs("span", { className: "sr-only", children: [Vo.name, " (", _, "):", " "] }),
+                  L.jsxs("span", { className: "sr-only", children: [jo.name, " (", _, "):", " "] }),
                   d.context && L.jsx(xf, { t: K, ctx: d.context }),
                   d.attachments?.length ? L.jsx(zf, { refs: d.attachments, files: Ie }) : null,
                   d.text !== d.context?.selection || d.attachments?.length ? d.text : null,
@@ -58239,7 +58262,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         );
       }
       function xk(d) {
-        if ((!X && !ue) || w || (!Vr.length && !Uo)) return null;
+        if ((!X && !ue) || w || (!Vr.length && !Fo)) return null;
         return L.jsxs(d === "compact" ? "div" : "li", {
           "data-testid": "debug-chat-pending",
           "data-state": ZK.state,
@@ -58248,18 +58271,18 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             "pointer-events-auto flex min-w-0 max-w-full items-start gap-1.5 rounded-md border border-dashed border-current/30 px-1 py-0.5 leading-snug opacity-80",
           children: [
             L.jsx(oo, {
-              src: Vo.src,
-              name: Vo.name,
-              initialFrom: Vo.initialFrom,
-              seed: Vo.seed,
+              src: jo.src,
+              name: jo.name,
+              initialFrom: jo.initialFrom,
+              seed: jo.seed,
               size: Rm,
               hidden: true,
             }),
             L.jsxs("div", {
               className: "min-w-0 flex-1 pt-px",
               children: [
-                L.jsxs("span", { className: "sr-only", children: [Vo.name, ": "] }),
-                Uo &&
+                L.jsxs("span", { className: "sr-only", children: [jo.name, ": "] }),
+                Fo &&
                   L.jsxs("div", {
                     className: "mb-0.5 flex min-w-0 items-start gap-1 border-s-2 ps-1.5",
                     style: { borderInlineStartColor: "oklch(0.6 0.11 22.3 / 0.75)" },
@@ -58269,10 +58292,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                         "data-testid": "debug-chat-candidate",
                         title: K.attachSelection,
                         onPointerDown: (_) => _.preventDefault(),
-                        onClick: () => Bo(true),
+                        onClick: () => Vo(true),
                         className:
                           "min-w-0 flex-1 truncate text-start fs-11 text-gray-600 dark:text-gray-300",
-                        children: Uo.selection,
+                        children: Fo.selection,
                       }),
                       L.jsx("button", {
                         type: "button",
@@ -58280,7 +58303,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                         "aria-label": K.attachRemove,
                         onPointerDown: (_) => _.preventDefault(),
                         onClick: () => {
-                          (Ye.setState({ attached: null }), Ho.clear());
+                          (Ye.setState({ attached: null }), Uo.clear());
                         },
                         className: "tap-40 shrink-0 px-1.5 text-sm text-gray-500",
                         children: "×",
@@ -58306,8 +58329,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       }
       let QR =
         _a.map((d) => `${d.key}:${d.text}${d.tail}`).join("|") +
-        (Uo || Vr.length
-          ? `${Uo?.selection ?? ""}:${Vr.map((d) => `${d.key}:${d.state}:${d.sent}`).join("|")}`
+        (Fo || Vr.length
+          ? `${Fo?.selection ?? ""}:${Vr.map((d) => `${d.key}:${d.state}:${d.sent}`).join("|")}`
           : "");
       (E.useLayoutEffect(() => {
         let d = Ot.current;
@@ -58319,7 +58342,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           $n(d.map((k) => `lane:${k}`));
         }, [Gs, yr, $n]));
       let wk = E.useRef(null),
-        eL = () => void Bo(),
+        eL = () => void Vo(),
         fo = E.useRef(null);
       fo.current ??= c1({
         send: () => aL.current(),
@@ -58359,10 +58382,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
       ((sL.current = () => {
         if (!pn.ready()) return;
         if (xt.current?.busy()) {
-          if (xt.current.retry()) jo.current();
+          if (xt.current.retry()) Go.current();
           return;
         }
-        if (oc.current) ((oc.current = false), Bo());
+        if (oc.current) ((oc.current = false), Vo());
         else Ra();
       }),
         E.useEffect(() => pn.subscribe(() => sL.current()), [pn]),
@@ -58401,7 +58424,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           Ra();
         },
         vY = () => {
-          if (rt.current.trim() && sb(rt.current, tr.current)) Bo();
+          if (rt.current.trim() && sb(rt.current, tr.current)) Vo();
           pk.current = true;
         },
         Ra = () => {
@@ -58410,7 +58433,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           if (!ac.current) {
             let d = rt.current,
               k = R$(cc.current, d);
-            if (((cc.current = d.length), k)) return Bo();
+            if (((cc.current = d.length), k)) return Vo();
           }
           if (
             ac.current ||
@@ -58420,10 +58443,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             Lp(rt.current)?.complete === false
           )
             return Ta(0);
-          (Ta((d) => d + 1), (vi.current = setTimeout(Bo, Tpe)));
+          (Ta((d) => d + 1), (vi.current = setTimeout(Vo, Tpe)));
         },
-        jo = E.useRef(Ra);
-      jo.current = Ra;
+        Go = E.useRef(Ra);
+      Go.current = Ra;
       let lL = async (d) => {
         let k = await ue?.(d);
         if (!k) return;
@@ -58447,14 +58470,14 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         if (!o || o === "guest") return;
         let d = () => {
             if (xt.current?.busy()) {
-              if (xt.current.retry()) jo.current();
+              if (xt.current.retry()) Go.current();
               return;
             }
             if (Is.current || !rt.current.trim()) return;
             let _ = globalThis.__lkMic?.view?.();
             if (dg.current || _?.state === "capturing") return;
             if (sb(rt.current, tr.current)) fo.current?.final();
-            else jo.current();
+            else Go.current();
           },
           k = true;
         return (
@@ -58470,8 +58493,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         E.useEffect(() => {
           if (o && o !== "guest" && e && Jm) {
             if (xt.current?.busy()) {
-              if (xt.current.retry()) jo.current();
-            } else if (rt.current.trim()) jo.current();
+              if (xt.current.retry()) Go.current();
+            } else if (rt.current.trim()) Go.current();
           }
         }, [e, Jm, o]));
       let fg = (d) => {
@@ -58501,7 +58524,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           if (!Te || !mg.current) return;
           ((mg.current = false), jr.current?.focus());
         }, [Te]));
-      let Go = (d, k = false) => {
+      let Wo = (d, k = false) => {
           let _ = ad.current,
             Y = LW(_, d);
           if (Y.fold === _.fold && Y.edge === _.edge) return;
@@ -58516,7 +58539,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           );
           let re = Y.fold === "tucked";
           if (re !== (_.fold === "tucked")) {
-            if (re) (dc([]), Io("none"));
+            if (re) (dc([]), zo("none"));
             let ge = !k && !wi() && Y.fold !== "open";
             (ZM(ge), clearTimeout(Hm.current), (Hm.current = setTimeout(qM, ge ? 400 : 0)));
           }
@@ -58530,18 +58553,18 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         [kY, xY] = E.useState(false),
         uL = E.useRef(() => {});
       uL.current = (d) => {
-        if (!No) return;
+        if (!Oo) return;
         (Tk.current?.(),
           (Tk.current = e9({
             openMenu: () => {
-              if (d && !gg.current) Go({ type: "restore" });
-              zo(true);
+              if (d && !gg.current) Wo({ type: "restore" });
+              $o(true);
             },
             cue: xY,
             apply: () => {
               (js(d), bl().setState({ full: d }));
             },
-            closeMenu: () => zo(false),
+            closeMenu: () => $o(false),
           })));
       };
       let Tk = E.useRef(null);
@@ -58561,7 +58584,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           let k =
               !!d &&
               gM({
-                allowed: No && !Po,
+                allowed: Oo && !Do,
                 open: Te,
                 full: tt.current,
                 barBottom: d.bottom,
@@ -58575,7 +58598,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           let k = innerWidth;
           if (
             gM({
-              allowed: No && !Po,
+              allowed: Oo && !Do,
               open: Te,
               full: tt.current,
               barBottom: d.bottom,
@@ -58583,7 +58606,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             })
           )
             js(true, true);
-          Go({
+          Wo({
             type: "dropped",
             nearest: CW(d.boxLeft, d.boxRight, k),
             against: NW(d.left, d.right, k),
@@ -58591,11 +58614,11 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
         }),
         (Ps.current = {
           single: () => {
-            (Io("none"), Go({ type: "mark" }));
+            (zo("none"), Wo({ type: "mark" }));
           },
           double: () => {
-            if (!No) return;
-            if ((Io("none"), !gg.current)) Go({ type: "restore" });
+            if (!Oo) return;
+            if ((zo("none"), !gg.current)) Wo({ type: "restore" });
             js(!tt.current, true);
           },
           menu: () => {
@@ -58611,7 +58634,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 }),
               );
             }
-            zo(true);
+            $o(true);
           },
           cancelDrag: () => Hn.onPointerCancel(),
           holdMs: l,
@@ -58777,7 +58800,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                     },
                   })
                 )
-                  jo.current();
+                  Go.current();
               })
               .catch((ge) => {
                 Ck.current(_, ge);
@@ -58794,7 +58817,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             xt.current?.cancel(),
             !Lk.current)
           )
-            jo.current();
+            Go.current();
         },
         state: (d) =>
           PY((k) => ({
@@ -58822,7 +58845,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           ptt: OY,
           onPointerDown: (d) => {
             if (xt.current?.busy()) {
-              if (((bg.current = true), xt.current.retry())) jo.current();
+              if (((bg.current = true), xt.current.retry())) Go.current();
               return;
             }
             (kd.current.down(d.clientX, d.clientY),
@@ -58961,7 +58984,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 "data-chat-restore": true,
                 title: Ze.restoreChat,
                 ...Hn,
-                onClick: () => !VM() && Go({ type: "restore" }),
+                onClick: () => !VM() && Wo({ type: "restore" }),
                 style: { ...Hn.style, ...vf, cursor: "pointer" },
                 "data-lk-tap": true,
                 className: "tap-40 flex shrink-0 items-center justify-center",
@@ -58988,7 +59011,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 if (((WR.current = d), !d)) fo.current?.flush();
                 (dY(d), Ra());
               },
-              clipSink: v ? undefined : f$(Lo),
+              clipSink: v ? undefined : f$(Co),
               localStt: mk,
               label: M.find((d) => d.id === j)?.label ?? location.pathname,
               gesture: DY,
@@ -59046,7 +59069,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 "data-testid": "debug-chat-tree-close",
                 "aria-label": Ze.closeTree,
                 onMouseDown: (k) => k.preventDefault(),
-                onClick: () => Io("none"),
+                onClick: () => zo("none"),
                 className: "tap-40 pointer-events-auto shrink-0 px-1.5 fs-10 text-gray-500",
                 children: "✕",
               }),
@@ -59062,7 +59085,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   `min-w-0 flex-1 ${!d ? "h-[30vh]" : ""}`,
                 ),
                 children: [
-                  Tt && L.jsx(k6, { tasks: $o, now: tc, strings: K, onExpand: () => Vm(true) }),
+                  Tt && L.jsx(k6, { tasks: Ho, now: tc, strings: K, onExpand: () => Vm(true) }),
                   GY,
                 ],
               }),
@@ -59137,7 +59160,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           }),
         KY =
           id === "pill" &&
-          (uc.length > 0 || _a.length > 0 || Vr.length > 0 || !!Uo || !!Wv || kt) &&
+          (uc.length > 0 || _a.length > 0 || Vr.length > 0 || !!Fo || !!Wv || kt) &&
           L.jsxs("div", {
             ref: $K,
             "data-testid": "debug-chat-float-box",
@@ -59147,7 +59170,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             children: [
               kt && SL(true),
               WY,
-              (_a.length > 0 || Vr.length > 0 || !!Uo) &&
+              (_a.length > 0 || Vr.length > 0 || !!Fo) &&
                 L.jsxs("ol", {
                   "data-testid": "debug-chat-live-floats",
                   className: `m-0 flex list-none flex-col gap-0.5 p-0 ${EM[Ns.side]}`,
@@ -59170,7 +59193,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             role: "menu",
             "data-testid": "debug-menu",
             style: {
-              background: Ro,
+              background: Lo,
               ...(Yv
                 ? {
                     position: "fixed",
@@ -59291,8 +59314,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   Z?.compactIdle ? K.compactIdle : Ze.compactIdle,
                 ],
               }),
-              No &&
-                !Po &&
+              Oo &&
+                !Do &&
                 L.jsx(r9, {
                   on: fe,
                   cue: kY,
@@ -59300,7 +59323,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   onWord: ze.menuSwitchOn,
                   offWord: ze.menuSwitchOff,
                   onToggle: () => {
-                    (zo(false), js(!fe, true));
+                    ($o(false), js(!fe, true));
                   },
                 }),
               L.jsxs("div", {
@@ -59453,7 +59476,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   role: "menuitem",
                   "data-testid": "debug-menu-stop-reading",
                   onClick: () => {
-                    (it().stop(), zo(false));
+                    (it().stop(), $o(false));
                   },
                   className: "flex items-center gap-2 px-3 py-1.5 text-start",
                   children: [
@@ -59471,7 +59494,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   role: "menuitemcheckbox",
                   "aria-checked": kt,
                   "data-testid": "debug-menu-tree",
-                  onClick: () => Io("tree"),
+                  onClick: () => zo("tree"),
                   className: "flex items-center gap-2 px-3 py-1.5 text-start",
                   children: [
                     L.jsx("span", {
@@ -59487,7 +59510,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   type: "button",
                   role: "menuitem",
                   "data-testid": "debug-menu-voiceprint",
-                  onClick: () => Io("voiceprint"),
+                  onClick: () => zo("voiceprint"),
                   className: "flex items-center gap-2 px-3 py-1.5 text-start",
                   children: [
                     L.jsx("span", {
@@ -59500,7 +59523,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 }),
               !v &&
                 !be &&
-                !Lo?.on &&
+                !Co?.on &&
                 Om &&
                 L.jsxs(L.Fragment, {
                   children: [
@@ -59509,7 +59532,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                       role: "menuitem",
                       "data-testid": "debug-menu-clips",
                       onClick: () => {
-                        (bf({ type: "clips-on", ...(Co ? { minutes: jT } : {}) }), zo(false));
+                        (bf({ type: "clips-on", ...(No ? { minutes: jT } : {}) }), $o(false));
                       },
                       className: "flex items-center gap-2 px-3 py-1.5 text-start",
                       children: [
@@ -59524,15 +59547,15 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                     L.jsxs("button", {
                       type: "button",
                       role: "menuitemcheckbox",
-                      "aria-checked": Co,
+                      "aria-checked": No,
                       "data-testid": "debug-menu-clips-autostop",
-                      onClick: () => C1().setState({ autoStop: !Co }),
+                      onClick: () => C1().setState({ autoStop: !No }),
                       className: "flex items-center gap-2 px-3 py-1.5 text-start",
                       children: [
                         L.jsx("span", {
                           "aria-hidden": true,
                           className: "w-[1em] text-center",
-                          children: Co ? "◉" : "○",
+                          children: No ? "◉" : "○",
                         }),
                         K.clipsAutoStop.replaceAll("{n}", String(jT)),
                       ],
@@ -59547,7 +59570,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                     role: "menuitem",
                     "data-testid": `debug-menu-host-${d.id}`,
                     onClick: () => {
-                      (zo(false), d.onSelect());
+                      ($o(false), d.onSelect());
                     },
                     className: "flex items-center gap-2 px-3 py-1.5 text-start",
                     children: [
@@ -59567,7 +59590,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 role: "menuitem",
                 "data-testid": "debug-menu-minimize",
                 onClick: () => {
-                  (zo(false), Go({ type: Te ? "minimize" : "restore" }));
+                  ($o(false), Wo({ type: Te ? "minimize" : "restore" }));
                 },
                 className: "flex items-center gap-2 px-3 py-1.5 text-start",
                 children: [
@@ -59594,7 +59617,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                         "data-testid": "debug-menu-page-open",
                         title: x ? d.label : undefined,
                         onClick: () => {
-                          if ((zo(false), !k)) G?.(re);
+                          if (($o(false), !k)) G?.(re);
                         },
                         className: "flex min-w-0 flex-1 items-baseline gap-1.5 text-start",
                         children: [
@@ -59776,7 +59799,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               onSubmit: (d) => {
                 let k = Ye.getState().draft;
                 if (k.trim()) return Br(`${k.trimEnd()} ${d}`);
-                ((rt.current = d), Br(d), Bo());
+                ((rt.current = d), Br(d), Vo());
               },
               htmlMaxHeight: Tn,
               labels: {
@@ -59968,7 +59991,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 ? IL(k, true)
                 : !_a.length &&
                   !Vr.length &&
-                  !Uo &&
+                  !Fo &&
                   L.jsx("p", { className: "m-0 py-1 text-gray-500", children: K.hint }),
               _a.map((_) => kk(_, "compact")),
               xk("compact"),
@@ -59976,7 +59999,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           });
         })(),
         JY =
-          Po &&
+          Do &&
           Hv !== null &&
           (() => {
             let d = Ev[ql],
@@ -59998,10 +60021,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   onPointerDown: zK,
                   onClick: () => {
                     if (Fm.current) return void (Fm.current = false);
-                    Go({ type: "handle" });
+                    Wo({ type: "handle" });
                   },
                   onContextMenu: (ce) => {
-                    (ce.preventDefault(), Go({ type: "handle" }), zo(true));
+                    (ce.preventDefault(), Wo({ type: "handle" }), $o(true));
                   },
                   style: {
                     top: Hv,
@@ -60020,7 +60043,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                       width: d.w,
                       height: d.h,
                       borderRadius: re,
-                      background: Ro,
+                      background: Lo,
                       ...(ql === "half"
                         ? { [gr === "right" ? "borderRight" : "borderLeft"]: "none" }
                         : {}),
@@ -60045,7 +60068,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   L.jsx("ol", {
                     "data-testid": "debug-chat-peek",
                     "aria-live": "polite",
-                    onClick: () => Go({ type: "handle" }),
+                    onClick: () => Wo({ type: "handle" }),
                     style: { top: Hv + d.h / 2, [gr]: _(d.gap + d.w + 8), textAlign: gr },
                     className:
                       "pointer-events-none fixed z-[var(--lk-z-chat,80)] flex w-max max-w-[min(20rem,calc(100vw-6rem))] -translate-y-1/2 cursor-pointer flex-col lk-halo lk-fs-chat text-xs text-gray-800 dark:text-gray-100",
@@ -60056,7 +60079,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
           })(),
         zL = rc || Zm,
         Ks = BV({ typing: ki, plusMenu: zL, open: Te, fullLog: Ht !== "off" || fe }),
-        Fk = !kt && Tt && $o.length > 0,
+        Fk = !kt && Tt && Ho.length > 0,
         $L = !kt && !w && x && !!F,
         Ys = Te && Fk && !fe && !Ks,
         xg = (() => {
@@ -60091,18 +60114,18 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             "data-cached": r || undefined,
             "data-fold": id,
             "data-edge": gr,
-            inert: Po,
-            "aria-hidden": Po || undefined,
+            inert: Do,
+            "aria-hidden": Do || undefined,
             "aria-label": K.chatWith,
             "data-fullscreen": fe || undefined,
             onPointerDown: Mm,
             onKeyDown: Mm,
             onDragOver: (d) => {
-              if (!Fo.current || !Te || w || !IA(d.dataTransfer)) return;
+              if (!Bo.current || !Te || w || !IA(d.dataTransfer)) return;
               (d.preventDefault(), (d.dataTransfer.dropEffect = "copy"));
             },
             onDrop: (d) => {
-              if ((Ym(false), !Fo.current || !Te || w)) return;
+              if ((Ym(false), !Bo.current || !Te || w)) return;
               let k = DA(d.dataTransfer);
               if (!k.length) return;
               (d.preventDefault(), pn.add(k));
@@ -60111,7 +60134,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
               if (d.target === d.currentTarget && d.propertyName === "transform") qM();
             },
             style: {
-              transform: Po ? `${FM.transform} translateX(${YM ? "-" : ""}100vw)` : FM.transform,
+              transform: Do ? `${FM.transform} translateX(${YM ? "-" : ""}100vw)` : FM.transform,
               transition: OK && !od ? "opacity 150ms, transform 220ms ease-out" : undefined,
               ...(fe ? (An ? FW : mM) : {}),
             },
@@ -60136,7 +60159,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                 BK &&
                 typeof document < "u" &&
                 mi.createPortal(
-                  L.jsx(N6, { tasks: $o, now: tc, strings: K, onClose: () => Vm(false) }),
+                  L.jsx(N6, { tasks: Ho, now: tc, strings: K, onClose: () => Vm(false) }),
                   I ?? document.body,
                 ),
               L.jsx("div", {
@@ -60177,7 +60200,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                       onPointerDown: (d) => d.preventDefault(),
                       onMouseDown: (d) => d.preventDefault(),
                       onClick: () => js(false),
-                      style: { background: Ro, minHeight: 40, minWidth: 40 },
+                      style: { background: Lo, minHeight: 40, minWidth: 40 },
                       className:
                         "tap-40 pointer-events-auto inline-flex items-center justify-center rounded-full border border-current/25 text-gray-700 backdrop-blur-md dark:text-gray-200",
                       children: L.jsx("span", {
@@ -60241,7 +60264,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                     ve.length === 0 &&
                       !_a.length &&
                       !Vr.length &&
-                      !Uo &&
+                      !Fo &&
                       L.jsx("li", { className: "text-gray-500", children: K.hint }),
                     (() => {
                       let d = DL.get(-1);
@@ -60548,7 +60571,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                   "data-testid": "debug-chat-voice-blocked",
                   onMouseDown: (d) => d.preventDefault(),
                   onClick: dK,
-                  style: { background: Ro },
+                  style: { background: Lo },
                   className:
                     "pointer-events-auto self-start mb-1 rounded-full border border-current/25 px-2.5 py-1 fs-11 backdrop-blur",
                   children: ["\uD83D\uDD0A ", Ze.resumeBlocked],
@@ -60563,7 +60586,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                       "data-testid": "debug-chat-resume-read",
                       onMouseDown: (d) => d.preventDefault(),
                       onClick: LL,
-                      style: { background: Ro },
+                      style: { background: Lo },
                       className:
                         "rounded-full border border-current/25 px-2.5 py-1 fs-11 backdrop-blur",
                       children: ["▶ ", Ze.resumeRead],
@@ -60629,7 +60652,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                               L.jsx("div", {
                                 className: "min-w-0 flex-1",
                                 children: L.jsx(TA, {
-                                  tasks: $o,
+                                  tasks: Ho,
                                   now: tc,
                                   strings: K,
                                   glass: Ys,
@@ -60643,7 +60666,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                           ],
                         })
                       : L.jsx(TA, {
-                          tasks: $o,
+                          tasks: Ho,
                           now: tc,
                           strings: K,
                           glass: Ys,
@@ -60701,7 +60724,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                                 role: "listbox",
                                 "aria-label": "Nodes to address",
                                 "data-testid": "debug-chat-nodes",
-                                style: Ks && !fe ? undefined : { background: Ro },
+                                style: Ks && !fe ? undefined : { background: Lo },
                                 className: `pointer-events-auto max-w-full list-none overflow-hidden py-0.5 fs-11 ${Ks && !fe ? "" : "rounded-lg border border-current/25 backdrop-blur"}`,
                                 children: Ws.map((d) =>
                                   L.jsx(
@@ -60727,7 +60750,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                                 "data-testid": "debug-chat-target",
                                 "data-node": xd,
                                 style: {
-                                  background: Ro,
+                                  background: Lo,
                                   borderColor: ob({ from: "owner", to: xd })?.border,
                                 },
                                 className: `pointer-events-auto inline-flex max-w-full items-center gap-1 rounded-full border px-1.5 fs-10 leading-4 text-gray-600 dark:text-gray-300 ${Ok ? "opacity-70" : ""}`,
@@ -60756,21 +60779,21 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                           anchorRef: JR,
                           t: K,
                           attach: X && !w,
-                          sel: Ho.sel,
+                          sel: Uo.sel,
                           items: WK,
                           tree: kt,
                           sessions: HY.length,
                           sessionsLabel: IY,
-                          onTree: () => Io((d) => (d === "tree" ? "none" : "tree")),
+                          onTree: () => zo((d) => (d === "tree" ? "none" : "tree")),
                           onAttachSelection: () => {
-                            let d = Ho.sel;
+                            let d = Uo.sel;
                             if (!d) return;
                             let { at: k, ..._ } = d;
                             Ye.setState({ attached: _ });
                           },
-                          upload: !!Fo.current,
+                          upload: !!Bo.current,
                           onPickFiles: XK,
-                          onInbox: Fo.current?.list && !w ? () => Qv(true) : undefined,
+                          onInbox: Bo.current?.list && !w ? () => Qv(true) : undefined,
                           onHistory: w ? undefined : Vn,
                           share:
                             ue && !w
@@ -60783,9 +60806,9 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                         }),
                       Te &&
                         Jv &&
-                        Fo.current?.list &&
-                        L.jsx(H6, { t: K, files: Fo.current, onClose: () => Qv(false) }),
-                      Fo.current &&
+                        Bo.current?.list &&
+                        L.jsx(H6, { t: K, files: Bo.current, onClose: () => Qv(false) }),
+                      Bo.current &&
                         L.jsx("input", {
                           ref: ek,
                           type: "file",
@@ -60850,7 +60873,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                             onClick: () => {
                               (En.pin(true), rg(false), fd(0));
                             },
-                            style: { background: Ro },
+                            style: { background: Lo },
                             className:
                               "pointer-events-auto relative inline-flex size-6 items-center justify-center rounded-full border border-current/25 text-sm leading-none text-gray-600 dark:text-gray-300",
                             children: [
@@ -60882,7 +60905,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                     style: {
                       ...B1(),
                       ...kf,
-                      background: Ro,
+                      background: Lo,
                       opacity: KR ? 0 : undefined,
                       ...(KR ? { backdropFilter: "none", WebkitBackdropFilter: "none" } : {}),
                       ...KV((Ks && !fe) || Ys),
@@ -60912,8 +60935,8 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                           t: K,
                           open: rc,
                           announce: (X || !!ue) && !w,
-                          attached: !!Uo,
-                          selectable: !!Ho.sel,
+                          attached: !!Fo,
+                          selectable: !!Uo.sel,
                           onToggle: () => vR((d) => !d),
                         }),
                       jY,
@@ -60984,7 +61007,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                                       wk.current.scrollTop = d.currentTarget.scrollTop;
                                   },
                                   onPaste: (d) => {
-                                    let k = Fo.current ? DA(d.clipboardData) : [];
+                                    let k = Bo.current ? DA(d.clipboardData) : [];
                                     if (!k.length) return void pg();
                                     (d.preventDefault(), pn.add(k));
                                   },
@@ -61031,7 +61054,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                                     if (ac.current || d.nativeEvent.isComposing) return;
                                     if (GR.current) return;
                                     if ((d.preventDefault(), Ws[0])) return Pk(Ws[0]);
-                                    Bo();
+                                    Vo();
                                   },
                                   onKeyDown: (d) => {
                                     if (
@@ -61055,7 +61078,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                                       d.keyCode === 229
                                     )
                                       return;
-                                    (d.preventDefault(), Bo());
+                                    (d.preventDefault(), Vo());
                                   },
                                   ...cY,
                                   className: `block h-[2.125rem] max-h-32 min-h-[2.125rem] min-w-0 flex-1 resize-none self-end overflow-y-auto overscroll-contain ${Si.input ? "touch-pan-y" : "touch-none"} border border-transparent bg-transparent px-2 py-1 text-base outline-none placeholder:text-gray-400 ${xL}`,
@@ -61066,7 +61089,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                                     "data-testid": "debug-chat-drag-hint",
                                     className:
                                       "pointer-events-none absolute inset-x-1 top-0.5 truncate rounded px-1 fs-10 text-gray-500",
-                                    style: { background: Ro },
+                                    style: { background: Lo },
                                     children: iK,
                                   }),
                                 S &&
@@ -61120,10 +61143,10 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
                     children: [
                       KY,
                       Ik && Yv ? mi.createPortal(Ik, I ?? document.body) : Ik,
-                      Do === "voiceprint" &&
+                      Io === "voiceprint" &&
                         L.jsx("div", {
                           className: "pointer-events-auto absolute inset-x-0 bottom-full mb-1",
-                          children: L.jsx(Hj, { t: K, deps: YY, onClose: () => Io("none") }),
+                          children: L.jsx(Hj, { t: K, deps: YY, onClose: () => zo("none") }),
                         }),
                     ],
                   }),
@@ -61132,7 +61155,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
             ],
           }),
           JY,
-          No &&
+          Oo &&
             L.jsx("div", {
               "aria-hidden": true,
               "data-testid": "debug-chat-full-hint",
@@ -64111,7 +64134,7 @@ html[data-lk-chat-selecting] [data-debug-chat] .select-text{-webkit-user-select:
   transform: translateY(-50%);
 }`,
       ],
-      rev: "15o77bn1",
+      rev: "3t89tdkl",
     };
   }
 

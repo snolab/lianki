@@ -38,6 +38,9 @@ import { reviewTitle } from "@/lib/review-title";
 import { noteBadgeSeen } from "@/lib/app-badge";
 import { VoiceBadge, useVoiceMode, useVoicePref, voiceOutcomeLabel } from "../words/VoiceMode";
 import { openExternal } from "@/lib/external-link";
+import { ReviewOpenHint } from "./ReviewOpenHint";
+import { ReviewPagePreviews } from "./ReviewPagePreviews";
+import { publicCfg } from "@/lib/config-client";
 
 /**
  * /review: one due page card at a time, graded inside the site.
@@ -90,6 +93,13 @@ async function getJson(path: string, init?: RequestInit): Promise<unknown> {
 const fill = (s: string, vars: Record<string, string | number>) =>
   s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
 
+function mayPreview() {
+  return (
+    publicCfg("review.nextPreview") &&
+    !(navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData
+  );
+}
+
 export default function ReviewClient({
   isLoggedIn: serverSignedIn,
   initialUrl,
@@ -114,6 +124,10 @@ export default function ReviewClient({
   const [flash, setFlash] = useState<string | null>(null);
   const modality = useInputModality();
   const gradedText = t.graded.value;
+  const [previewEnabled, setPreviewEnabled] = useState(false);
+  useEffect(() => {
+    setPreviewEnabled(mayPreview());
+  }, []);
 
   const refreshCounts = useCallback(() => {
     getJson(api.stats())
@@ -126,7 +140,7 @@ export default function ReviewClient({
 
   /** What a grade would move on to: a plain read, nothing is marked or scheduled. */
   const refreshNext = useCallback((card: ReviewCard) => {
-    getJson(api.nextAfter(card.url))
+    getJson(mayPreview() ? api.previewAfter(card.url) : api.nextAfter(card.url))
       .then((j) =>
         setPhase((p) =>
           p.s === "card" && p.card.id === card.id ? { ...p, next: nextCardFrom(j) } : p,
@@ -398,7 +412,11 @@ export default function ReviewClient({
             </a>
             {!back && (
               <p className="lk-review-help text-sm opacity-70">
-                {ret === "idle" ? t.openHint : t.opened}
+                {ret === "idle" ? (
+                  <ReviewOpenHint desktop={t.openHint.value} mobile={t.openHintBack.value} />
+                ) : (
+                  t.opened
+                )}
               </p>
             )}
           </div>
@@ -557,6 +575,19 @@ export default function ReviewClient({
         </div>
       ) : (
         heading
+      )}
+
+      {phase.s === "card" && (
+        <ReviewPagePreviews
+          current={phase.card}
+          next={phase.next}
+          enabled={previewEnabled}
+          labels={{
+            current: t.previewCurrent.value,
+            next: t.nextUp.value,
+            unavailable: t.previewUnavailable.value,
+          }}
+        />
       )}
 
       {isLoggedIn && <Tutorial />}

@@ -42,6 +42,8 @@ import { db as mongoDb } from "./db";
 import { getHeatmapCacheTag } from "./lib/heatmap-cache";
 import { normalizeUrl } from "@/lib/normalizeUrl";
 import { probeReachability } from "@/lib/probe";
+import { previewPolicy } from "@/lib/review-preview";
+import { cfg } from "@/lib/config-store";
 import { originOf } from "@/lib/next-card";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { escapeHtml, safeHref, scriptJson } from "@/lib/security/escape";
@@ -383,6 +385,29 @@ export const fsrsHandler = async (req: Request, email?: string) => {
     "GET /api/fsrs/next-url(?:/|$|\\?)": async (req) => {
       const note = await findNextDue(req);
       return JSONR({ url: note?.url ?? null, title: note?.title ?? null });
+    },
+    // Only the authenticated queue's next card can be checked: no arbitrary target URL.
+    "GET /api/fsrs/next-preview(?:/|$|\\?)": async (req) => {
+      if (!email) return JSONR({ error: "login-required" }, 401);
+      const identity = requireEmail();
+      const note = await findNextDue(req);
+      const result = {
+        url: note?.url ?? null,
+        title: note?.title ?? null,
+        previewUrl: null as string | null,
+      };
+      if (note && (await cfg("review.nextPreview"))) {
+        const max = await cfg("review.previewChecksPerMinute");
+        if (checkRateLimit(`review-preview:${identity}`, { windowMs: 60000, max }).allowed) {
+          const policy = await previewPolicy(note.url, new URL(req.url).origin, {
+            timeoutMs: await cfg("review.previewHeadTimeoutMs"),
+          });
+          if (policy.allowed && policy.url) result.previewUrl = policy.url;
+        }
+      }
+      const response = await JSONR(result);
+      response.headers.set("cache-control", "private, no-store");
+      return response;
     },
     "GET /api/fsrs/review/(?<rating>1|2|3|4|again|hard|good|easy)(?:/|$|\\?)": async (
       req,
