@@ -75,6 +75,41 @@ describe("sayParts", () => {
       { kind: "example", text: "世界)", lang: "zh" },
       { kind: "example", text: "now.", lang: "en" },
     ]);
+
+    expect(
+      sayParts({ term: "t", back: "", ex: "I don't drink l'eau." }, "en", false, "zh").filter(
+        (p) => p.kind === "example",
+      ),
+    ).toEqual([{ kind: "example", text: "I don't drink l'eau.", lang: "en" }]);
+
+    expect(
+      sayParts(
+        { term: "t", back: "", ex: "Xin chào, tiếng Việt rất đẹp." },
+        "vi",
+        false,
+        "en",
+      ).filter((p) => p.kind === "example"),
+    ).toEqual([{ kind: "example", text: "Xin chào, tiếng Việt rất đẹp.", lang: "vi" }]);
+
+    expect(
+      sayParts({ term: "t", back: "", ex: "Say مرحبا العالم now." }, "en", false, "en").filter(
+        (p) => p.kind === "example",
+      ),
+    ).toEqual([
+      { kind: "example", text: "Say", lang: "en" },
+      { kind: "example", text: "مرحبا العالم", lang: "ar" },
+      { kind: "example", text: "now.", lang: "en" },
+    ]);
+
+    expect(
+      sayParts({ term: "t", back: "", ex: "Say שלום now." }, "en", false, "en").filter(
+        (p) => p.kind === "example",
+      ),
+    ).toEqual([
+      { kind: "example", text: "Say", lang: "en" },
+      { kind: "example", text: "שלום", lang: "he" },
+      { kind: "example", text: "now.", lang: "en" },
+    ]);
   });
 
   test("readingOnBack: the kana reading is the word; the meaning still follows", () => {

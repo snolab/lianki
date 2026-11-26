@@ -63,11 +63,13 @@ const LATIN_LANGS = new Set([
 
 function charLang(ch: string, lang: string, uiLocale: string): string | null {
   const baseLang = lang.toLowerCase().split(/[-_]/)[0];
-  if (/[぀-ヿ]/.test(ch)) return "ja";
-  if (/[가-힯ᄀ-ᇿ]/.test(ch)) return "ko";
-  if (/[Ѐ-ӿ]/.test(ch)) return "ru";
-  if (/[一-鿿㐀-䶿]/.test(ch)) return baseLang === "ja" ? "ja" : meaningLang(ch, uiLocale);
-  if (/[A-Za-zÀ-ÖØ-öø-ÿ]/.test(ch)) return LATIN_LANGS.has(baseLang) ? lang : "en";
+  if (/\p{Script=Hiragana}|\p{Script=Katakana}/u.test(ch)) return "ja";
+  if (/\p{Script=Hangul}/u.test(ch)) return "ko";
+  if (/\p{Script=Cyrillic}/u.test(ch)) return "ru";
+  if (/\p{Script=Arabic}/u.test(ch)) return "ar";
+  if (/\p{Script=Hebrew}/u.test(ch)) return "he";
+  if (/\p{Script=Han}/u.test(ch)) return baseLang === "ja" ? "ja" : meaningLang(ch, uiLocale);
+  if (/\p{Script=Latin}/u.test(ch)) return LATIN_LANGS.has(baseLang) ? lang : "en";
   return null;
 }
 
@@ -79,14 +81,17 @@ function charLang(ch: string, lang: string, uiLocale: string): string | null {
  */
 export function exampleParts(ex: string, lang: string, uiLocale: string): SayPart[] {
   const tokens: { text: string; lang: string | null }[] = [];
+  let prevLang: string | null = null;
   for (const ch of ex) {
-    const l = charLang(ch, lang, uiLocale);
+    // Combining marks (e.g. Vietnamese / Arabic diacritics) belong to the preceding script.
+    const l: string | null = /\p{M}/u.test(ch) ? prevLang : charLang(ch, lang, uiLocale);
     const prev = tokens[tokens.length - 1];
     if (prev && prev.lang === l) prev.text += ch;
     else tokens.push({ text: ch, lang: l });
+    if (l !== null) prevLang = l;
   }
 
-  // Merge punctuation/whitespace into adjacent script runs.
+  // Merge punctuation/whitespace into adjacent script runs without inserting extra spaces.
   const runs: { text: string; lang: string }[] = [];
   let pendingLead = "";
   for (let i = 0; i < tokens.length; i++) {
@@ -98,17 +103,17 @@ export function exampleParts(ex: string, lang: string, uiLocale: string): SayPar
         pendingLead += tok.text;
         continue;
       }
-      // Split neutral gap at whitespace or opening bracket so trailing punctuation
-      // stays with the previous part and opening brackets/quotes stay with the next.
-      const splitIdx = tok.text.search(/\s|[(（[「『"“']/);
+      // Apostrophes (' / ’) stay attached inside words (don't, l'eau); only split at
+      // whitespace or opening brackets/quotes.
+      const splitIdx = tok.text.search(/\s|[(（[「『"“]/);
       if (splitIdx < 0) {
         prevRun.text += tok.text;
       } else {
         const toPrev = tok.text.slice(0, splitIdx);
-        const rest = tok.text.slice(splitIdx).trimStart();
+        const rest = tok.text.slice(splitIdx);
         if (toPrev) prevRun.text += toPrev;
         if (nextTok && rest) pendingLead += rest;
-        else if (rest.trim()) prevRun.text += " " + rest.trim();
+        else if (rest.trim()) prevRun.text += rest;
       }
       continue;
     }
@@ -116,21 +121,21 @@ export function exampleParts(ex: string, lang: string, uiLocale: string): SayPar
     // If a standalone parenthesized gloss like "(我们记录每个事件。)" starts with "("
     // and ends with ")", strip the outer parens so TTS reads the inner text cleanly.
     const nextTok = tokens[i + 1];
-    let text = pendingLead + tok.text;
+    let lead = pendingLead;
     if (
-      /^\s*[(（]$/.test(pendingLead) &&
+      /^\s*[(（]$/.test(lead) &&
       nextTok?.lang === null &&
       /^[。！？!?,，、\s]*[)）]\s*$/.test(nextTok.text)
     ) {
-      text = tok.text;
+      lead = "";
       nextTok.text = nextTok.text.replace(/[)）](\s*)$/, "$1");
     }
     pendingLead = "";
     const prevRun = runs[runs.length - 1];
     if (prevRun && prevRun.lang === tok.lang) {
-      prevRun.text = `${prevRun.text} ${text}`.trim();
+      prevRun.text += lead + tok.text;
     } else {
-      runs.push({ text: text.trim(), lang: tok.lang });
+      runs.push({ text: (lead + tok.text).trim(), lang: tok.lang });
     }
   }
 
