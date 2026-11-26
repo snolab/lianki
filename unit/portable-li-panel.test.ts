@@ -91,6 +91,17 @@ test("panel renders text only, bounds retained history, retries a stable message
   });
   try {
     await turn();
+    expect(root!.querySelector(".note")).toBeNull();
+    panel.collapse(true);
+    panel.collapse(false);
+    expect(root!.querySelector(".note")).toBeNull();
+    panel.advancedDenied();
+    expect(root!.querySelector(".note a")?.getAttribute("href")).toContain(
+      "https://lianki.com/chat",
+    );
+    expect(root!.querySelector(".note")?.textContent).toContain(pillChatStrings("en").chatOnly);
+    (root!.querySelector(".note button") as unknown as { click(): void }).click();
+    expect(root!.querySelector(".note")).toBeNull();
     expect(root!.querySelectorAll(".line").length).toBeLessThanOrEqual(200);
     expect(root!.querySelectorAll("script")).toHaveLength(0);
     expect(root!.textContent).toContain("<script>not executed</script>");

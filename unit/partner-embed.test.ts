@@ -842,7 +842,7 @@ describe("the userscript's side (src/partner.ts)", () => {
     stop();
   });
 
-  it("in the page's own realm: no ticket, no download, no eval, no callbacks; only our own note", async () => {
+  it("in the page's own realm: no ticket, no download, no eval, no callbacks and no automatic status card", async () => {
     const g = globalThis as { __partnerTest?: unknown; eval: typeof eval };
     g.__partnerTest = undefined;
     const realEval = g.eval;
@@ -856,28 +856,15 @@ describe("the userscript's side (src/partner.ts)", () => {
       expect(evals).toBe(0);
       expect(g.__partnerTest).toBeUndefined();
       expect(h.reports).toEqual(["partner-mode page-realm github.com"]);
-      // The note: a plain div with a closed root, holding text, a link and ×.
-      const host = d.documentElement.children[0];
-      expect(host.tag).toBe("div");
-      expect(host.shadowMode).toBe("closed");
-      const box = host.shadow!.children[0];
-      const [text, close] = box.children;
-      expect(text.textContent).toContain("Chat only");
-      expect((text.children[0] as unknown as { href: string }).href).toBe(
-        "https://lianki.com/chat",
-      );
-      expect(text.children[0].tag).toBe("a");
-      expect(close.tag).toBe("button");
-      close.fire("click");
-      expect(JSON.parse(String(h.store.get(PARTNER_HIDDEN_KEY)))).toEqual(["github.com"]);
       expect(d.documentElement.children).toEqual([]);
+      expect(stop).toBe(NOOP);
       stop();
     } finally {
       g.eval = realEval;
     }
   });
 
-  it("the reviewer's bypass: a Proxy getter on window.Object with injectInto 'page' still gets only the note", async () => {
+  it("the reviewer's bypass: a Proxy getter on window.Object with injectInto 'page' still gets no privileged UI or automatic card", async () => {
     const g = globalThis as { Object: ObjectConstructor; __partnerTest?: unknown };
     const O = Object;
     const desc = O.getOwnPropertyDescriptor(globalThis, "Object")!;
@@ -893,7 +880,7 @@ describe("the userscript's side (src/partner.ts)", () => {
     expect(h.calls).toEqual([]);
     expect(g.__partnerTest).toBeUndefined();
     expect(h.reports).toEqual(["partner-mode page-realm github.com"]);
-    expect(d.documentElement.children[0].tag).toBe("div");
+    expect(d.documentElement.children).toEqual([]);
   });
 
   it("an unknown manager (no isolation word) fails closed: no ticket", async () => {

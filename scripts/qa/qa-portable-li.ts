@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { pillChatStrings } from "../../src/pill-chat-strings";
 /** Silent, device-free STRICT-CSP fixture. Not real manager/production acceptance. */
 import { chromium } from "playwright";
 import { launchSilent, newSilentContext } from "./silent.mjs";
@@ -176,6 +177,10 @@ try {
   await click("同意所有网站");
   await wait(async () => (await state()).hosts === 1 && (await state()).consents === 0);
   check((await state()).iframes === 0, "strict frame-src none uses no iframe");
+  check(
+    !(await state()).text.includes(pillChatStrings("zh").chatOnly),
+    "chat opens without a standing capability banner",
+  );
   check(
     await page.evaluate(() => {
       const old = document.getElementById("legacy-card")!;

@@ -14,7 +14,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.45
+// @version     2.24.46
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -4119,15 +4119,7 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
     const main = doc.createElement("main");
     main.setAttribute("role", "log");
     main.setAttribute("aria-live", "polite");
-    const note = doc.createElement("div");
-    note.className = "note";
-    note.append(doc.createTextNode(d.common.chatOnly + " "));
-    const advanced = doc.createElement("a");
-    advanced.textContent = d.common.advanced;
-    advanced.href = d.origin + portableChatPath(d.hostOrigin);
-    advanced.target = "_blank";
-    advanced.rel = "noopener noreferrer";
-    note.append(advanced);
+    let note;
     const status = doc.createElement("div");
     status.className = "status";
     status.setAttribute("role", "status");
@@ -4151,7 +4143,7 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
     header.append(title, toggle);
     actions.append(retry, exclude);
     form.append(input, send);
-    section.append(header, note, main, status, actions, form);
+    section.append(header, main, status, actions, form);
     root.append(section);
     (doc.documentElement ?? doc.body).append(host);
     let destroyed = false,
@@ -4249,7 +4241,8 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
       });
     };
     const update = () => {
-      for (const el of [main, note, status, actions, form]) el.hidden = collapsed;
+      for (const el of [main, status, actions, form]) el.hidden = collapsed;
+      if (note) note.hidden = collapsed;
       toggle.textContent = collapsed ? t.expand : t.collapse;
       toggle.setAttribute("aria-expanded", String(!collapsed));
       if (collapsed) stop();
@@ -4317,7 +4310,32 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
       host.remove();
     };
     update();
+    const advancedDenied = () => {
+      if (destroyed) return;
+      note?.remove();
+      note = doc.createElement("div");
+      note.className = "note";
+      note.setAttribute("role", "status");
+      note.append(doc.createTextNode(d.common.chatOnly + " "));
+      const link = doc.createElement("a");
+      link.textContent = d.common.advanced;
+      link.href = d.origin + portableChatPath(d.hostOrigin);
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      const dismiss = doc.createElement("button");
+      dismiss.type = "button";
+      dismiss.textContent = "×";
+      dismiss.setAttribute("aria-label", d.common.close);
+      dismiss.addEventListener("click", () => {
+        note?.remove();
+        note = undefined;
+      });
+      note.append(link, dismiss);
+      section.insertBefore(note, main);
+      note.hidden = collapsed;
+    };
     return {
+      advancedDenied,
       destroy,
       collapse(value) {
         collapsed = value;
@@ -5421,7 +5439,7 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
     d.report("partner-mode", `${isolated ? "isolated" : "page-realm"} ${host}`);
     const hideHere = () =>
       d.setValue(PARTNER_HIDDEN_KEY, JSON.stringify([...new Set([...hidden, host])]));
-    if (!isolated) return pageRealmNote(d.doc ?? document, d.origin, hideHere);
+    if (!isolated) return NOOP;
     const ticket = async () => {
       try {
         const r = await d.gmFetch(`${d.origin}/api/debug/partner-ticket`, {

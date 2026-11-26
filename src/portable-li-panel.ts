@@ -58,15 +58,7 @@ export function portableLiPanel(d: {
   const main = doc.createElement("main");
   main.setAttribute("role", "log");
   main.setAttribute("aria-live", "polite");
-  const note = doc.createElement("div");
-  note.className = "note";
-  note.append(doc.createTextNode(d.common.chatOnly + " "));
-  const advanced = doc.createElement("a");
-  advanced.textContent = d.common.advanced;
-  advanced.href = d.origin + portableChatPath(d.hostOrigin);
-  advanced.target = "_blank";
-  advanced.rel = "noopener noreferrer";
-  note.append(advanced);
+  let note: HTMLDivElement | undefined;
   const status = doc.createElement("div");
   status.className = "status";
   status.setAttribute("role", "status");
@@ -90,7 +82,7 @@ export function portableLiPanel(d: {
   header.append(title, toggle);
   actions.append(retry, exclude);
   form.append(input, send);
-  section.append(header, note, main, status, actions, form);
+  section.append(header, main, status, actions, form);
   root.append(section);
   (doc.documentElement ?? doc.body).append(host);
   let destroyed = false,
@@ -186,7 +178,8 @@ export function portableLiPanel(d: {
     });
   };
   const update = () => {
-    for (const el of [main, note, status, actions, form]) el.hidden = collapsed;
+    for (const el of [main, status, actions, form]) el.hidden = collapsed;
+    if (note) note.hidden = collapsed;
     toggle.textContent = collapsed ? t.expand : t.collapse;
     toggle.setAttribute("aria-expanded", String(!collapsed));
     if (collapsed) stop();
@@ -255,7 +248,34 @@ export function portableLiPanel(d: {
     host.remove();
   };
   update();
+  // A capability action may call this only after its real permission gate rejects it.
+  // Ordinary chat text and normal startup never trigger a privilege notice.
+  const advancedDenied = () => {
+    if (destroyed) return;
+    note?.remove();
+    note = doc.createElement("div");
+    note.className = "note";
+    note.setAttribute("role", "status");
+    note.append(doc.createTextNode(d.common.chatOnly + " "));
+    const link = doc.createElement("a");
+    link.textContent = d.common.advanced;
+    link.href = d.origin + portableChatPath(d.hostOrigin);
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    const dismiss = doc.createElement("button");
+    dismiss.type = "button";
+    dismiss.textContent = "×";
+    dismiss.setAttribute("aria-label", d.common.close);
+    dismiss.addEventListener("click", () => {
+      note?.remove();
+      note = undefined;
+    });
+    note.append(link, dismiss);
+    section.insertBefore(note, main);
+    note.hidden = collapsed;
+  };
   return {
+    advancedDenied,
     destroy,
     collapse(value: boolean) {
       collapsed = value;
