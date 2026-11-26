@@ -405,3 +405,87 @@ rejection, controller isolation and exclusion of learning data. The extended
 `qa-pill-chat-sites.ts` uses synthetic accounts and silent page-world plus
 isolated-world browser fixtures; it is not evidence of a real manager install.
 Actual ScriptCat/Tampermonkey-to-site chat remains a separate post-deploy check.
+
+## 随身Li: global consent and bundled CSP-independent chat (2.24.43, pending delivery)
+
+The automatic chat path uses a statically bundled shadow-DOM panel and
+`GM_xmlhttpRequest`, rather than relying on an iframe or the website's
+`connect-src`. This works with a strict `frame-src 'none'; connect-src 'none'`
+without changing the website's CSP. The older frame path remains available to
+callers without the new manager transport. LiCards initialization, cards,
+scoring and the existing three buttons are unchanged. The legacy Learning
+Partner widget is suppressed when the new portable-chat subsystem owns chat,
+so revoking permission or excluding a site cannot leave a second chat window.
+
+- **Explicit global consent:** old per-site allow decisions never become a
+  grant for every website. The new prompt discloses that websites may read
+  conversation text, and that page content is not shared automatically.
+  Consent is browser-local and bound to the verified account. A different
+  signed-in account must consent again. Existing `never` sites remain excluded.
+- **Automatic window:** after consent, each top-level website opens a docked
+  chat panel without focusing its input. Collapse is remembered per hostname.
+  Hidden/collapsed panels stop their outstanding reads. Exclusions cover a
+  domain and its subdomains, never a lookalike suffix.
+- **Management:** `/chat/sites` has browser-local enable/revoke/exclusion
+  controls, even when the separate site-history flag is off. The settings
+  event bridge exists only on the top-level trusted first-party settings
+  route, including client navigation to that route. It cannot read arbitrary
+  GM keys or change account settings. GM value-change listeners propagate
+  revocation between tabs; managers without that API refresh on visibility.
+- **Language:** the supported first-party Lianki `<html lang>` is mirrored to
+  one non-secret GM preference and used on other sites. Foreign document
+  language does not override it. Browser language is only a fallback before a
+  first-party language has been observed. This fixes the French-browser /
+  Chinese-Lianki mismatch; it does not change learning languages.
+- **Transport:** `POST /api/chat/page-broker` accepts only `hello`, bounded
+  `read`, and a text `send`. It requires the userscript header and the current
+  login cookie, rejects any Authorization header, checks existing chat flags,
+  and compares the expected account on each read/send. There is no general
+  API-token fallback, caller-chosen account/thread, arbitrary URL or eval.
+- **Private capability:** the main Worker signs a distinct
+  `lianki-page-chat-http` Ed25519 capability for one exact action/body digest,
+  account and origin-derived site thread. Its lifetime is 60 seconds; the
+  destination Durable Object serializes one-use consumption. Capabilities
+  travel only through the private PUSH service binding, never back to the
+  userscript or page. Expiry-ordered keys allow bounded lazy replay cleanup.
+- **History/replies:** the hub reuses the existing durable replay cursor and
+  site-only AI path (`embed` and `chatOnly`); no learning summary or language
+  data is added to the prompt. Public results copy only conversation text,
+  logical timestamps, message IDs and replay coverage. Advanced metadata,
+  credentials and internal headers are stripped. AI caps and billing remain
+  unchanged. A sender retries an ambiguous failure with the same message ID;
+  current-history duplicates do not post or request AI twice.
+- **Bounded waiting:** reads wait for a durable write or a 20-second timeout,
+  with at most four waiters per thread and 64 total. No short database polling
+  interval or idle D1 write is added. The main Worker still authenticates and
+  rate-limits each request, and one-use replay bookkeeping uses DO storage.
+  User cancellation aborts the request; a message already accepted durably
+  is not unsent. No microphone, playback or device access is part of this UI.
+
+### Extension alternative — assessment only, not implemented
+
+Chrome's [`declarativeNetRequest` API](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest)
+can set/remove/append response headers; it does not offer a general operation
+that edits only `frame-src` inside an arbitrary CSP while preserving every
+other directive. Appending another CSP would intersect restrictions rather
+than relax the existing policy. Replacing/removing the whole header risks
+losing nonces, multiple policies and unrelated protections.
+
+The recommended current path is the GM broker plus bundled panel above. A
+future extension side panel could avoid website CSP without rewriting it. A
+site-scoped DNR alternative would need explicit host/modify-header permissions,
+a complete policy-preservation design, separate security review and updated
+Chrome Web Store permission/privacy disclosures and review. No extension,
+CSP rule, permission or store submission is changed in this version.
+
+### Acceptance and evidence boundaries
+
+`bun scripts/qa/qa-portable-li.ts` runs muted Chromium with fake capture devices
+and a strict-CSP local fixture. It covers consent-before-network, global
+second-site auto-open, actual pointer send through the broker/hub to a
+synthetic AI reply, separate histories, collapse persistence, exclusion and
+remote GM revocation. Fixture injection simulates a userscript manager; it is
+not evidence of production ScriptCat operation. After the reviewed security
+change is approved and deployed (push before main), verify the served build,
+then use the actual installed manager on `zhihu.com` and `github.com` to send
+and receive a text reply. Keep the product node open until that real flow passes.

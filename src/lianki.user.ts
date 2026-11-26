@@ -8,11 +8,13 @@
 // @grant       GM_xmlhttpRequest
 // @grant       GM_setValue
 // @grant       GM_getValue
+// @grant       GM_addValueChangeListener
+// @grant       GM_removeValueChangeListener
 // @grant       GM_deleteValue
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.42
+// @version     2.24.43
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -54,6 +56,8 @@ import { dueWindow, isProvablyDeleted } from "@lianki/core/duePrune";
 import { activeTitleRules, cleanTitle } from "@lianki/core/titleClean";
 import { startGdocStream } from "./gdoc-stream";
 import { publishUserscriptVersion } from "../lib/userscript-install";
+import { startPortableLi } from "./portable-li";
+import { pageChatHttpClient } from "./page-chat-http-client";
 import { pageChatFetch } from "./page-chat-fetch";
 import { mirrorPartnerSwitch, startPartner } from "./partner";
 import { pillChat, watchPillChatFlag } from "./pill-chat";
@@ -69,6 +73,19 @@ import {
 } from "../lib/review-filters";
 
 declare const GM_xmlhttpRequest: Function;
+declare const GM_addValueChangeListener:
+  | undefined
+  | ((key: string, fn: (...args: unknown[]) => void) => number);
+declare const GM_removeValueChangeListener: undefined | ((id: number) => void);
+const portableWatch = (key: string, changed: () => void) => {
+  if (
+    typeof GM_addValueChangeListener !== "function" ||
+    typeof GM_removeValueChangeListener !== "function"
+  )
+    return () => {};
+  const id = GM_addValueChangeListener(key, changed);
+  return () => GM_removeValueChangeListener?.(id);
+};
 declare const GM_setValue: (key: string, value: any) => void;
 declare const GM_getValue: (key: string, defaultValue?: any) => any;
 declare const GM_deleteValue: (key: string) => void;
@@ -989,7 +1006,20 @@ function main() {
     mirrorFilters();
     window.addEventListener(REVIEW_FILTERS_EVENT, mirrorFilters);
     setTimeout(() => syncToSiteDB(), 500);
-    return unwatchPillChat;
+    const portable = startPortableLi({
+      gm: { getValue: GM_getValue, setValue: GM_setValue },
+      doc: document,
+      win: window,
+      origin: ORIGIN,
+      hostOrigin: location.origin,
+      top: window.self === window.top,
+      call: pageChatHttpClient(ORIGIN, location.origin, GM_xmlhttpRequest as never),
+      watch: portableWatch,
+    });
+    return () => {
+      unwatchPillChat();
+      portable.destroy();
+    };
   }
 
   const ac = new AbortController();
@@ -1085,6 +1115,9 @@ function main() {
   // Li chat from the pill (docs/userscript-li-chat.md): flag-gated, asks per site first.
   const liChat = pillChat({
     origin: ORIGIN,
+    chatRequest: GM_xmlhttpRequest as never,
+    watch: portableWatch,
+    signal,
     gmFetch,
     pageFetch: pageChatFetch(ORIGIN, location.origin, GM_xmlhttpRequest as never),
     getValue: GM_getValue,
@@ -4035,24 +4068,26 @@ function main() {
     startGdocStream({ origin: ORIGIN, gmFetch, getValue: GM_getValue, setValue: GM_setValue });
   }
 
-  startPartner({
-    origin: ORIGIN,
-    src: typeof __LK_PARTNER_SRC__ === "string" ? __LK_PARTNER_SRC__ : `${ORIGIN}/partner-embed.js`,
-    gmFetch,
-    getValue: GM_getValue,
-    setValue: GM_setValue,
-    deleteValue: GM_deleteValue,
-    info: GM_info,
-    report: (what, detail) =>
-      what === "partner-mode" && detail.startsWith("isolated")
-        ? console.debug(`[Lianki] ${what}: ${detail}`)
-        : console.error(`[Lianki] ${what}: ${detail}`),
-  })
-    .then((stop) => {
-      if (signal.aborted) stop();
-      else stopPartner = stop;
+  if (!liChat.ownsPortable())
+    startPartner({
+      origin: ORIGIN,
+      src:
+        typeof __LK_PARTNER_SRC__ === "string" ? __LK_PARTNER_SRC__ : `${ORIGIN}/partner-embed.js`,
+      gmFetch,
+      getValue: GM_getValue,
+      setValue: GM_setValue,
+      deleteValue: GM_deleteValue,
+      info: GM_info,
+      report: (what, detail) =>
+        what === "partner-mode" && detail.startsWith("isolated")
+          ? console.debug(`[Lianki] ${what}: ${detail}`)
+          : console.error(`[Lianki] ${what}: ${detail}`),
     })
-    .catch((err) => console.error("[Lianki] partner failed:", err));
+      .then((stop) => {
+        if (signal.aborted) stop();
+        else stopPartner = stop;
+      })
+      .catch((err) => console.error("[Lianki] partner failed:", err));
 
   return () => {
     clearPresence();

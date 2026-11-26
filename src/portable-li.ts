@@ -1,0 +1,300 @@
+import {
+  GLOBAL_CHAT_KEY,
+  globalChatAllowed,
+  globalChatStore,
+  chatSiteExcluded,
+} from "./pill-chat-global";
+import {
+  PILL_UI_LANGUAGE_KEY,
+  readPortableUiLanguage,
+  rememberPortableUiLanguage,
+} from "./pill-chat-language";
+import { PORTABLE_LI_STRINGS } from "./portable-li-strings";
+import { pillChatStrings } from "./pill-chat-strings";
+import { PILLCHAT_ON_KEY, flagMirrorOn, siteKey, type GmStore } from "./pill-chat-trust";
+import {
+  portableLiPanel,
+  attachPortableStyle,
+  PORTABLE_PANEL_CSS,
+  type PortableChatCall,
+} from "./portable-li-panel";
+import {
+  PORTABLE_SETTINGS_REQUEST,
+  PORTABLE_SETTINGS_STATE,
+  parsePortableSettingsRequest,
+} from "./portable-li-settings-wire";
+const trustedOrigins = new Set([
+  "https://lianki.com",
+  "https://www.lianki.com",
+  "https://preview.lianki.com",
+]);
+export type PortableWatch = (key: string, changed: () => void) => () => void;
+/** Only the new chat subsystem is managed here. LiCards startup and its legacy credentials are untouched. */
+export function startPortableLi(d: {
+  gm: GmStore;
+  doc: Document;
+  win: Window;
+  origin: string;
+  hostOrigin: string;
+  top: boolean;
+  call: PortableChatCall;
+  watch?: PortableWatch;
+  signal?: AbortSignal;
+}) {
+  const store = globalChatStore(d.gm),
+    host = siteKey(new URL(d.hostOrigin).hostname);
+  let panel: ReturnType<typeof portableLiPanel> | undefined,
+    promptClose: (() => void) | undefined,
+    destroyed = false,
+    generation = 0;
+  const trusted = d.top && trustedOrigins.has(d.hostOrigin);
+  const settings = () => trusted && d.win.location.pathname.replace(/\/$/, "") === "/chat/sites";
+  if (trusted) rememberPortableUiLanguage(d.gm, d.hostOrigin, d.doc.documentElement.lang, true);
+  const strings = () => PORTABLE_LI_STRINGS[readPortableUiLanguage(d.gm, d.win.navigator.language)];
+  const close = () => {
+    generation++;
+    panel?.destroy();
+    panel = undefined;
+    promptClose?.();
+    promptClose = undefined;
+  };
+  const publish = (error = false) => {
+    if (!settings()) return;
+    const p = store.read();
+    d.doc.dispatchEvent(
+      new CustomEvent(PORTABLE_SETTINGS_STATE, {
+        detail: JSON.stringify({
+          installed: true,
+          consent: p.consent,
+          excluded: p.excluded,
+          ...(error ? { error: true } : {}),
+        }),
+      }),
+    );
+  };
+  const show = () => {
+    if (destroyed || !host || trusted || !d.top || panel || d.doc.visibilityState === "hidden")
+      return;
+    const p = store.read();
+    if (!p.principal || !globalChatAllowed(p, host, p.principal)) return;
+    const locale = readPortableUiLanguage(d.gm, d.win.navigator.language);
+    panel = portableLiPanel({
+      doc: d.doc,
+      origin: d.origin,
+      hostOrigin: d.hostOrigin,
+      principal: p.principal,
+      call: d.call,
+      locale,
+      strings: PORTABLE_LI_STRINGS[locale],
+      common: pillChatStrings(locale),
+      collapsed: p.collapsed.includes(host),
+      onCollapse: (value) => {
+        store.collapse(host, value);
+        publish();
+      },
+      onExclude: () => {
+        store.exclude(host, true);
+        panel = undefined;
+        publish();
+      },
+      onInvalidAccount: () => {
+        store.invalidate();
+        close();
+        publish(true);
+      },
+    });
+  };
+  const allow = async () => {
+    const gen = ++generation;
+    const stamp = store.read().consentStamp;
+    const result = await d.call({ op: "hello" });
+    if (
+      destroyed ||
+      generation !== gen ||
+      store.read().consentStamp !== stamp ||
+      !flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null))
+    )
+      return false;
+    if (!result.ok || result.kind !== "hello") {
+      publish(true);
+      return false;
+    }
+    store.bind(result.principal);
+    store.consent("all", result.principal);
+    publish();
+    show();
+    return true;
+  };
+  const consent = () => {
+    if (
+      destroyed ||
+      promptClose ||
+      trusted ||
+      !d.top ||
+      !host ||
+      chatSiteExcluded(store.read(), host)
+    )
+      return;
+    const t = strings(),
+      node = d.doc.createElement("lianki-portable-consent"),
+      root = node.attachShadow({ mode: "closed" });
+    attachPortableStyle(
+      root,
+      d.doc,
+      PORTABLE_PANEL_CSS +
+        "section{padding:12px;gap:10px}p{margin:0}h2{font:600 16px/1.4 system-ui;margin:0}.buttons{display:flex;gap:8px;flex-wrap:wrap}",
+    );
+    const box = d.doc.createElement("section");
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-label", t.consentTitle);
+    const title = d.doc.createElement("h2"),
+      body = d.doc.createElement("p"),
+      buttons = d.doc.createElement("div"),
+      yes = d.doc.createElement("button"),
+      no = d.doc.createElement("button"),
+      status = d.doc.createElement("p");
+    title.textContent = t.consentTitle;
+    body.textContent = t.consentBody;
+    yes.textContent = t.allowAll;
+    no.textContent = pillChatStrings(readPortableUiLanguage(d.gm)).notNow;
+    buttons.className = "buttons";
+    yes.type = no.type = "button";
+    status.setAttribute("role", "status");
+    buttons.append(yes, no);
+    box.append(title, body, buttons, status);
+    root.append(box);
+    d.doc.documentElement.append(node);
+    promptClose = () => node.remove();
+    no.addEventListener("click", () => {
+      promptClose?.();
+      promptClose = undefined;
+    });
+    yes.addEventListener("click", async () => {
+      yes.disabled = true;
+      status.textContent = t.connecting;
+      try {
+        if (await allow()) {
+          promptClose?.();
+          promptClose = undefined;
+        } else {
+          status.textContent = t.failed;
+          yes.disabled = false;
+        }
+      } catch {
+        status.textContent = t.failed;
+        yes.disabled = false;
+      }
+    });
+    // No focus call: opening a website must not steal its typing focus.
+  };
+  const refresh = () => {
+    if (destroyed) return;
+    if (trusted) {
+      rememberPortableUiLanguage(d.gm, d.hostOrigin, d.doc.documentElement.lang, true);
+      publish();
+      return;
+    }
+    const p = store.read();
+    if (!flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null))) {
+      promptClose?.();
+      promptClose = undefined;
+    }
+    if (
+      !flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null)) ||
+      !host ||
+      chatSiteExcluded(p, host) ||
+      p.consent !== "all"
+    ) {
+      panel?.destroy();
+      panel = undefined;
+      if (p.consent === "unknown" && flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null))) consent();
+      return;
+    }
+    if (panel) panel.collapse(p.collapsed.includes(host));
+    else show();
+  };
+  const onSettings = async (e: Event) => {
+    if (!settings()) return;
+    const v = parsePortableSettingsRequest((e as CustomEvent).detail);
+    if (!v) return;
+    if (v.op === "state") {
+      publish();
+      return;
+    }
+    if (v.op === "allow") {
+      try {
+        await allow();
+      } catch {
+        publish(true);
+      }
+      return;
+    }
+    if (v.op === "off") {
+      store.revoke();
+      close();
+      publish();
+      return;
+    }
+    if (v.op === "exclude") {
+      const ok = store.exclude(v.host, v.excluded);
+      publish(!ok);
+    }
+  };
+  d.doc.addEventListener(PORTABLE_SETTINGS_REQUEST, onSettings);
+  const visible = () => {
+    if (d.doc.visibilityState === "visible") refresh();
+  };
+  d.doc.addEventListener("visibilitychange", visible);
+  const languageObserver = trusted
+    ? new MutationObserver(() =>
+        rememberPortableUiLanguage(d.gm, d.hostOrigin, d.doc.documentElement.lang, true),
+      )
+    : undefined;
+  languageObserver?.observe(d.doc.documentElement, { attributes: true, attributeFilter: ["lang"] });
+  const unwatch = [GLOBAL_CHAT_KEY, PILLCHAT_ON_KEY, PILL_UI_LANGUAGE_KEY].map((key) =>
+    d.watch?.(key, () => {
+      if (key === PILL_UI_LANGUAGE_KEY) close();
+      if (key === PILLCHAT_ON_KEY && !flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null)))
+        generation++;
+      refresh();
+    }),
+  );
+  const destroy = () => {
+    destroyed = true;
+    close();
+    languageObserver?.disconnect();
+    d.doc.removeEventListener(PORTABLE_SETTINGS_REQUEST, onSettings);
+    d.doc.removeEventListener("visibilitychange", visible);
+    for (const un of unwatch) un?.();
+  };
+  d.signal?.addEventListener("abort", destroy, { once: true });
+  // Defer the first view so initialization does not block LiCards.
+  queueMicrotask(refresh);
+  return {
+    close,
+    destroy,
+    excluded: () => !host || chatSiteExcluded(store.read(), host),
+    active: () =>
+      d.top &&
+      (flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null)) || store.read().consent !== "unknown"),
+    open: async () => {
+      if (panel) {
+        const p = store.read();
+        store.collapse(host!, !panel.isCollapsed());
+        refresh();
+        return "ready" as const;
+      }
+      const p = store.read();
+      if (p.consent === "all") {
+        show();
+        return "ready" as const;
+      }
+      consent();
+      return "denied" as const;
+    },
+    manage: () => {
+      d.win.open(d.origin + "/chat/sites", "_blank", "noopener,noreferrer");
+      return { remove() {}, closed: Promise.resolve() };
+    },
+  };
+}

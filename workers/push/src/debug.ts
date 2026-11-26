@@ -1,3 +1,13 @@
+import {
+  PAGE_CHAT_HTTP_INTERNAL_PATH,
+  PAGE_CHAT_HTTP_HEADER,
+  PAGE_CHAT_HTTP_WAIT_MS,
+  readPageChatHttpInput,
+  type PageChatHttpResult,
+} from "../../../lib/page-chat-http-wire";
+import { verifyPageChatHttpTicket } from "../../../lib/page-chat-http-ticket";
+import { publicPageChatResult } from "../../../lib/page-chat-http-result";
+import { importTicketPublicKey } from "../../../lib/stt-ticket";
 import { HubWork } from "../../../lib/hub-work";
 import { boundedSessions } from "../../../lib/bounded-sessions";
 /**
@@ -469,6 +479,7 @@ export type DebugState = {
   setWebSocketAutoResponse?(pair?: unknown): void;
   /** The runtime's gate: no other event is delivered until `f` settles. */
   blockConcurrencyWhile?<T>(f: () => Promise<T>): Promise<T>;
+  waitUntil?(promise: Promise<unknown>): void;
   storage: Storage;
 };
 /** A controller's keepalive (scripts/dev/keepalive.ts): "ping" is answered "pong". */
@@ -1082,6 +1093,13 @@ export class DebugHub {
   });
   /** `lianki chat`: API-token sockets and calls, each in its account's own thread (token-chat.ts). */
   private tokens: TokenChat;
+  private pageHttpPublic?: string;
+  private pageHttpGate: Promise<unknown> = Promise.resolve();
+  private pageHttpPending = new Map<
+    string,
+    { id: string; text: string; ack: Promise<number | undefined> }
+  >();
+  private pageHttpWaiters = new Map<string, Set<() => void>>();
   /** The progress hub (same Worker): told when a listener connects, so queued ETA lines go out. */
   private progress?: ProgressNs;
 
@@ -1092,6 +1110,7 @@ export class DebugHub {
     private timer: HubTimer = realTimer,
   ) {
     this.work = new HubWork(this.now);
+    this.pageHttpPublic = (env as { PARTNER_TICKET_PUB?: string } | undefined)?.PARTNER_TICKET_PUB;
     // The speaker-attestation public keys (the Mac's: voiceprint.py attest-key); without any no tag is kept.
     this.speakerKeys = speakerKeyRing(env);
     const sessions = (env as { SESSIONS?: SessionsRpc } | undefined)?.SESSIONS;
@@ -1610,7 +1629,7 @@ export class DebugHub {
     newPost = false,
   ): Promise<number> {
     const thread = m.thread ?? OWNER_THREAD;
-    return this.nextChatSeq(thread, async (seq, tx) => {
+    const committed = await this.nextChatSeq(thread, async (seq, tx) => {
       if (newPost) {
         let last = this.lastLogicalAt.get(thread);
         if (last === undefined) {
@@ -1629,6 +1648,8 @@ export class DebugHub {
         if (row.id === m.id && key !== msgKey(thread, seq)) await tx.delete(key);
       if (oldKey && oldKey !== msgKey(thread, seq)) await tx.delete(oldKey);
     });
+    this.wakePageHttp(thread);
+    return committed;
   }
 
   /** Keep one chat message (dropping its thread's oldest past CHAT_HISTORY) and send it on. */
@@ -2914,6 +2935,183 @@ export class DebugHub {
     return (await this.friends()).find((f) => f.email.toLowerCase() === want);
   }
 
+  private wakePageHttp(thread: string) {
+    for (const wake of this.pageHttpWaiters.get(thread) ?? []) wake();
+  }
+
+  /** A bounded event wait, never a periodic database poll. */
+  private waitPageHttp(
+    thread: string,
+    signal: AbortSignal,
+  ): { done: Promise<void>; cancel(): void } | null {
+    let total = 0;
+    for (const v of this.pageHttpWaiters.values()) total += v.size;
+    const set = this.pageHttpWaiters.get(thread) ?? new Set<() => void>();
+    if (total >= 64 || set.size >= 4) return null;
+    let release!: () => void;
+    const done = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let timer: ReturnType<typeof setTimeout>;
+    const cancel = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", cancel);
+      set.delete(cancel);
+      if (!set.size) this.pageHttpWaiters.delete(thread);
+      release();
+    };
+    set.add(cancel);
+    this.pageHttpWaiters.set(thread, set);
+    timer = setTimeout(cancel, PAGE_CHAT_HTTP_WAIT_MS);
+    signal.addEventListener("abort", cancel, { once: true });
+    if (signal.aborted) cancel();
+    return { done, cancel };
+  }
+
+  /** The binding-only route accepts a signed single-use operation, never page-selected authority. */
+  private async pageChatHttp(req: Request): Promise<Response> {
+    const json = (body: PageChatHttpResult, status = 200) =>
+      Response.json(body, {
+        status,
+        headers: { "cache-control": "private, no-store" },
+      });
+    if (
+      req.method !== "POST" ||
+      new URL(req.url).hostname !== "lianki-push" ||
+      !this.pageHttpPublic
+    )
+      return json({ ok: false, error: "invalid" }, 403);
+    const action = await readPageChatHttpInput(req);
+    if (!action || action === "too-large" || action.op === "hello")
+      return json({ ok: false, error: "invalid" }, 400);
+    let claims;
+    try {
+      claims = await verifyPageChatHttpTicket(
+        req.headers.get(PAGE_CHAT_HTTP_HEADER) ?? "",
+        await importTicketPublicKey(this.pageHttpPublic),
+        action,
+        this.now(),
+      );
+    } catch {
+      return json({ ok: false, error: "unavailable" }, 503);
+    }
+    if (!claims) return json({ ok: false, error: "invalid" }, 403);
+    // Serialize the consume check+write. DO requests otherwise interleave at storage awaits.
+    const consume = this.pageHttpGate.then(async () => {
+      const key = `phjti:${String(claims.exp).padStart(12, "0")}:${claims.jti}`;
+      if ((await this.ctx.storage.get(key)) !== undefined) return false;
+      await this.ctx.storage.put(key, claims.exp);
+      // Expiry-first keys make bounded cleanup drain the oldest entries first, independent of random IDs.
+      const old = await this.ctx.storage.list<number>({ prefix: "phjti:", limit: 128 });
+      for (const [expired, exp] of old)
+        if (exp * 1000 < this.now()) await this.ctx.storage.delete(expired);
+      return true;
+    });
+    this.pageHttpGate = consume.catch(() => {});
+    if (!(await consume)) return json({ ok: false, error: "invalid" }, 403);
+    const bound = await this.subThreadFor(
+      new URL(req.url),
+      {
+        userId: claims.sub,
+        email: "",
+        owner: claims.own === true,
+      },
+      true,
+      { hash: claims.th, origin: claims.ho },
+    );
+    if (!bound) return json({ ok: false, error: "invalid" }, 403);
+    const thread = bound.thread;
+    if ((await this.ctx.storage.get<FriendRecord>(friendKey(claims.sub)))?.blocked)
+      return json({ ok: false, error: "blocked" }, 403);
+    if (action.op === "read") {
+      const waiter = action.wait ? this.waitPageHttp(thread, req.signal) : null;
+      if (action.wait && !waiter) return json({ ok: false, error: "busy" }, 429);
+      try {
+        let range = await this.replay(thread, action.afterSeq);
+        if (waiter && range.throughSeq === range.headSeq && action.afterSeq === range.headSeq) {
+          await waiter.done;
+          if (req.signal.aborted) return json({ ok: false, error: "cancelled" }, 499);
+          range = await this.replay(thread, action.afterSeq);
+        }
+        const body = publicPageChatResult({
+          ok: true,
+          kind: "history",
+          range,
+          ...(this.pageHttpPending.get(thread)
+            ? { pending: this.pageHttpPending.get(thread)!.id }
+            : {}),
+        });
+        return body ? json(body) : json({ ok: false, error: "unavailable" }, 503);
+      } finally {
+        waiter?.cancel();
+      }
+    }
+    // Install a reservation synchronously, before history storage yields, to deduplicate concurrent sends.
+    const pending = this.pageHttpPending.get(thread);
+    if (pending) {
+      if (pending.id !== action.id) return json({ ok: false, error: "busy" }, 409);
+      if (pending.text !== action.text) return json({ ok: false, error: "id-conflict" }, 409);
+      const seq = await pending.ack;
+      return seq
+        ? json({ ok: true, kind: "accepted", id: action.id, seq })
+        : json({ ok: false, error: "unavailable" }, 503);
+    }
+    if (this.pageHttpPending.size >= 64) return json({ ok: false, error: "busy" }, 429);
+    let accept!: (seq: number | undefined) => void;
+    const ack = new Promise<number | undefined>((resolve) => {
+      accept = resolve;
+    });
+    this.pageHttpPending.set(thread, { id: action.id, text: action.text, ack });
+    const task = (async () => {
+      try {
+        const old = (await this.history(thread)).find((m) => m.id === action.id);
+        if (old) {
+          if (old.text === action.text && old.from !== "agent") accept(old.seq);
+          return;
+        }
+        const page: PageAtt = {
+          role: "page",
+          label: claims.ho,
+          thread,
+          user: claims.sub,
+          embed: true,
+          chatOnly: true,
+        };
+        const socket: Socket = {
+          send() {},
+          close() {},
+          serializeAttachment() {},
+          deserializeAttachment() {
+            return page;
+          },
+        };
+        await this.friendChat(
+          socket,
+          page,
+          action.id,
+          action.text,
+          undefined,
+          undefined,
+          false,
+          async (seq) => {
+            accept(seq);
+          },
+        );
+      } finally {
+        accept(undefined);
+        this.pageHttpPending.delete(thread);
+        this.wakePageHttp(thread);
+      }
+    })();
+    // Native DO lifetime covers the AI reply after durable acceptance has been returned.
+    if (this.ctx.waitUntil) this.ctx.waitUntil(task.catch(() => {}));
+    else await task.catch(() => {});
+    const seq = await ack;
+    return seq
+      ? json({ ok: true, kind: "accepted", id: action.id, seq })
+      : json({ ok: false, error: "unavailable" }, 503);
+  }
+
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === "/internal/hub-diagnostics")
@@ -2926,6 +3124,7 @@ export class DebugHub {
         { headers: { "cache-control": "no-store" } },
       );
     this.work.touch();
+    if (url.pathname === PAGE_CHAT_HTTP_INTERNAL_PATH) return this.pageChatHttp(req);
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
     if (url.pathname === SUB_THREADS_PATH) return this.subThreadsApi(url);
     if (url.pathname === SIGNED_OUT_PATH) return this.signedOutApi(req);

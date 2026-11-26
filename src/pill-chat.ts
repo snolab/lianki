@@ -1,3 +1,6 @@
+import { startPortableLi, type PortableWatch } from "./portable-li";
+import { pageChatHttpClient } from "./page-chat-http-client";
+import type { ChatGmRequest } from "./page-chat-fetch";
 /**
  * Li chat from the userscript pill (docs/userscript-li-chat.md): the gate,
  * then the frame. Behind the `ext.pill-chat` flag (lib/flags.ts), which
@@ -53,6 +56,9 @@ type GmFetch = (
 
 export type PillChatDeps = {
   origin: string;
+  chatRequest?: ChatGmRequest;
+  watch?: PortableWatch;
+  signal?: AbortSignal;
   gmFetch: GmFetch;
   /** Cookie-only allowlisted broker for page-realm chat; never the general API-token fetch. */
   pageFetch?: GmFetch;
@@ -206,18 +212,33 @@ export function pillChat(d: PillChatDeps) {
   const isolated = isolatedWorld(d.info as Parameters<typeof isolatedWorld>[0]);
   const report = d.report ?? (() => {});
   const limitedFetch = d.pageFetch;
+  const portable = d.chatRequest
+    ? startPortableLi({
+        gm: d,
+        doc,
+        win,
+        origin: d.origin,
+        hostOrigin: d.hostOrigin ?? location.origin,
+        top,
+        call: pageChatHttpClient(d.origin, d.hostOrigin ?? location.origin, d.chatRequest),
+        watch: d.watch,
+        signal: d.signal,
+      })
+    : undefined;
   let open: { destroy(): void } | null = null;
   let busy = false;
   let note: (() => void) | null = null;
 
   const entry = () =>
-    pillEntry({
-      flagOn: flagMirrorOn(d.getValue(PILLCHAT_ON_KEY, null)),
-      top,
-      isolated,
-      decision: host ? store.decision(host) : null,
-      host,
-    });
+    portable?.excluded()
+      ? ("hidden" as const)
+      : pillEntry({
+          flagOn: flagMirrorOn(d.getValue(PILLCHAT_ON_KEY, null)),
+          top,
+          isolated,
+          decision: host ? store.decision(host) : null,
+          host,
+        });
 
   const prompt = d.prompt ?? ((h: string) => trustDialog({ doc, win, strings, host: h }).result);
 
@@ -248,6 +269,7 @@ export function pillChat(d: PillChatDeps) {
   };
 
   const close = () => {
+    portable?.close();
     open?.destroy();
     open = null;
     note?.();
@@ -258,6 +280,7 @@ export function pillChat(d: PillChatDeps) {
   async function openChat(): Promise<OpenResult> {
     const e = entry();
     if (e === "hidden" || !host) return "hidden";
+    if (portable) return portable.open();
     if (e === "note" && !limitedFetch) {
       note?.();
       note = pageRealmNote(doc, d.origin, () => store.set(host, "never"));
@@ -333,11 +356,12 @@ export function pillChat(d: PillChatDeps) {
 
   /** The sites list (the userscript menu's "Li chat: sites…"): forget a decision. */
   function manage(onChange?: (host: string) => void) {
-    return sitesDialog({ doc, win, strings, store, onChange });
+    return portable ? portable.manage() : sitesDialog({ doc, win, strings, store, onChange });
   }
 
   return {
     entry,
+    ownsPortable: () => portable?.active() ?? false,
     open: openChat,
     close,
     manage,

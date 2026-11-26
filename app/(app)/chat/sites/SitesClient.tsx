@@ -59,15 +59,21 @@ export default function SitesClient({
   labels,
   locale,
   installGuide,
+  historyEnabled = true,
 }: {
   labels: SitesLabels;
   locale: string;
   installGuide: ReactNode;
+  historyEnabled?: boolean;
 }) {
   const [threads, setThreads] = useState<SiteThread[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState<SiteThread | null>(null);
   const load = async () => {
+    if (!historyEnabled) {
+      setThreads([]);
+      return;
+    }
     setFailed(false);
     try {
       const r = await fetch("/api/chat/sites", { cache: "no-store" });
