@@ -136,6 +136,42 @@ const dictionary = {
       mr: "पेज नवीन टॅबमध्ये उघडा. वाचून झाल्यावर मागे दाबा किंवा हा टॅब बंद करा, इथे परत या आणि मग ग्रेड द्या.",
       ko: "새 탭에서 페이지를 여세요. 읽은 뒤 뒤로 버튼을 누르거나 이 탭을 닫고 여기로 돌아와 평가하세요.",
     }),
+    previewCurrent: t({
+      en: "This page",
+      zh: "当前网页",
+      hi: "यह पेज",
+      es: "Esta página",
+      fr: "Cette page",
+      ar: "هذه الصفحة",
+      bn: "এই পেজ",
+      pt: "Esta página",
+      ru: "Текущая страница",
+      ur: "یہ صفحہ",
+      id: "Halaman ini",
+      de: "Diese Seite",
+      ja: "現在のページ",
+      sw: "Ukurasa huu",
+      mr: "हे पेज",
+      ko: "현재 페이지",
+    }),
+    previewUnavailable: t({
+      en: "Preview unavailable. Open the page using its link.",
+      zh: "暂时无法预览，请点链接打开网页。",
+      hi: "पूर्वावलोकन उपलब्ध नहीं है। लिंक से पेज खोलें।",
+      es: "Vista previa no disponible. Abre la página con su enlace.",
+      fr: "Aperçu indisponible. Ouvrez la page avec son lien.",
+      ar: "المعاينة غير متاحة. افتح الصفحة باستخدام رابطها.",
+      bn: "প্রিভিউ পাওয়া যাচ্ছে না। লিঙ্ক দিয়ে পেজটি খুলুন।",
+      pt: "Prévia indisponível. Abra a página pelo link.",
+      ru: "Предпросмотр недоступен. Откройте страницу по ссылке.",
+      ur: "پیش نظارہ دستیاب نہیں۔ لنک سے صفحہ کھولیں۔",
+      id: "Pratinjau tidak tersedia. Buka halaman melalui tautannya.",
+      de: "Vorschau nicht verfügbar. Öffne die Seite über ihren Link.",
+      ja: "プレビューを表示できません。リンクからページを開いてください。",
+      sw: "Onyesho la awali halipatikani. Fungua ukurasa kupitia kiungo chake.",
+      mr: "पूर्वावलोकन उपलब्ध नाही. लिंकवरून पेज उघडा.",
+      ko: "미리보기를 사용할 수 없습니다. 링크로 페이지를 여세요.",
+    }),
     opened: t({
       en: "Opened in a new tab. When you are back, how well did you remember it?",
       zh: "已在新标签页打开。回来后，你记得怎么样？",
@@ -1431,6 +1467,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Help under Open this card on /review for desktop devices: open the page in a new tab, read, close that tab with {shortcut}, return here, then grade. {shortcut} is exactly Ctrl+W on Windows/Linux or ⌘W on Mac; never translate or alter the placeholder or key names. Show only the current device shortcut.",
   openHintBack:
     "Help under Open this card on /review for phones and tablets: open the page in a new tab, read, press Back OR close this new tab, return here, then grade. Back alone does not always return from a new tab, so keep both alternatives. Localize the navigation label naturally; do not mention desktop keyboard shortcuts or confuse Back with undoing a grade.",
+  previewCurrent:
+    "Label over the retained webpage preview on /review when the preloaded next card becomes the current card after grading. It names the current webpage, not a button or an action.",
+  previewUnavailable:
+    "Fallback under a next-card title and real webpage link on /review when the site forbids embedding or the header check is uncertain or fails. Do not blame the site or promise it is offline; the user can still open the link.",
   opened:
     "Line shown on /review after the user has opened the card's page in another tab, before they have come back: invites them to grade how well they remembered it once back.",
   again:

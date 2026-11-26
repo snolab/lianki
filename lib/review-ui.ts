@@ -57,14 +57,26 @@ export function optionsFrom(json: unknown): GradeOption[] {
 }
 
 /** The card a grade would move on to, as `GET /api/fsrs/next-url` names it. */
-export type NextCard = { url: string; title: string | null };
+export type NextCard = { url: string; title: string | null; previewUrl?: string | null };
 
 /** A card, null when nothing else is due, undefined for an answer that says neither. */
 export function nextCardFrom(json: unknown): NextCard | null | undefined {
-  const j = json as { url?: unknown; title?: unknown } | null;
+  const j = json as { url?: unknown; title?: unknown; previewUrl?: unknown } | null;
   if (j?.url === null) return null;
   if (typeof j?.url !== "string") return undefined;
-  return { url: j.url, title: typeof j.title === "string" && j.title ? j.title : null };
+  const card: NextCard = {
+    url: j.url,
+    title: typeof j.title === "string" && j.title ? j.title : null,
+  };
+  if ("previewUrl" in j) {
+    card.previewUrl =
+      typeof j.previewUrl === "string" &&
+      /^https:\/\//i.test(j.previewUrl) &&
+      isHttpUrl(j.previewUrl)
+        ? j.previewUrl
+        : null;
+  }
+  return card;
 }
 
 /** Only http(s) pages are cards; anything else is never opened from here. */
@@ -86,6 +98,7 @@ export const api = {
   get: (url: string) => `/api/fsrs/get?url=${q(url)}`,
   /** The pick a grade of the card at `url` would make next; reads, marks nothing. */
   nextAfter: (url: string) => `/api/fsrs/next-url?excludeUrl=${q(url)}`,
+  previewAfter: (url: string) => `/api/fsrs/next-preview?excludeUrl=${q(url)}`,
   options: (id: string) => `/api/fsrs/options?id=${q(id)}`,
   stats: () => "/api/fsrs/stats",
   /** The same GET the bare /api/fsrs/repeat page sends. */
