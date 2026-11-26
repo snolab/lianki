@@ -53,6 +53,11 @@ export type AuditKind =
   | "api-token.revoke-all"
   | "api-token.use"
   | "api-token.refused"
+  // Child tokens (lib/api-token-child.ts): minted by a lane's token for its
+  // subagent, revoked by that token, by the owner, or with its parent.
+  // Subject: the child's tag; detail: its name, scopes, expiry, the parent's tag.
+  | "api-token.child-mint"
+  | "api-token.child-revoke"
   // An eval token's every use: a sender connecting, and each eval it sends
   // (lib/eval-token.ts). Subject: the token's tag.
   | "api-token.eval"

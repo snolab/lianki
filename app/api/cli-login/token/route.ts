@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { EXCHANGES_PER_IP, exchangeCode, revokeSelf } from "@/lib/cli-login";
 import { dbBackend, getD1 } from "@/lib/d1";
 import type { D1Like } from "@/lib/d1/types";
-import { describeToken, tagOf } from "@/lib/api-tokens";
+import { deleteChildren, describeToken, tagOf } from "@/lib/api-tokens";
+import { auditChildRevoke } from "@/lib/api-token-child";
 import { type AuditDb, audit } from "@/lib/security/audit-log";
 import { clientIp, hit, ipKey, sha256Hex, type ThrottleDb } from "@/lib/security/throttle";
 import { notifyTokensRevoked } from "@/lib/push-chat-tokens";
@@ -94,7 +95,16 @@ export async function DELETE(req: Request) {
       subject: tagOf(id),
       detail: `${row.name} (lianki auth logout)`,
     });
-    await notifyTokensRevoked({ ids: [id] });
+    // Its child tokens (lib/api-token-child.ts) go with it.
+    const children = await deleteChildren(db, id);
+    for (const c of children)
+      await auditChildRevoke(
+        db as unknown as AuditDb,
+        row.user_id ?? row.email,
+        c,
+        `with parent ${tagOf(id)}`,
+      );
+    await notifyTokensRevoked({ ids: [id, ...children.map((c) => c.token_hash)] });
   }
   return NextResponse.json({ ok }, { status: ok ? 200 : 404, headers: NO_STORE });
 }

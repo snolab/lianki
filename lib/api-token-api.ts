@@ -23,6 +23,7 @@ import {
   EXPIRY_DAYS,
   FORBIDDEN_SCOPES,
   MAX_EXPIRY_DAYS,
+  MINT_CHILD,
   OWNER_SCOPES,
   SCOPES,
   type TokenOwner,
@@ -35,6 +36,7 @@ import {
   tagOf,
 } from "@/lib/api-tokens";
 import { type AuditDb, audit } from "@/lib/security/audit-log";
+import { auditChildRevoke } from "@/lib/api-token-child";
 
 export type TokenApiDeps = {
   /** The session's account, or null for a guest. */
@@ -44,6 +46,8 @@ export type TokenApiDeps = {
   siteOwner?: (userId: string) => Promise<boolean>;
   /** Revoked tokens' listening sockets close (lib/push-chat-tokens.ts). */
   revoked: (ids: string[]) => Promise<void>;
+  /** The flag `tokens.child`, read now: the page then offers the "may mint child tokens" switch. Absent: off. */
+  childTokens?: () => Promise<boolean>;
   /** At most this many live tokens per account. */
   maxTokens?: number;
   now?: () => number;
@@ -71,12 +75,16 @@ export async function tokenApi(req: Request, deps: TokenApiDeps): Promise<Respon
   const isOwner = async () => (deps.siteOwner ? deps.siteOwner(owner.userId) : false);
   if (req.method === "GET") {
     const site = await isOwner();
+    // `token:mint-child` is never on the create form: it is switched on a token's row.
+    const offered = SCOPES.filter((s) => s.id !== MINT_CHILD);
+    const child = site && deps.childTokens ? await deps.childTokens().catch(() => false) : false;
     return json({
       account: owner.email,
-      scopes: site ? SCOPES : SCOPES.filter((s) => !OWNER_SCOPES.includes(s.id)),
+      scopes: site ? offered : offered.filter((s) => !OWNER_SCOPES.includes(s.id)),
       expiryDays: EXPIRY_DAYS,
       maxExpiryDays: MAX_EXPIRY_DAYS,
       ...(site ? { evalMaxDays: EVAL_MAX_DAYS } : {}),
+      ...(child ? { childTokens: true } : {}),
       tokens: await listTokens(db, owner, now),
     });
   }
@@ -89,21 +97,28 @@ export async function tokenApi(req: Request, deps: TokenApiDeps): Promise<Respon
   if (req.method === "DELETE") {
     const gone = await revokeToken(db, owner, body.id);
     if (!gone) return json({ error: "Not found" }, 404);
-    await audit(db, {
-      kind: "api-token.revoke",
-      actor: owner.userId,
-      subject: tagOf(gone.id),
-      detail: `${gone.name} [${gone.scopes.join(" ")}]`,
-    });
-    await deps.revoked([gone.id]);
-    return json({ ok: true });
+    if (gone.parentId) await auditChildRevoke(db, owner.userId, gone, "by owner", now);
+    else
+      await audit(db, {
+        kind: "api-token.revoke",
+        actor: owner.userId,
+        subject: tagOf(gone.id),
+        detail: `${gone.name} [${gone.scopes.join(" ")}]`,
+      });
+    // Its children went with it (revokeToken): each one in the log, each socket closed.
+    for (const c of gone.children)
+      await auditChildRevoke(db, owner.userId, c, `with parent ${tagOf(gone.id)}`, now);
+    await deps.revoked([gone.id, ...gone.children.map((c) => c.id)]);
+    return json({ ok: true, children: gone.children.length });
   }
 
   const name = cleanTokenName(body.name);
   if (!name) return json({ error: "name: 1–40 characters" }, 400);
   if (
     Array.isArray(body.scopes) &&
-    body.scopes.some((s) => (FORBIDDEN_SCOPES as readonly unknown[]).includes(s))
+    body.scopes.some(
+      (s) => (FORBIDDEN_SCOPES as readonly unknown[]).includes(s) || s === MINT_CHILD,
+    )
   )
     return json({ error: "scopes: that permission does not exist for tokens" }, 400);
   // An owner-only permission asks for the `dev` grant first; for anyone else it does not exist.

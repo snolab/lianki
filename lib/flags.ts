@@ -399,6 +399,14 @@ export const FLAGS = {
     default: false,
     group: "mcp",
   },
+  // Auth: one of the exceptions to "new flags ship on" (docs/secrets-and-auth.md, "Child tokens").
+  "tokens.child": {
+    description:
+      "子令牌（docs/secrets-and-auth.md「Child tokens」）：你在 偏好设置 → API 令牌 里给某个车道的令牌打开「可建子令牌」后，这个车道就能自己给它的子 agent 建短期令牌（lianki token child create），子 agent 在聊天里用自己的名字发言，显示为「小克·子1」。子令牌的权限只能是父令牌的一部分，不能再建子令牌，到期不晚于父令牌，每个父令牌同时最多几个（/dev/config 的 tokens.child*）；撤销或到期父令牌，子令牌立刻一起失效。建和撤销都记在安全日志里，密钥从不记录。只有 dev 账号的令牌能用。关闭（默认）：/api/token/child 不存在（404），已建的子令牌全部失效（行还在，重新打开即恢复），「可建子令牌」开关不显示。",
+    default: false,
+    audience: "owner",
+    group: "tokens",
+  },
   levels: {
     description:
       "学习等级（种子→莲 / 炼气→炼虚）：所有用户都能看到自己的等级（未注册 / 免费 / 付费，付费后按累计有效学习天数升：100、365、1000 天）——登录后导航栏头像旁有一个小徽章，/my/profile 上有等级卡片（徽章、等级名、学习天数、离下一级还差几天；未注册的访客在 /my/profile 也能看到自己的等级和注册提示）。学习天数不论开关都在记录。关闭（默认）= 只有你本人能看到。",

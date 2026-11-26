@@ -10,6 +10,7 @@
  * are live config (lib/config.ts chat.presenceReadMin, chat.presenceSpeakerMin).
  */
 import { laneSpec, type LaneId, isLaneId, laneOf } from "./voices";
+import { childShownName } from "./child-lane";
 import type { ChatMessage } from "./wire";
 import { type LaneMode, wideScope } from "./lane-events";
 
@@ -134,7 +135,8 @@ export function effective(r: PartRecord): Pick<Present, "name" | "avatar" | "nam
   const lane = r.lane ? known(r.lane) : null;
   const laneName = lane ? laneSpec(lane).name : "";
   return {
-    name: r.ownerName || laneName || r.lane,
+    // A lane's subagent (child token "claude·子1") shows as 「小克·子1」 (child-lane.ts).
+    name: r.ownerName || laneName || childShownName(r.lane),
     ...(r.ownerName ? { nameBy: "owner" as const, selfName: r.lane } : {}),
     ...(avatar ? { avatar } : {}),
     ...(r.ownerAvatar
@@ -252,7 +254,11 @@ export function presentList(p: {
         const lane = key.startsWith("lane:") ? (key.slice(5) as LaneId) : undefined;
         e = {
           key,
-          name: lane ? laneSpec(lane).name || p.mainName || "" : (m.tokenLane ?? m.label),
+          name: lane
+            ? laneSpec(lane).name || p.mainName || ""
+            : m.tokenLane
+              ? childShownName(m.tokenLane)
+              : m.label,
           ...(lane ? { lane } : {}),
           ...(m.tok ? { tok: m.tok } : {}),
           ...(m.avatar ? { avatar: m.avatar, avatarBy: "agent" as const } : {}),

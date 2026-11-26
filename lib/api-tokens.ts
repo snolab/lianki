@@ -71,6 +71,12 @@ export const SCOPES = [
   // audio, a day's archive (scripts/dev/recordings-pull.ts). Never write or delete.
   // A `dev` account's token only (OWNER_SCOPES), at most EVAL_MAX_DAYS.
   { id: "recordings:read", group: "owner" },
+  // Mint short-lived child tokens for this token's own subagents
+  // (lib/api-token-child.ts, docs/secrets-and-auth.md "Child tokens"): a
+  // subset of this token's permissions, never this one, never past its expiry.
+  // A `dev` account's token only (OWNER_SCOPES), granted on the token's row
+  // (never on the create form), and only while the flag `tokens.child` is on.
+  { id: "token:mint-child", group: "owner" },
 ] as const;
 
 export type ScopeId = (typeof SCOPES)[number]["id"];
@@ -84,7 +90,16 @@ export const FORBIDDEN_SCOPES = ["pair", "grant", "admin", "answer", "owner"] as
  * creation and at every use). Anyone else is never offered them, and a
  * request naming one is refused as if it did not exist.
  */
-export const OWNER_SCOPES: readonly ScopeId[] = ["eval", "recordings:read", "progress"];
+export const OWNER_SCOPES: readonly ScopeId[] = [
+  "eval",
+  "recordings:read",
+  "progress",
+  "token:mint-child",
+];
+/** The permission to mint child tokens: granted on a token's row, never on the create form, never to a child. */
+export const MINT_CHILD: ScopeId = "token:mint-child";
+/** The flag that makes child tokens exist at all (lib/flags.ts); off, every child reads as unknown. */
+export const CHILD_FLAG = "tokens.child";
 /** A token holding `eval` or `recordings:read` lives at most this long (owner's decision, 2026-11-07); `progress` alone is not capped. */
 export const EVAL_MAX_DAYS = 30;
 
@@ -209,6 +224,8 @@ export type TokenInfo = {
   expiresAt: string | null;
   lastUsedAt: string | null;
   expired: boolean;
+  /** A child token's parent (its public id); absent on a token made by hand. */
+  parentId?: string;
 };
 
 type Row = {
@@ -220,9 +237,10 @@ type Row = {
   scopes: string | null;
   expires_at: string | null;
   last_used_at: string | null;
+  parent_hash?: string | null;
 };
 
-const isExpired = (expiresAt: string | null, now: number) =>
+export const isExpired = (expiresAt: string | null, now: number) =>
   expiresAt !== null && !(Date.parse(expiresAt) > now);
 
 const info = (r: Row, now: number): TokenInfo => ({
@@ -234,6 +252,7 @@ const info = (r: Row, now: number): TokenInfo => ({
   expiresAt: r.expires_at,
   lastUsedAt: r.last_used_at,
   expired: isExpired(r.expires_at, now),
+  ...(r.parent_hash ? { parentId: r.parent_hash } : {}),
 });
 
 /** The rows that are this account's: bound to its id, or (rows from before) its email. */
@@ -288,18 +307,67 @@ export async function listTokens(db: D1Like, owner: TokenOwner, now = Date.now()
   return results.map((r) => info(r, now));
 }
 
-/** Revoke one of this account's tokens by id; another account's is "not found". */
+/**
+ * Revoke one of this account's tokens by id; another account's is "not found".
+ * Its child tokens go with it (`children`): they would already be refused
+ * (checkToken needs a live parent), the rows go so nothing is left behind.
+ */
 export async function revokeToken(
   db: D1Like,
   owner: TokenOwner,
   id: unknown,
-): Promise<TokenInfo | null> {
+): Promise<(TokenInfo & { children: TokenInfo[] }) | null> {
   if (typeof id !== "string" || !/^[0-9a-f]{64}$/.test(id)) return null;
   const r = await db
     .prepare(`DELETE FROM api_tokens WHERE token_hash = ?3 AND ${MINE} AND ${OWN} RETURNING *`)
     .bind(owner.userId, owner.email, id)
     .first<Row>();
-  return r ? info(r, Date.now()) : null;
+  if (!r) return null;
+  const now = Date.now();
+  return { ...info(r, now), children: (await deleteChildren(db, id)).map((c) => info(c, now)) };
+}
+
+/** Delete every child of the token `parentId` (its revocation, a logout): their rows. */
+export async function deleteChildren(db: D1Like, parentId: string): Promise<Row[]> {
+  const { results } = await db
+    .prepare("DELETE FROM api_tokens WHERE parent_hash = ? RETURNING *")
+    .bind(parentId)
+    .all<Row>();
+  return results;
+}
+
+export type ParentCols = {
+  parent_hash: string | null;
+  p_hash: string | null;
+  p_scopes: string | null;
+  p_expires: string | null;
+  child_flag: number | null;
+};
+
+/**
+ * The columns that decide whether a child token is alive: its parent (same
+ * account, made by hand, not itself a child) and the flag. Read with every
+ * check, so a revoked or expired parent, a parent that lost
+ * `token:mint-child`, or the flag off ends every child at once: one check
+ * path, no sweep.
+ */
+export const PARENT_COLS = `t.parent_hash, p.token_hash AS p_hash, p.scopes AS p_scopes, p.expires_at AS p_expires,
+  (SELECT f.enabled FROM feature_flags f WHERE f.key = '${CHILD_FLAG}') AS child_flag`;
+export const PARENT_JOIN = `LEFT JOIN api_tokens p ON p.token_hash = t.parent_hash
+  AND p.user_id = u.id AND p.oauth_grant_id IS NULL AND p.parent_hash IS NULL`;
+
+/**
+ * A child's effective permissions: its own, but only those its parent still
+ * holds; null when the child is dead (no live parent, the parent no longer
+ * mints children, the flag off). A token with no parent: its own, unchanged.
+ */
+export function childScopes(own: ScopeId[], r: ParentCols, now: number): ScopeId[] | null {
+  if (!r.parent_hash) return own;
+  if (r.child_flag !== 1 || !r.p_hash || r.p_expires === null || isExpired(r.p_expires, now))
+    return null;
+  const parent = rowScopes(r.p_scopes);
+  if (!parent.includes(MINT_CHILD)) return null;
+  return own.filter((s) => s !== MINT_CHILD && parent.includes(s));
 }
 
 /** Every token of the account (a sign-out everywhere, the account deleted). Their ids. */
@@ -327,14 +395,17 @@ export async function describeToken(
   const id = await sha256Hex(token);
   const r = await db
     .prepare(
-      `SELECT t.name, t.scopes, t.expires_at FROM api_tokens t JOIN user u ON u.email = t.email
+      `SELECT t.name, t.scopes, t.expires_at, ${PARENT_COLS} FROM api_tokens t JOIN user u ON u.email = t.email
          AND (t.user_id IS NULL OR u.id = t.user_id)
+       ${PARENT_JOIN}
        WHERE t.token_hash = ? AND ${OAUTH_LIVE}`,
     )
     .bind(id)
-    .first<Pick<Row, "name" | "scopes" | "expires_at">>();
+    .first<Pick<Row, "name" | "scopes" | "expires_at"> & ParentCols>();
   if (!r || isExpired(r.expires_at, now)) return null;
-  return { id, name: r.name, scopes: rowScopes(r.scopes), expiresAt: r.expires_at };
+  const scopes = childScopes(rowScopes(r.scopes), r, now);
+  if (!scopes) return null;
+  return { id, name: r.name, scopes, expiresAt: r.expires_at };
 }
 
 export type TokenUser = { id: string; email: string; name: string | null; image: string | null };
@@ -347,6 +418,8 @@ export type CheckResult =
       name: string;
       scopes: ScopeId[];
       expiresAt: string | null;
+      /** A child token's parent (its public id). */
+      parentId?: string;
       /** last_used_at was written by this check (the audit logs a use then). */
       touched: boolean;
     }
@@ -384,23 +457,27 @@ export async function checkToken(
   const r = await db
     .prepare(
       `SELECT t.token_hash, t.name, t.scopes, t.expires_at, t.last_used_at,
-              u.id AS uid, u.email AS uemail, u.name AS uname, u.image AS uimage
+              u.id AS uid, u.email AS uemail, u.name AS uname, u.image AS uimage, ${PARENT_COLS}
        FROM api_tokens t JOIN user u ON u.email = t.email
          AND (t.user_id IS NULL OR u.id = t.user_id)
+       ${PARENT_JOIN}
        WHERE t.token_hash = ? AND ${OAUTH_LIVE}`,
     )
     .bind(id)
     .first<
-      Pick<Row, "token_hash" | "name" | "scopes" | "expires_at" | "last_used_at"> & {
-        uid: string;
-        uemail: string;
-        uname: string | null;
-        uimage: string | null;
-      }
+      Pick<Row, "token_hash" | "name" | "scopes" | "expires_at" | "last_used_at"> &
+        ParentCols & {
+          uid: string;
+          uemail: string;
+          uname: string | null;
+          uimage: string | null;
+        }
     >();
   if (!r) return { ok: false, reason: "unknown" };
   if (isExpired(r.expires_at, now)) return { ok: false, reason: "expired", id, userId: r.uid };
-  const scopes = rowScopes(r.scopes);
+  // A child with no live parent (or the flag off) is as if it did not exist.
+  const scopes = childScopes(rowScopes(r.scopes), r, now);
+  if (!scopes) return { ok: false, reason: "unknown" };
   if (!scopes.includes(need))
     return { ok: false, reason: "scope", id, userId: r.uid, ...tokenScopeRequest(id, need)! };
   let touched = false;
@@ -419,6 +496,7 @@ export async function checkToken(
     name: r.name,
     scopes,
     expiresAt: r.expires_at,
+    ...(r.parent_hash ? { parentId: r.parent_hash } : {}),
     touched,
   };
 }

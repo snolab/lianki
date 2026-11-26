@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useIntlayer, useLocale } from "next-intlayer";
 import { longDate, longDateTime } from "@/lib/dates";
-import { DEFAULT_TOKEN_SCOPES, MAX_NAME, type ScopeId } from "@/lib/api-tokens";
+import { DEFAULT_TOKEN_SCOPES, MAX_NAME, MINT_CHILD, type ScopeId } from "@/lib/api-tokens";
 import {
   ExpiryPicker,
   PermissionPicker,
@@ -37,9 +37,20 @@ type Token = {
   expiresAt: string | null;
   lastUsedAt: string | null;
   expired: boolean;
+  /** A subagent's token (lib/api-token-child.ts): the token that made it. */
+  parentId?: string;
 };
-/** `scopes`: what this account may pick (`eval` only for a site owner, lib/api-token-api.ts). */
-type Listing = { account: string; tokens: Token[]; scopes?: { id: ScopeId }[] };
+/**
+ * `scopes`: what this account may pick (`eval` only for a site owner, lib/api-token-api.ts).
+ * `childTokens`: the flag tokens.child is on and this is a site owner: each token's
+ * row offers the "Subagent tokens" switch (the `token:mint-child` permission).
+ */
+type Listing = {
+  account: string;
+  tokens: Token[];
+  scopes?: { id: ScopeId }[];
+  childTokens?: boolean;
+};
 
 export default function TokenManager({ hideHeading = false }: { hideHeading?: boolean } = {}) {
   const c = useIntlayer("api-tokens") as unknown as Record<string, unknown>;
@@ -155,7 +166,26 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
     setRevoking(null);
     if (!r?.ok) return setError(s("errFailed"));
     setAsking(null);
-    setList((l) => (l ? { ...l, tokens: l.tokens.filter((x) => x.id !== id) } : l));
+    // Its subagents' tokens went with it (lib/api-tokens.ts revokeToken).
+    setList((l) =>
+      l ? { ...l, tokens: l.tokens.filter((x) => x.id !== id && x.parentId !== id) } : l,
+    );
+  }
+
+  /** The "Subagent tokens" switch on a token's row: grant or take back `token:mint-child`. */
+  const [switching, setSwitching] = useState<string | null>(null);
+  async function setMintChild(id: string, on: boolean) {
+    if (switching) return;
+    setError(null);
+    setSwitching(id);
+    const r = await fetch("/api/token/scopes", {
+      method: on ? "POST" : "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, scope: MINT_CHILD }),
+    }).catch(() => null);
+    setSwitching(null);
+    if (!r?.ok) return setError(s("errFailed"));
+    await load();
   }
 
   const guideLabels = {
@@ -205,7 +235,14 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
     eval: s("scopeEval"),
     progress: s("scopeProgress"),
     "recordings:read": s("scopeRecordingsRead"),
+    "token:mint-child": s("scopeMintChild"),
   };
+  const all = list?.tokens ?? [];
+  const ids = new Set(all.map((t) => t.id));
+  // Subagents' tokens are listed under their parent; one whose parent is not listed stands alone.
+  const top = all.filter((t) => !t.parentId || !ids.has(t.parentId));
+  const childrenOf = (id: string) => all.filter((t) => t.parentId === id);
+  const nameOf = (id: string | undefined) => all.find((t) => t.id === id)?.name ?? "";
 
   return (
     <section id="tokens" className="my-8 space-y-4 scroll-mt-6" data-testid="api-tokens">
@@ -293,62 +330,78 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
       )}
 
       <ul className="divide-y divide-gray-200 dark:divide-gray-700 border-y border-gray-200 dark:border-gray-700">
-        {list?.tokens.map((t) => (
-          <li
-            key={t.id}
-            className="py-3 flex flex-wrap items-start justify-between gap-x-3 text-sm"
-            data-testid="token-row"
-          >
-            <div className="min-w-0 flex-1 space-y-0.5">
-              <div className="font-medium break-words">{t.name}</div>
-              <div className="text-xs opacity-80">
-                {t.scopes.map((x) => scopeName[x]).join(" · ")}
-              </div>
-              <div className="text-xs opacity-60">
-                {s("createdOn").replace("{date}", longDate(t.createdAt, locale))}
-                {" · "}
-                {t.expiresAt === null ? (
-                  s("noExpiry")
-                ) : t.expired ? (
-                  <span className="text-red-600 dark:text-red-400">
-                    {s("expiredOn").replace("{date}", longDate(t.expiresAt, locale))}
-                  </span>
-                ) : (
-                  s("expiresOn").replace("{date}", longDate(t.expiresAt, locale))
+        {top
+          .flatMap((p) => [p, ...childrenOf(p.id)])
+          .map((t) => (
+            <li
+              key={t.id}
+              className={`py-3 flex flex-wrap items-start justify-between gap-x-3 text-sm${t.parentId ? " ps-6" : ""}`}
+              data-testid={t.parentId ? "token-child-row" : "token-row"}
+            >
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <div className="font-medium break-words">{t.name}</div>
+                {t.parentId && ids.has(t.parentId) && (
+                  <div className="text-xs opacity-80" data-testid="token-child-of">
+                    {s("childOf").replace("{name}", nameOf(t.parentId))}
+                  </div>
                 )}
-                {" · "}
-                {t.lastUsedAt
-                  ? s("lastUsed").replace("{date}", longDateTime(t.lastUsedAt, locale))
-                  : s("neverUsed")}
+                <div className="text-xs opacity-80">
+                  {t.scopes.map((x) => scopeName[x]).join(" · ")}
+                </div>
+                <div className="text-xs opacity-60">
+                  {s("createdOn").replace("{date}", longDate(t.createdAt, locale))}
+                  {" · "}
+                  {t.expiresAt === null ? (
+                    s("noExpiry")
+                  ) : t.expired ? (
+                    <span className="text-red-600 dark:text-red-400">
+                      {s("expiredOn").replace("{date}", longDate(t.expiresAt, locale))}
+                    </span>
+                  ) : (
+                    s("expiresOn").replace("{date}", longDate(t.expiresAt, locale))
+                  )}
+                  {" · "}
+                  {t.lastUsedAt
+                    ? s("lastUsed").replace("{date}", longDateTime(t.lastUsedAt, locale))
+                    : s("neverUsed")}
+                </div>
               </div>
-            </div>
-            <RevokeConfirm
-              id={t.id}
-              name={t.name}
-              confirming={asking === t.id}
-              busy={revoking === t.id}
-              focusRevoke={refocus === t.id}
-              labels={revokeLabels}
-              onAsk={() => {
-                setRefocus(null);
-                setAsking(t.id);
-              }}
-              onConfirm={() => revoke(t.id)}
-              onCancel={() => {
-                setAsking(null);
-                setRefocus(t.id);
-              }}
-            />
-            {!t.expired && (
-              <div className="basis-full min-w-0">
-                <AgentGuide text={guide(t)} copyText={pointer(t)} labels={guideLabels} />
-              </div>
-            )}
-          </li>
-        ))}
-        {list && list.tokens.length === 0 && (
-          <li className="py-3 text-sm opacity-60">{s("none")}</li>
-        )}
+              <RevokeConfirm
+                id={t.id}
+                name={t.name}
+                confirming={asking === t.id}
+                busy={revoking === t.id}
+                focusRevoke={refocus === t.id}
+                labels={revokeLabels}
+                onAsk={() => {
+                  setRefocus(null);
+                  setAsking(t.id);
+                }}
+                onConfirm={() => revoke(t.id)}
+                onCancel={() => {
+                  setAsking(null);
+                  setRefocus(t.id);
+                }}
+              />
+              {list?.childTokens && !t.parentId && !t.expired && t.expiresAt !== null && (
+                <MintChildSwitch
+                  on={t.scopes.includes(MINT_CHILD)}
+                  busy={switching === t.id}
+                  label={s("mintChildLabel")}
+                  hint={s("scopeMintChildHint")}
+                  offText={s("mintChildOff")}
+                  onText={s("mintChildOn")}
+                  onChange={(on) => void setMintChild(t.id, on)}
+                />
+              )}
+              {!t.expired && !t.parentId && (
+                <div className="basis-full min-w-0">
+                  <AgentGuide text={guide(t)} copyText={pointer(t)} labels={guideLabels} />
+                </div>
+              )}
+            </li>
+          ))}
+        {list && all.length === 0 && <li className="py-3 text-sm opacity-60">{s("none")}</li>}
       </ul>
 
       <form
@@ -414,5 +467,75 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
       </form>
       <ConnectedApps />
     </section>
+  );
+}
+
+/**
+ * The "Subagent tokens" switch on a token's row (owner only, flag tokens.child):
+ * one segmented control with both states, the active one filled.
+ */
+function MintChildSwitch({
+  on,
+  busy,
+  label,
+  hint,
+  offText,
+  onText,
+  onChange,
+}: {
+  on: boolean;
+  busy: boolean;
+  label: string;
+  hint: string;
+  offText: string;
+  onText: string;
+  onChange: (on: boolean) => void;
+}) {
+  const id = useId();
+  const seg = (active: boolean) =>
+    `min-h-9 px-3 text-sm font-medium disabled:opacity-50 ${
+      active ? "bg-primary text-on-primary" : "text-gray-600 dark:text-gray-300"
+    }`;
+  return (
+    <div className="basis-full mt-2 space-y-1" data-testid="token-mint-child">
+      <div className="flex flex-wrap items-center gap-2">
+        <span id={`${id}-label`} className="text-xs font-medium">
+          {label}
+        </span>
+        <div
+          role="radiogroup"
+          aria-labelledby={`${id}-label`}
+          aria-describedby={`${id}-hint`}
+          aria-busy={busy}
+          className="inline-flex overflow-hidden rounded-full border border-current/30"
+        >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={!on}
+            disabled={busy}
+            data-testid="token-mint-child-off"
+            onClick={() => on && onChange(false)}
+            className={seg(!on)}
+          >
+            {offText}
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={on}
+            disabled={busy}
+            data-testid="token-mint-child-on"
+            onClick={() => !on && onChange(true)}
+            className={seg(on)}
+          >
+            {onText}
+          </button>
+        </div>
+      </div>
+      <p id={`${id}-hint`} className="text-xs opacity-70">
+        {hint}
+      </p>
+    </div>
   );
 }

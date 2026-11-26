@@ -6,6 +6,7 @@
 import type { ReactNode } from "react";
 import type { ChatMessage, Sender } from "./wire";
 import { laneSpec, type LaneId, isLaneId } from "./voices";
+import { childIndex, childLane, childShownName } from "./child-lane";
 import { clusterName, clusterShown, isHousehold } from "./cluster-avatar";
 
 /**
@@ -112,6 +113,8 @@ export function lineAvatar(
     laneAvatar?: (lane: LaneId) => AvatarSource | undefined;
     /** Any other token agent's picture (LaneMark.tsx agentAvatar): its own SVG, else the generated mark. */
     tokenAvatar?: (p: { name: string; avatar?: string }) => AvatarSource | undefined;
+    /** A lane's subagent (child token): its parent lane's mark with a small index (LaneMark.tsx childAvatar). */
+    childAvatar?: (lane: LaneId, index: string) => AvatarSource | undefined;
     /** Who is here (presence.ts), by token tag: the owner's name and picture for it win. */
     participant?: (tok: string) => { name: string; avatar?: string } | undefined;
     /** Another voice's avatar (LaneMark.tsx voiceAvatar, from speaker-avatar.ts); undefined = its initial. */
@@ -138,10 +141,17 @@ export function lineAvatar(
   // Any other API-token agent: its (owner-given) name, its own picture or the generated one.
   if (m.from === "agent" && m.via === "token" && !lane?.mark) {
     const p = m.tok ? opts.participant?.(m.tok) : undefined;
-    const name = p?.name || m.tokenLane || m.label || "agent";
+    const name = p?.name || (m.tokenLane ? childShownName(m.tokenLane) : m.label) || "agent";
     const avatar = p ? p.avatar : m.avatar;
+    // A lane's subagent (child token, child-lane.ts) with no picture of its own:
+    // its parent lane's mark with a small index.
+    const child = childLane(m.tokenLane);
+    const childSrc =
+      child?.lane && !avatar
+        ? opts.childAvatar?.(child.lane, childIndex(child.sub))
+        : undefined;
     return {
-      src: opts.tokenAvatar?.({ name, ...(avatar ? { avatar } : {}) }),
+      src: childSrc ?? opts.tokenAvatar?.({ name, ...(avatar ? { avatar } : {}) }),
       name,
       initialFrom: name,
       seed: `tok:${m.tok ?? name}`,

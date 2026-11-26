@@ -204,7 +204,9 @@ describe("one explicit token scope approval", () => {
       body: JSON.stringify({ id, scope: "study" }),
     });
     expect((await tokenScopeApi(bearer, deps)).status).toBe(403);
-    expect((await tokenScopeApi(new Request(get(), { method: "DELETE" }), deps)).status).toBe(405);
+    expect((await tokenScopeApi(new Request(get(), { method: "PUT" }), deps)).status).toBe(405);
+    // DELETE exists (taking token:mint-child back) but is CSRF-guarded like POST.
+    expect((await tokenScopeApi(new Request(get(), { method: "DELETE" }), deps)).status).toBe(403);
     expect((await tokenScopeApi(new Request(`${get().url}&scope=eval`), deps)).status).toBe(400);
     expect((await tokenScopeApi(get(id, "admin"), deps)).status).toBe(400);
     expect(await scopes()).toEqual(DEFAULT_TOKEN_SCOPES);

@@ -6,14 +6,21 @@ import {
   tagOf,
   OWNER_SCOPES,
   EVAL_MAX_DAYS,
+  MINT_CHILD,
   parseScopes,
 } from "./api-tokens";
 import type { TokenApiDeps } from "./api-token-api";
 import type { D1Like } from "./d1/types";
-import { sameOriginJsonPost } from "./security/same-origin";
+import { sameOriginJson, sameOriginJsonPost } from "./security/same-origin";
 import { audit } from "./security/audit-log";
 
-type Row = { token_hash: string; name: string; scopes: string | null; expires_at: string | null };
+type Row = {
+  token_hash: string;
+  name: string;
+  scopes: string | null;
+  expires_at: string | null;
+  parent_hash?: string | null;
+};
 const ID = /^[0-9a-f]{64}$/;
 const json = (body: unknown, status = 200) =>
   Response.json(body, { status, headers: { "cache-control": "private, no-store" } });
@@ -41,7 +48,7 @@ export async function ownLiveToken(
   if (typeof id !== "string" || !ID.test(id)) return null;
   return db
     .prepare(
-      `SELECT token_hash, name, scopes, expires_at FROM api_tokens WHERE token_hash = ?3 AND ${LIVE}`,
+      `SELECT token_hash, name, scopes, expires_at, parent_hash FROM api_tokens WHERE token_hash = ?3 AND ${LIVE}`,
     )
     .bind(owner.userId, owner.email, id, new Date(now).toISOString())
     .first<Row>();
@@ -69,6 +76,7 @@ export async function appendTokenScope(
         SELECT 1 FROM account_permission p JOIN user u ON p.email = lower(trim(u.email))
         WHERE u.id = ?1 AND p.permission = 'dev' AND p.revoked_at IS NULL))
       AND (?8 = 0 OR (expires_at IS NOT NULL AND julianday(expires_at) <= julianday(?6)))
+      AND (?5 != 'token:mint-child' OR (parent_hash IS NULL AND expires_at IS NOT NULL))
     RETURNING token_hash, name, scopes, expires_at`)
     .bind(
       owner.userId,
@@ -83,12 +91,37 @@ export async function appendTokenScope(
     .first<Row>();
 }
 
-/** GET is read-only; POST requires one explicit same-origin action for exactly one scope. */
+/**
+ * Take `token:mint-child` off one of this account's tokens (the switch on its
+ * row). Its children stop at once (checkToken needs the parent to hold it).
+ */
+export async function removeMintChild(
+  db: D1Like,
+  owner: TokenOwner,
+  id: string,
+  now: number,
+): Promise<Row | null> {
+  return db
+    .prepare(`UPDATE api_tokens SET scopes = (
+        SELECT json_group_array(value) FROM json_each(scopes) WHERE value != ?5)
+      WHERE token_hash = ?3 AND ${LIVE} AND json_valid(scopes)
+    RETURNING token_hash, name, scopes, expires_at`)
+    .bind(owner.userId, owner.email, id, new Date(now).toISOString(), MINT_CHILD)
+    .first<Row>();
+}
+
+/**
+ * GET is read-only; POST requires one explicit same-origin action for exactly
+ * one scope. DELETE takes one scope off, and only `token:mint-child` (the
+ * switch on a token's row; every other scope stays additive here).
+ */
 export async function tokenScopeApi(req: Request, deps: TokenApiDeps): Promise<Response> {
   const owner = await deps.who();
   if (!owner) return json({ error: "Sign in" }, 401);
-  if (req.method !== "GET" && req.method !== "POST") return json({ error: "Method" }, 405);
+  if (req.method !== "GET" && req.method !== "POST" && req.method !== "DELETE")
+    return json({ error: "Method" }, 405);
   if (req.method === "POST" && !sameOriginJsonPost(req)) return json({ error: "Forbidden" }, 403);
+  if (req.method === "DELETE" && !sameOriginJson(req)) return json({ error: "Forbidden" }, 403);
   let id: unknown;
   let scope: ScopeId | null;
   if (req.method === "GET") {
@@ -110,13 +143,43 @@ export async function tokenScopeApi(req: Request, deps: TokenApiDeps): Promise<R
     scope = scopeOf(body.scope);
   }
   if (!scope) return json({ error: "bad-scope" }, 400);
+  // Child tokens off (flag tokens.child): their permission does not exist.
+  if (
+    scope === MINT_CHILD &&
+    !(await (deps.childTokens?.() ?? Promise.resolve(false)).catch(() => false))
+  )
+    return json({ error: "bad-scope" }, 400);
+  if (req.method === "DELETE" && scope !== MINT_CHILD) return json({ error: "bad-scope" }, 400);
   const now = (deps.now ?? Date.now)();
   const db = deps.db();
   const row = await ownLiveToken(db, owner, id, now);
   if (!row) return json({ error: "Not found" }, 404);
-  let error: "dev-required" | "expiry-too-long" | undefined;
+  if (req.method === "DELETE") {
+    const updated = await removeMintChild(db, owner, row.token_hash, now);
+    if (!updated) return json({ error: "Not found" }, 404);
+    await audit(
+      db,
+      {
+        kind: "api-token.scope",
+        actor: owner.userId,
+        subject: tagOf(row.token_hash),
+        detail: `-${scope}`,
+      },
+      now,
+    );
+    // Its children's sockets close now (they are refused from here on anyway).
+    const { results } = await db
+      .prepare("SELECT token_hash FROM api_tokens WHERE parent_hash = ?")
+      .bind(row.token_hash)
+      .all<{ token_hash: string }>();
+    if (results.length) await deps.revoked(results.map((r) => r.token_hash));
+    return json({ ok: true, token: tokenView(updated) });
+  }
+  let error: "dev-required" | "expiry-too-long" | "child-token" | undefined;
   if (OWNER_SCOPES.includes(scope) && !(await deps.siteOwner?.(owner.userId)))
     error = "dev-required";
+  // No grandchildren: a child token never mints, and a token with no expiry cannot bound one.
+  else if (scope === MINT_CHILD && (row.parent_hash || !row.expires_at)) error = "child-token";
   else if (
     expiryCapped(scope) &&
     (!row.expires_at || Date.parse(row.expires_at) > now + EVAL_MAX_DAYS * 86_400_000)

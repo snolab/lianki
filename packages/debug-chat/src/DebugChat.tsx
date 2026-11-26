@@ -318,6 +318,7 @@ import {
   AddressedMarks,
   LineTag,
   agentAvatar as tokenPicture,
+  childAvatar,
   clusterAvatar,
   laneAvatar,
   voiceAvatar,
@@ -1248,6 +1249,7 @@ export function DebugChat({
   const laneOpts = {
     laneAvatar,
     tokenAvatar: tokenPicture,
+    childAvatar,
     participant: (tok: string) => byTok.get(tok),
     // Another voice on his voice line (speaker-avatar.ts): its own disc, not his picture.
     voiceAvatar,
