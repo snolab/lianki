@@ -10,6 +10,7 @@ import { iconSvg, SNAP_ICON } from "../packages/debug-chat/src/snap-overlay";
 import {
   measureSnapViewport,
   safeInsets,
+  sidebarWidth,
   snapLanding,
 } from "../packages/debug-chat/src/snap-viewport";
 import { snapTargets } from "../packages/debug-chat/src/snap-targets";
@@ -231,6 +232,21 @@ describe("the viewport contract (snap-viewport.ts)", () => {
       expect(dock.result.x + dock.result.w).toBe(dockRight);
       expect({ y: dock.result.y, h: dock.result.h }).toEqual({ y: landFull.y, h: landFull.h });
     }
+  });
+  it("the sidebar's width: one function for preview and landing (codex's zoom repro)", () => {
+    const vv = { offsetLeft: 80, offsetTop: 0, width: 640, height: 400, scale: 2 };
+    // Default: clamp(20rem, 32vw of the LAYOUT width, 28rem), capped by the visible width.
+    expect(sidebarWidth(1280, vv, null, 16)).toBeCloseTo(409.6, 5);
+    // Its right edge (snapLanding) minus it: where it lands, 310.4 in the repro.
+    expect(snapLanding(1280, 800, vv).right - sidebarWidth(1280, vv, null, 16)).toBeCloseTo(
+      310.4,
+      5,
+    );
+    // Saved: clamped to [20rem, the visible width].
+    expect(sidebarWidth(1280, vv, 900, 16)).toBe(640);
+    expect(sidebarWidth(1280, vv, 100, 16)).toBe(320);
+    // No visual viewport: the layout width.
+    expect(sidebarWidth(1280, null, null, 16)).toBeCloseTo(409.6, 5);
   });
   it("a matchMedia that throws reads as narrow", () => {
     const win = page();

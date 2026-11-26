@@ -308,6 +308,39 @@ describe("the drag overlay", () => {
     }
   }, 20_000);
 
+  it("pinch zoom (scale 2): the sidebar preview is exactly where the sidebar lands (default width)", async () => {
+    const vv = { offsetLeft: 80, offsetTop: 0, width: 640, height: 384, scale: 2 };
+    const m = await mount(undefined, vv, true);
+    try {
+      const b = m.grip.getBoundingClientRect();
+      await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointerdown", b.left + 5, 300)));
+      await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointermove", 400, 200)));
+      // The right edge of what is visible.
+      await m.act(
+        async () => void m.grip.dispatchEvent(ptr(m.p, "pointermove", 80 + 640 - 4, 150)),
+      );
+      await m.frames();
+      const pv = m.q('[data-testid="debug-chat-snap-preview"]') as unknown as HTMLElement | null;
+      expect(pv?.dataset.zone).toBe("dock-right");
+      const px = (v: string) => Number.parseFloat(v);
+      const preview = { x: px(pv!.style.left), w: px(pv!.style.width) };
+      // codex's repro shape: the default is clamp(20rem, 32vw of the LAYOUT width, 28rem), capped by the visible width.
+      expect(preview.w).toBeCloseTo(Math.min(640, Math.max(320, Math.min(0.32 * 1024, 448))), 5);
+      await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointerup", 80 + 640 - 4, 150)));
+      await m.frames();
+      const section = m.host.querySelector("[data-fullscreen]") as unknown as HTMLElement | null;
+      expect(section).not.toBeNull();
+      // Landed: the width and right inset liftRef applied, from the same function.
+      const width = px(section!.style.getPropertyValue("--lk-chat-dock-width"));
+      const right = px(section!.style.getPropertyValue("--lk-chat-dock-right"));
+      expect(width).toBeCloseTo(preview.w, 5);
+      expect(1024 - right - width).toBeCloseTo(preview.x, 5);
+    } finally {
+      await m.act(() => m.root.unmount());
+      await m.p.close();
+    }
+  }, 20_000);
+
   it("a free drop in the middle saves the move and shows no overlay after", async () => {
     const m = await mount();
     try {

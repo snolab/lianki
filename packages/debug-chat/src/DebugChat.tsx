@@ -268,8 +268,6 @@ import { DockResize } from "./DockResize";
 import {
   DOCK_WIDTH_VAR,
   DOCK_RIGHT_VAR,
-  clampDockWidth,
-  dockBounds,
   dockViewport,
 } from "./dock-resize";
 import { keyboardLift } from "./keyboard-lift";
@@ -281,8 +279,6 @@ import {
   FULL_SIDEBAR_STYLE,
   FULL_TOP_VAR,
   SIDEBAR_QUERY,
-  SIDEBAR_MIN_REM,
-  SIDEBAR_W,
   SIDEBAR_RESERVE_VAR,
   escapeLeaves,
   fullBarSpan,
@@ -298,7 +294,6 @@ import { FullScreenMenuItem } from "./FullScreenMenuItem";
 import { publicCfg } from "@/lib/config-client";
 import { SnapOverlay, type SnapOverlayState } from "./SnapOverlay";
 import {
-  defaultDockWidth,
   fullModeFor,
   pointerOffScreen,
   sidebarNow,
@@ -311,7 +306,11 @@ import {
   type SnapTarget,
   type SnapViewport,
 } from "./snap-targets";
-import { measureSnapViewport } from "./snap-viewport";
+import { measureSnapViewport, sidebarWidth } from "./snap-viewport";
+
+/** The sidebar's width now, px, saved or default: the one function for preview and landing. */
+const dockWidthNow = (saved: number | null, rem: number) =>
+  sidebarWidth(innerWidth, typeof visualViewport === "undefined" ? null : visualViewport, saved, rem);
 import { SealStamp } from "./SealStamp";
 import { CHAT_UI_EVENT, chatUiOf, runMenuCue } from "./ui-cue";
 import { onChatOpen } from "./island-bus";
@@ -1729,14 +1728,9 @@ export function DebugChat({
     if (fullOn.current) {
       if (asSidebarNow.current) {
         const viewport = dockViewport(innerWidth, vv);
-        const bounds = dockBounds(
-          viewport.width,
-          SIDEBAR_MIN_REM * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16),
-        );
-        const desired = dockPreview.current ?? dockSaved.current;
-        const width = desired === null
-          ? `min(${SIDEBAR_W}, ${viewport.width}px)`
-          : `${clampDockWidth(desired, bounds)}px`;
+        const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+        // The same width the drag's preview drew (dockWidthNow), saved or default.
+        const width = `${dockWidthNow(dockPreview.current ?? dockSaved.current, rem)}px`;
         box.style.setProperty(DOCK_WIDTH_VAR, width);
         box.style.setProperty(DOCK_RIGHT_VAR, `${viewport.right}px`);
         document.documentElement.style.setProperty(SIDEBAR_RESERVE_VAR, width);
@@ -3908,10 +3902,8 @@ export function DebugChat({
       const css = getComputedStyle(document.documentElement);
       const rem = parseFloat(css.fontSize) || 16;
       const reserve = parseFloat(css.getPropertyValue("--lk-bottom-reserve")) || 0;
-      const dockWidth =
-        saved === null
-          ? defaultDockWidth(vp.w, rem)
-          : clampDockWidth(saved, dockBounds(vp.w, SIDEBAR_MIN_REM * rem));
+      // The sidebar's width exactly as liftRef applies it (dockWidthNow: one function).
+      const dockWidth = dockWidthNow(saved, rem);
       const targets = snapTargets(vp, {
         fullAllowed: fullAllowed && !tucked,
         dockAllowed: fullAllowed && !tucked,

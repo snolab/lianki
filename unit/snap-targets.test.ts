@@ -210,10 +210,14 @@ describe("drop helpers", () => {
     expect(sidebarNow({ full: false, mode: "side", wide: true })).toBe(false);
   });
   it("default dock width: clamp(20rem, 32vw, 28rem), never past the screen", () => {
-    expect(defaultDockWidth(1280, 16)).toBe(409.6);
-    expect(defaultDockWidth(3000, 16)).toBe(448);
-    expect(defaultDockWidth(600, 16)).toBe(320);
-    expect(defaultDockWidth(300, 16)).toBe(300);
+    expect(defaultDockWidth(1280, 1280, 16)).toBe(409.6);
+    expect(defaultDockWidth(3000, 3000, 16)).toBe(448);
+    expect(defaultDockWidth(600, 600, 16)).toBe(320);
+    expect(defaultDockWidth(300, 300, 16)).toBe(300);
+    // Zoomed: `vw` is the layout width (32vw of 1280), capped by the visible 640.
+    expect(defaultDockWidth(1280, 640, 16)).toBe(409.6);
+    expect(defaultDockWidth(1280, 300, 16)).toBe(300);
+    expect(defaultDockWidth(Number.NaN, Number.NaN, 0)).toBe(0);
   });
   it("the snapshot's mode", () => {
     expect(snapshotMode({ open: false, full: true, sidebar: true })).toBe("minimized");
@@ -237,7 +241,7 @@ describe("the overlay mounted in DebugChat", () => {
     const out = `${r.stdout.toString()}${r.stderr.toString()}`;
     if (r.exitCode !== 0) console.error(out);
     expect(r.exitCode).toBe(0);
-    expect(out).toMatch(/\b7 pass\b/);
+    expect(out).toMatch(/\b8 pass\b/);
     expect(out).toMatch(/\b0 fail\b/);
   }, 90_000);
 });

@@ -186,10 +186,18 @@ export function pointerOffScreen(vp: SnapViewport, x: number, y: number): boolea
   return x < vp.x - 1 || y < 0 - 1 || x > vp.x + vp.w + 1 || y > vp.y + vp.h + 1;
 }
 
-/** The sidebar's default width before a saved one: clamp(20rem, 32vw, 28rem) (full-screen.ts SIDEBAR_W), in px. */
-export function defaultDockWidth(vw: number, remPx: number): number {
+/**
+ * The sidebar's default width before a saved one, px: SIDEBAR_W =
+ * clamp(20rem, 32vw, 28rem) where CSS `vw` is the LAYOUT width, then no
+ * wider than the visible width (dock-resize.ts dockViewport). The one
+ * function both the preview (snapTargets) and the applied sidebar
+ * (DebugChat liftRef) use, so they agree at any zoom (codex review).
+ */
+export function defaultDockWidth(layoutW: number, visibleW: number, remPx: number): number {
   const rem = remPx > 0 ? remPx : 16;
-  return Math.min(vw, Math.max(20 * rem, Math.min(0.32 * vw, 28 * rem)));
+  const lw = Number.isFinite(layoutW) ? Math.max(0, layoutW) : 0;
+  const vw = Number.isFinite(visibleW) ? Math.max(0, visibleW) : lw;
+  return Math.min(vw, Math.max(20 * rem, Math.min(0.32 * lw, 28 * rem)));
 }
 
 /**

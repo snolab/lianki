@@ -9,9 +9,9 @@
  * cancels that drag (snapshot restored; docs/chat-drag-ux.md); at rest the
  * results follow the viewport through CSS (full-screen.ts).
  */
-import { dockViewport } from "./dock-resize";
-import { fullScreenBox } from "./full-screen";
-import type { SnapViewport } from "./snap-targets";
+import { clampDockWidth, dockBounds, dockViewport } from "./dock-resize";
+import { SIDEBAR_MIN_REM, fullScreenBox } from "./full-screen";
+import { defaultDockWidth, type SnapViewport } from "./snap-targets";
 
 type Win = Pick<Window, "innerWidth" | "innerHeight" | "getComputedStyle" | "matchMedia"> & {
   visualViewport?: {
@@ -74,6 +74,24 @@ export function measureSnapViewport(win: Win, wideQuery: string): SnapViewport {
     wide,
     land,
   };
+}
+
+/**
+ * The sidebar's width, px, as it is applied (DebugChat liftRef) and as the
+ * drag previews it (snapTargets' dockWidth): a saved width clamped to
+ * [20rem, visible width], else SIDEBAR_W's clamp(20rem, 32vw, 28rem) with
+ * the layout width as `vw`, no wider than the visible width. One function
+ * for both, so the preview is the landing at any zoom (codex review).
+ */
+export function sidebarWidth(
+  innerWidth: number,
+  vv: { width: number; offsetLeft?: number; scale?: number } | null | undefined,
+  saved: number | null,
+  remPx: number,
+): number {
+  const viewport = dockViewport(innerWidth, vv && vv.width ? vv : null);
+  if (saved === null) return defaultDockWidth(innerWidth, viewport.width, remPx);
+  return clampDockWidth(saved, dockBounds(viewport.width, SIDEBAR_MIN_REM * (remPx > 0 ? remPx : 16)));
 }
 
 /**
