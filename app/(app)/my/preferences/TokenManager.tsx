@@ -12,7 +12,7 @@ import {
 } from "@/app/components/TokenPickers";
 import { RevokeConfirm } from "./RevokeConfirm";
 import { AgentGuide, CopyGuideButton, useAgentGuide, useAgentGuidePointer } from "./AgentGuide";
-import { agentGuideWithToken } from "@/lib/agent-guide";
+import { agentGuideUrl, agentGuideWithToken } from "@/lib/agent-guide";
 import { INVITE_PREFILL, invitePrefill } from "@lianki/debug-chat/presence";
 
 /**
@@ -39,7 +39,10 @@ type Token = {
 /** `scopes`: what this account may pick (`eval` only for a site owner, lib/api-token-api.ts). */
 type Listing = { account: string; tokens: Token[]; scopes?: { id: ScopeId }[] };
 
-export default function TokenManager({ hideHeading = false }: { hideHeading?: boolean } = {}) {
+export default function TokenManager({
+  hideHeading = false,
+  agentIdentities = false,
+}: { hideHeading?: boolean; agentIdentities?: boolean } = {}) {
   const c = useIntlayer("api-tokens") as unknown as Record<string, unknown>;
   const s = (k: string) => textOf(c[k]);
   const { locale } = useLocale();
@@ -52,9 +55,13 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
   const [secret, setSecret] = useState<{
     token: string;
     name: string;
+    untitled?: boolean;
     scopes: ScopeId[];
     expiresAt: string | null;
   } | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renamingBusy, setRenamingBusy] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   const shareButton = useRef<HTMLButtonElement>(null);
   const formId = useId();
@@ -142,6 +149,67 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
     }
   }
 
+  async function createAgent() {
+    if (busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const r = await fetch("/api/token", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ untitled: true, scopes: ["identity:self"], expiry: { days: 90 } }),
+      });
+      const j = (await r.json().catch(() => ({}))) as {
+        token?: string;
+        name?: string;
+        scopes?: ScopeId[];
+        expiresAt?: string;
+      };
+      if (!r.ok || !j.token) {
+        setError(s("errFailed"));
+        return;
+      }
+      setSecret({
+        token: j.token,
+        name: j.name || s("untitledName"),
+        untitled: true,
+        scopes: j.scopes ?? ["identity:self"],
+        expiresAt: j.expiresAt ?? null,
+      });
+      setCopied(false);
+      setShared(false);
+      await load();
+    } catch {
+      setError(s("errFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveRename(id: string) {
+    if (renamingBusy) return;
+    const trimmed = renameValue.trim();
+    if (!trimmed || [...trimmed].length > MAX_NAME) {
+      setError(s("errName"));
+      return;
+    }
+    setError(null);
+    setRenamingBusy(true);
+    const r = await fetch("/api/token", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, name: trimmed }),
+    }).catch(() => null);
+    setRenamingBusy(false);
+    if (!r?.ok) {
+      setError(s("errFailed"));
+      return;
+    }
+    setRenamingId(null);
+    setRenameValue("");
+    await load();
+  }
+
   async function revoke(id: string) {
     setError(null);
     setRevoking(id);
@@ -183,7 +251,7 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
           scopes: secret.scopes,
           lang: String(locale),
           token: secret.token,
-          template: s("shareMessage"),
+          template: secret.untitled ? s("agentPromptTemplate") : s("shareMessage"),
         }),
       );
       setShared(true);
@@ -201,7 +269,90 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
     eval: s("scopeEval"),
     progress: s("scopeProgress"),
     "recordings:read": s("scopeRecordingsRead"),
+    "identity:self": s("scopeIdentitySelf"),
   };
+
+  const setupUrl =
+    secret && agentIdentities && secret.untitled
+      ? (() => {
+          const base = agentGuideUrl(secret.scopes, String(locale));
+          return `${base}${base.includes("?") ? "&" : "?"}token=${encodeURIComponent(secret.token)}`;
+        })()
+      : null;
+
+  const setupPrompt =
+    secret && agentIdentities && secret.untitled
+      ? agentGuideWithToken({
+          scopes: secret.scopes,
+          lang: String(locale),
+          token: secret.token,
+          template: s("agentPromptTemplate"),
+        })
+      : null;
+
+  const manualForm = (
+    <form
+      ref={form}
+      onSubmit={(e) => {
+        e.preventDefault();
+        void create();
+      }}
+      aria-describedby={error ? `${formId}-error` : undefined}
+      className="space-y-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4"
+    >
+      <label className="block text-sm">
+        <span className="font-medium">{s("nameLabel")}</span>
+        <input
+          type="text"
+          name="token-name"
+          autoComplete="off"
+          spellCheck={false}
+          aria-describedby={`${formId}-name-hint`}
+          value={name}
+          maxLength={MAX_NAME}
+          onChange={(e) => setName(e.target.value)}
+          disabled={busy}
+          data-testid="token-name"
+          className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 bg-white dark:bg-gray-900"
+        />
+        <span id={`${formId}-name-hint`} className="block text-xs opacity-70 mt-1">
+          {s("nameHint")}
+        </span>
+      </label>
+      <button
+        type="button"
+        data-testid="token-chat-only"
+        disabled={busy}
+        // A preset that fills the permissions below, not a switch: the
+        // picker shows the result (switch-guard: no lit-up pill).
+        onClick={() => setScopes([...INVITE_PREFILL.scopes])}
+        className="min-h-10 rounded border border-current/30 px-3 py-1.5 text-sm font-medium text-primary disabled:opacity-50"
+      >
+        {s("chatOnly")}
+      </button>
+      <PermissionPicker
+        value={scopes}
+        onChange={setScopes}
+        disabled={busy}
+        offered={list?.scopes?.map((x) => x.id)}
+      />
+      <ExpiryPicker value={expiry} onChange={setExpiry} disabled={busy} />
+      {error && (
+        <p id={`${formId}-error`} role="alert" className="text-sm text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      )}
+      <button
+        type="submit"
+        aria-busy={busy}
+        disabled={busy}
+        data-testid="token-create"
+        className="bg-primary text-on-primary text-sm font-medium py-2 px-4 rounded hover:opacity-90 disabled:opacity-50"
+      >
+        {busy ? s("creating") : s("create")}
+      </button>
+    </form>
+  );
 
   return (
     <section id="tokens" className="my-8 space-y-4 scroll-mt-6" data-testid="api-tokens">
@@ -227,6 +378,26 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
         )}
       </div>
 
+      {agentIdentities && (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            data-testid="add-my-agent"
+            aria-busy={busy}
+            disabled={busy}
+            onClick={() => void createAgent()}
+            className="bg-primary text-on-primary text-sm font-medium py-2 px-4 rounded hover:opacity-90 disabled:opacity-50"
+          >
+            {busy ? s("addingMyAgent") : s("addMyAgent")}
+          </button>
+          {error && (
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+
       {secret && (
         <div
           role="region"
@@ -242,6 +413,28 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
           >
             {secret.token}
           </code>
+          {setupUrl && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium">{s("agentSetupUrlLabel")}</p>
+              <code
+                data-testid="agent-setup-url"
+                className="block break-all text-xs bg-white dark:bg-gray-900 p-2 rounded select-all font-mono"
+              >
+                {setupUrl}
+              </code>
+            </div>
+          )}
+          {setupPrompt && (
+            <div className="space-y-1">
+              <p className="text-xs font-medium">{s("agentPromptLabel")}</p>
+              <pre
+                data-testid="agent-setup-prompt"
+                className="whitespace-pre-wrap break-words text-xs bg-white dark:bg-gray-900 p-2 rounded select-all font-mono"
+              >
+                {setupPrompt}
+              </pre>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <button
               type="button"
@@ -289,7 +482,59 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
             data-testid="token-row"
           >
             <div className="min-w-0 flex-1 space-y-0.5">
-              <div className="font-medium break-words">{t.name}</div>
+              {agentIdentities && renamingId === t.id ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    value={renameValue}
+                    maxLength={MAX_NAME}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    disabled={renamingBusy}
+                    data-testid="token-rename-input"
+                    className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-900"
+                  />
+                  <button
+                    type="button"
+                    disabled={renamingBusy}
+                    onClick={() => void saveRename(t.id)}
+                    data-testid="token-rename-save"
+                    className="text-xs font-medium bg-primary text-on-primary rounded px-2 py-1"
+                  >
+                    {s("renameSave")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={renamingBusy}
+                    onClick={() => {
+                      setRenamingId(null);
+                      setRenameValue("");
+                    }}
+                    data-testid="token-rename-cancel"
+                    className="text-xs hover:underline"
+                  >
+                    {s("renameCancel")}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className={t.name ? "font-medium break-words" : "italic opacity-75"}>
+                    {t.name || s("untitledName")}
+                  </div>
+                  {agentIdentities && (
+                    <button
+                      type="button"
+                      data-testid="token-rename"
+                      onClick={() => {
+                        setRenamingId(t.id);
+                        setRenameValue(t.name);
+                      }}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      {s("rename")}
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="text-xs opacity-80">
                 {t.scopes.map((x) => scopeName[x]).join(" · ")}
               </div>
@@ -340,67 +585,16 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
         )}
       </ul>
 
-      <form
-        ref={form}
-        onSubmit={(e) => {
-          e.preventDefault();
-          void create();
-        }}
-        aria-describedby={error ? `${formId}-error` : undefined}
-        className="space-y-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4"
-      >
-        <label className="block text-sm">
-          <span className="font-medium">{s("nameLabel")}</span>
-          <input
-            type="text"
-            name="token-name"
-            autoComplete="off"
-            spellCheck={false}
-            aria-describedby={`${formId}-name-hint`}
-            value={name}
-            maxLength={MAX_NAME}
-            onChange={(e) => setName(e.target.value)}
-            disabled={busy}
-            data-testid="token-name"
-            className="mt-1 block w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 bg-white dark:bg-gray-900"
-          />
-          <span id={`${formId}-name-hint`} className="block text-xs opacity-70 mt-1">
-            {s("nameHint")}
-          </span>
-        </label>
-        <button
-          type="button"
-          data-testid="token-chat-only"
-          disabled={busy}
-          // A preset that fills the permissions below, not a switch: the
-          // picker shows the result (switch-guard: no lit-up pill).
-          onClick={() => setScopes([...INVITE_PREFILL.scopes])}
-          className="min-h-10 rounded border border-current/30 px-3 py-1.5 text-sm font-medium text-primary disabled:opacity-50"
-        >
-          {s("chatOnly")}
-        </button>
-        <PermissionPicker
-          value={scopes}
-          onChange={setScopes}
-          disabled={busy}
-          offered={list?.scopes?.map((x) => x.id)}
-        />
-        <ExpiryPicker value={expiry} onChange={setExpiry} disabled={busy} />
-        {error && (
-          <p id={`${formId}-error`} role="alert" className="text-sm text-red-600 dark:text-red-400">
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          aria-busy={busy}
-          disabled={busy}
-          data-testid="token-create"
-          className="bg-primary text-on-primary text-sm font-medium py-2 px-4 rounded hover:opacity-90 disabled:opacity-50"
-        >
-          {busy ? s("creating") : s("create")}
-        </button>
-      </form>
+      {agentIdentities ? (
+        <details data-testid="manual-token-details" className="space-y-3">
+          <summary className="cursor-pointer text-sm font-medium text-primary hover:underline">
+            {s("manualTokenSummary")}
+          </summary>
+          <div className="pt-2">{manualForm}</div>
+        </details>
+      ) : (
+        manualForm
+      )}
     </section>
   );
 }

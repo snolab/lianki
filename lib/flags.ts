@@ -446,6 +446,14 @@ export const FLAGS = {
     group: "ai",
     audience: "owner",
   },
+  // Owner, 2026-11-27 05:25 JST (/chat/agent-identities, docs/agent-identities.md).
+  "chat.agent-identities": {
+    description:
+      "我的 AI 身份（/chat/agent-identities，docs/agent-identities.md）：在设置页主入口显示「Add My Agent」按钮，一键生成未命名身份并给出令牌链接与现成提示词，要求助手先自命名（identity:self）再按需申请权限。关闭 = 保持现有 API 令牌表单。",
+    default: false,
+    group: "ai",
+    audience: "owner",
+  },
 } as const satisfies Record<string, FlagDef>;
 
 export type FlagKey = keyof typeof FLAGS;

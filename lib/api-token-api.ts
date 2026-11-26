@@ -31,6 +31,7 @@ import {
   listTokens,
   parseExpiry,
   parseScopes,
+  renameToken,
   revokeToken,
   tagOf,
 } from "@/lib/api-tokens";
@@ -42,6 +43,8 @@ export type TokenApiDeps = {
   db: () => D1Like & AuditDb;
   /** Does this account hold `dev` now (lib/permissions.ts)? Only then is `eval` offered or accepted. Absent: no. */
   siteOwner?: (userId: string) => Promise<boolean>;
+  /** Allow creating an untitled identity token (`chat.agent-identities` flag). */
+  allowUntitled?: () => Promise<boolean>;
   /** Revoked tokens' listening sockets close (lib/push-chat-tokens.ts). */
   revoked: (ids: string[]) => Promise<void>;
   /** At most this many live tokens per account. */
@@ -81,10 +84,29 @@ export async function tokenApi(req: Request, deps: TokenApiDeps): Promise<Respon
     });
   }
 
-  if (req.method !== "POST" && req.method !== "DELETE") return json({ error: "Method" }, 405);
+  if (req.method !== "POST" && req.method !== "PATCH" && req.method !== "DELETE")
+    return json({ error: "Method" }, 405);
   if (!jsonWrite(req)) return json({ error: "Forbidden" }, 403);
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return json({ error: "Expected JSON" }, 400);
+
+  if (req.method === "PATCH") {
+    const name = cleanTokenName(body.name);
+    if (!name) return json({ error: "name: 1–40 characters" }, 400);
+    const updated = await renameToken(db, owner, body.id, name, now);
+    if (!updated) return json({ error: "Not found" }, 404);
+    await audit(
+      db,
+      {
+        kind: "api-token.rename",
+        actor: owner.userId,
+        subject: tagOf(updated.id),
+        detail: name,
+      },
+      now,
+    );
+    return json({ ok: true, token: updated });
+  }
 
   if (req.method === "DELETE") {
     const gone = await revokeToken(db, owner, body.id);
@@ -99,8 +121,10 @@ export async function tokenApi(req: Request, deps: TokenApiDeps): Promise<Respon
     return json({ ok: true });
   }
 
-  const name = cleanTokenName(body.name);
-  if (!name) return json({ error: "name: 1–40 characters" }, 400);
+  const untitled = body.untitled === true && (await deps.allowUntitled?.()) === true;
+  if (body.untitled === true && !untitled) return json({ error: "Not available" }, 403);
+  const name = untitled ? "" : cleanTokenName(body.name);
+  if (name === null) return json({ error: "name: 1–40 characters" }, 400);
   if (
     Array.isArray(body.scopes) &&
     body.scopes.some((s) => (FORBIDDEN_SCOPES as readonly unknown[]).includes(s))

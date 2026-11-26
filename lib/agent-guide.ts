@@ -150,7 +150,7 @@ export const GUIDE_KEYS = [
 export type GuideKey = (typeof GUIDE_KEYS)[number];
 export type GuideStrings = Record<GuideKey, string>;
 
-const SCOPE_LINE: Record<ScopeId, GuideKey> = {
+const SCOPE_LINE: Partial<Record<ScopeId, GuideKey>> = {
   study: "scopeStudy",
   "chat:read": "scopeChatRead",
   "chat:write": "scopeChatWrite",
@@ -232,7 +232,9 @@ export function agentGuide({ scopes, t, name, expires }: GuideInput): string {
 
   p(
     `## ${t.scopesHeading}`,
-    ...SCOPE_IDS.filter(has).map((s) => `- \`${s}\`: ${t[SCOPE_LINE[s]]}`),
+    ...SCOPE_IDS.filter((s) => has(s) && SCOPE_LINE[s]).map(
+      (s) => `- \`${s}\`: ${t[SCOPE_LINE[s]!]}`,
+    ),
     "",
     t.scopeRequest,
     "",

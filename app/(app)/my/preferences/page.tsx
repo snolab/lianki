@@ -45,6 +45,7 @@ export default async function PreferencesPage() {
   const vibe = vibeAllowed(flags, isDev(user.email));
   // The app-icon badge's row (docs/app-badge.md): only while `pwa.app-badge` is on, the owner only.
   const appBadge = appBadgeOn(flags, isDev(user.email));
+  const agentIdentities = flagIn(flags, "chat.agent-identities");
   // Mini apps (docs/mini-apps.md): the section only once the account has one.
   const miniApps =
     flagIn(flags, "mini-apps") &&
@@ -61,6 +62,7 @@ export default async function PreferencesPage() {
           appBadge={appBadge}
           hasVibe={vibe}
           miniApps={miniApps}
+          agentIdentities={agentIdentities}
         >
           {vibe && <VibeRetention />}
         </PreferencesClient>

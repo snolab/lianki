@@ -48,6 +48,8 @@ export type AuditKind =
   // card and settings routes, which log only such named uses;
   // lib/api-token-client.ts).
   | "api-token.create"
+  | "api-token.rename"
+  | "api-token.self-name"
   | "api-token.scope"
   | "api-token.revoke"
   | "api-token.revoke-all"

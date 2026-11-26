@@ -28,6 +28,7 @@ export const SCOPE_TEXT: Record<ScopeId, { label: string; hint: string }> = {
   eval: { label: "scopeEval", hint: "scopeEvalHint" },
   progress: { label: "scopeProgress", hint: "scopeProgressHint" },
   "recordings:read": { label: "scopeRecordingsRead", hint: "scopeRecordingsReadHint" },
+  "identity:self": { label: "scopeIdentitySelf", hint: "scopeIdentitySelfHint" },
 };
 
 export function PermissionPicker(p: {
