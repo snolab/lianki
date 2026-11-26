@@ -14,7 +14,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.44
+// @version     2.24.45
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -4086,9 +4086,9 @@ Sasisha kadi kwa anwani mpya?`,
 
   // src/portable-li-panel.ts
   var PORTABLE_PANEL_CSS = `
-:host{all:initial!important;position:fixed!important;right:12px!important;bottom:12px!important;z-index:2147483647!important;font:14px/1.5 system-ui,sans-serif!important;color-scheme:light dark}
-*{box-sizing:border-box}section{width:min(360px,calc(100vw - 24px));max-height:min(560px,calc(100dvh - 24px));display:flex;flex-direction:column;border:1px solid #8888;border-radius:14px;background:Canvas;color:CanvasText;box-shadow:0 8px 30px #0003;overflow:hidden}
-header{display:flex;align-items:center;gap:8px;padding:8px 10px}header strong{flex:1}button,a,textarea{font:inherit}button{cursor:pointer;border:1px solid #8888;border-radius:8px;padding:5px 8px;background:ButtonFace;color:ButtonText}button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid #4588ff;outline-offset:2px}button:disabled{opacity:.6;cursor:default}
+:host{all:initial!important;position:fixed!important;right:12px!important;bottom:80px!important;z-index:2147483644!important;font:14px/1.5 system-ui,sans-serif!important;color-scheme:light dark}
+*{box-sizing:border-box}section{width:min(360px,calc(100vw - 24px));max-height:min(560px,calc(100dvh - 92px));display:flex;flex-direction:column;border:1px solid #8888;border-radius:14px;background:Canvas;color:CanvasText;box-shadow:0 8px 30px #0003;overflow:hidden}
+header{display:flex;align-items:center;gap:8px;padding:8px 10px}header strong{flex:1;min-width:0;overflow-wrap:anywhere}button,a,textarea{font:inherit}button{cursor:pointer;border:1px solid #8888;border-radius:8px;padding:5px 8px;background:ButtonFace;color:ButtonText}button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid #4588ff;outline-offset:2px}button:disabled{opacity:.6;cursor:default}
 main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-behavior:contain}.line{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;padding:8px;border-radius:8px;background:#8881}.line[data-from=agent]{background:#4888ff12}.note{font-size:12px;padding:0 10px 8px;overflow-wrap:anywhere}.note a{color:LinkText}form{display:flex;gap:6px;padding:8px}textarea{resize:vertical;min-height:42px;max-height:120px;flex:1;min-width:0;border:1px solid #8888;border-radius:8px;padding:6px;background:Field;color:FieldText}[hidden]{display:none!important}.status{padding:0 10px;font-size:12px}.actions{display:flex;gap:6px;flex-wrap:wrap;padding:0 10px 8px}
 `;
   function attachPortableStyle(root, doc, css) {

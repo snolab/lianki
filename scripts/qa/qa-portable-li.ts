@@ -124,6 +124,23 @@ try {
         "globalThis.__portableQaSeed=" + JSON.stringify(Object.fromEntries(gm)) + ";" + code,
       awaitPromise: true,
     });
+    await page.evaluate(() => {
+      const old = document.createElement("button");
+      old.id = "legacy-card";
+      old.textContent = "🔖";
+      Object.assign(old.style, {
+        position: "fixed",
+        right: "12px",
+        bottom: "20px",
+        width: "180px",
+        height: "44px",
+        zIndex: "2147483647",
+      });
+      old.addEventListener("click", () => {
+        old.dataset.clicked = "true";
+      });
+      document.body.append(old);
+    });
     return cdp;
   };
   const state = () => page.evaluate(() => (globalThis as any).__portableQa.state());
@@ -159,6 +176,20 @@ try {
   await click("同意所有网站");
   await wait(async () => (await state()).hosts === 1 && (await state()).consents === 0);
   check((await state()).iframes === 0, "strict frame-src none uses no iframe");
+  check(
+    await page.evaluate(() => {
+      const old = document.getElementById("legacy-card")!;
+      const r = old.getBoundingClientRect();
+      return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === old;
+    }),
+    "portable chat leaves existing LiCards controls clickable",
+  );
+  await page.locator("#legacy-card").click();
+  check(
+    (await page.locator("#legacy-card").getAttribute("data-clicked")) === "true",
+    "ordinary pointer reaches the existing card button",
+  );
+
   check(
     (await state()).panel.some((p: any) => p.position === "fixed" && p.section.width > 300),
     "constructed local CSS works under style-src none",

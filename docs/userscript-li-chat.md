@@ -406,14 +406,15 @@ rejection, controller isolation and exclusion of learning data. The extended
 isolated-world browser fixtures; it is not evidence of a real manager install.
 Actual ScriptCat/Tampermonkey-to-site chat remains a separate post-deploy check.
 
-## 随身Li: global consent and bundled CSP-independent chat (2.24.44, pending delivery)
+## 随身Li: global consent and bundled CSP-independent chat (2.24.45, pending delivery)
 
 The automatic chat path uses a statically bundled shadow-DOM panel and
 `GM_xmlhttpRequest`, rather than relying on an iframe or the website's
 `connect-src`. This works with a strict `frame-src 'none'; connect-src 'none'`
 without changing the website's CSP. The older frame path remains available to
 callers without the new manager transport. LiCards initialization, cards,
-scoring and the existing three buttons are unchanged. The legacy Learning
+scoring and the existing three buttons are unchanged. The new dock reserves the
+existing bottom-right card controls and stays below their dialogs in stacking order. The legacy Learning
 Partner widget is suppressed when the new portable-chat subsystem owns chat,
 so revoking permission or excluding a site cannot leave a second chat window.
 
