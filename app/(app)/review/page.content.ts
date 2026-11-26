@@ -3,7 +3,7 @@ import { describeKeys } from "@/lib/i18n-context";
 
 /**
  * /review — the in-site review page for page cards, for people without the
- * userscript (lib/review-ui.ts). `{n}`, `{due}`, `{total}` and `{time}` are
+ * userscript (lib/review-ui.ts). `{n}`, `{due}`, `{total}`, `{time}` and `{shortcut}` are
  * filled in by ReviewClient. Every key has a line in `context` below
  * (docs/i18n.md): translate a string together with it, never on its own.
  */
@@ -101,22 +101,40 @@ const dictionary = {
       ko: "이 카드 열기",
     }),
     openHint: t({
-      en: "Opens the page in a new tab. Read it, come back here, then grade it.",
-      zh: "会在新标签页打开网页。读完回到这里，再打分。",
-      hi: "पेज नए टैब में खुलेगा। उसे पढ़ें, यहाँ लौटें, फिर ग्रेड दें।",
-      es: "Abre la página en una pestaña nueva. Léela, vuelve aquí y califícala.",
-      fr: "Ouvre la page dans un nouvel onglet. Lisez-la, revenez ici, puis notez-la.",
-      ar: "تُفتح الصفحة في علامة تبويب جديدة. اقرأها ثم عُد إلى هنا وقيّمها.",
-      bn: "পেজটি নতুন ট্যাবে খুলবে। পড়ুন, এখানে ফিরে আসুন, তারপর গ্রেড দিন।",
-      pt: "Abre a página numa nova aba. Leia, volte aqui e avalie.",
-      ru: "Страница откроется в новой вкладке. Прочитайте её, вернитесь сюда и оцените.",
-      ur: "صفحہ نئے ٹیب میں کھلے گا۔ پڑھیں، یہاں واپس آئیں، پھر گریڈ دیں۔",
-      id: "Halaman dibuka di tab baru. Baca, kembali ke sini, lalu beri nilai.",
-      de: "Öffnet die Seite in einem neuen Tab. Lesen, hierher zurückkehren, dann bewerten.",
-      ja: "新しいタブでページが開きます。読んだらここに戻って評価してください。",
-      sw: "Ukurasa utafunguka kwenye kichupo kipya. Usome, urudi hapa, kisha uupe alama.",
-      mr: "पेज नवीन टॅबमध्ये उघडेल. ते वाचा, इथे परत या आणि मग ग्रेड द्या.",
-      ko: "새 탭에서 페이지가 열립니다. 읽고 여기로 돌아와 평가하세요.",
+      en: "Open the page in a new tab. Read it, then press {shortcut} to return here and grade it.",
+      zh: "在新标签页打开网页。读完按 {shortcut} 回到这里，再打分。",
+      hi: "पेज नए टैब में खोलें। पढ़ने के बाद {shortcut} दबाकर यहाँ लौटें, फिर ग्रेड दें।",
+      es: "Abre la página en una pestaña nueva. Tras leerla, pulsa {shortcut} para volver aquí y calificarla.",
+      fr: "Ouvrez la page dans un nouvel onglet. Après lecture, appuyez sur {shortcut} pour revenir ici, puis notez-la.",
+      ar: "افتح الصفحة في علامة تبويب جديدة. بعد قراءتها، اضغط {shortcut} للعودة إلى هنا، ثم قيّمها.",
+      bn: "পেজটি নতুন ট্যাবে খুলুন। পড়া শেষে {shortcut} চেপে এখানে ফিরে এসে গ্রেড দিন।",
+      pt: "Abra a página numa nova aba. Depois de ler, pressione {shortcut} para voltar aqui e avaliar.",
+      ru: "Откройте страницу в новой вкладке. Прочитайте её, нажмите {shortcut}, чтобы вернуться сюда, и оцените.",
+      ur: "صفحہ نئے ٹیب میں کھولیں۔ پڑھنے کے بعد {shortcut} دبا کر یہاں واپس آئیں، پھر گریڈ دیں۔",
+      id: "Buka halaman di tab baru. Setelah membaca, tekan {shortcut} untuk kembali ke sini, lalu beri nilai.",
+      de: "Öffne die Seite in einem neuen Tab. Drücke nach dem Lesen {shortcut}, um hierher zurückzukehren, und bewerte sie.",
+      ja: "新しいタブでページを開きます。読み終えたら {shortcut} を押してここに戻り、評価してください。",
+      sw: "Fungua ukurasa kwenye kichupo kipya. Ukimaliza kusoma, bonyeza {shortcut} urudi hapa, kisha uupe alama.",
+      mr: "पेज नवीन टॅबमध्ये उघडा. वाचून झाल्यावर {shortcut} दाबून इथे परत या आणि मग ग्रेड द्या.",
+      ko: "새 탭에서 페이지를 여세요. 읽은 뒤 {shortcut}를 눌러 여기로 돌아와 평가하세요.",
+    }),
+    openHintBack: t({
+      en: "Open the page in a new tab. After reading, press Back or close this tab, return here, then grade it.",
+      zh: "在新标签页打开网页。读完按返回或关闭这个标签页，回到这里再打分。",
+      hi: "पेज नए टैब में खोलें। पढ़ने के बाद वापस दबाएँ या यह टैब बंद करें, यहाँ लौटें, फिर ग्रेड दें।",
+      es: "Abre la página en una pestaña nueva. Tras leerla, pulsa Atrás o cierra esta pestaña, vuelve aquí y califícala.",
+      fr: "Ouvrez la page dans un nouvel onglet. Après lecture, appuyez sur Retour ou fermez cet onglet, revenez ici, puis notez-la.",
+      ar: "افتح الصفحة في علامة تبويب جديدة. بعد قراءتها، اضغط رجوع أو أغلق علامة التبويب هذه، ثم عُد إلى هنا وقيّمها.",
+      bn: "পেজটি নতুন ট্যাবে খুলুন। পড়া শেষে ফিরে যাওয়ার বোতাম চাপুন বা এই ট্যাবটি বন্ধ করুন, এখানে ফিরে এসে গ্রেড দিন।",
+      pt: "Abra a página numa nova aba. Depois de ler, pressione Voltar ou feche esta aba, volte aqui e avalie.",
+      ru: "Откройте страницу в новой вкладке. Прочитайте её, нажмите «Назад» или закройте эту вкладку, вернитесь сюда и оцените.",
+      ur: "صفحہ نئے ٹیب میں کھولیں۔ پڑھنے کے بعد واپس کا بٹن دبائیں یا یہ ٹیب بند کریں، یہاں واپس آئیں، پھر گریڈ دیں۔",
+      id: "Buka halaman di tab baru. Setelah membaca, tekan Kembali atau tutup tab ini, kembali ke sini, lalu beri nilai.",
+      de: "Öffne die Seite in einem neuen Tab. Drücke nach dem Lesen Zurück oder schließe diesen Tab, kehre hierher zurück und bewerte sie.",
+      ja: "新しいタブでページを開きます。読み終えたら「戻る」を押すか、このタブを閉じてここに戻り、評価してください。",
+      sw: "Fungua ukurasa kwenye kichupo kipya. Ukimaliza kusoma, bonyeza Nyuma au funga kichupo hiki, urudi hapa, kisha uupe alama.",
+      mr: "पेज नवीन टॅबमध्ये उघडा. वाचून झाल्यावर मागे दाबा किंवा हा टॅब बंद करा, इथे परत या आणि मग ग्रेड द्या.",
+      ko: "새 탭에서 페이지를 여세요. 읽은 뒤 뒤로 버튼을 누르거나 이 탭을 닫고 여기로 돌아와 평가하세요.",
     }),
     opened: t({
       en: "Opened in a new tab. When you are back, how well did you remember it?",
@@ -1410,7 +1428,9 @@ const context: Record<keyof typeof dictionary.content, string> = {
   openCard:
     "Big primary button on /review that opens the card's web page in a new browser tab, tapped by the user. Imperative phrase.",
   openHint:
-    "Help line under the 'Open this card' button on /review: what the button does and what to do afterwards (read, come back, grade).",
+    "Help under Open this card on /review for desktop devices: open the page in a new tab, read, close that tab with {shortcut}, return here, then grade. {shortcut} is exactly Ctrl+W on Windows/Linux or ⌘W on Mac; never translate or alter the placeholder or key names. Show only the current device shortcut.",
+  openHintBack:
+    "Help under Open this card on /review for phones and tablets: open the page in a new tab, read, press Back OR close this new tab, return here, then grade. Back alone does not always return from a new tab, so keep both alternatives. Localize the navigation label naturally; do not mention desktop keyboard shortcuts or confuse Back with undoing a grade.",
   opened:
     "Line shown on /review after the user has opened the card's page in another tab, before they have come back: invites them to grade how well they remembered it once back.",
   again:
