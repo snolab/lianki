@@ -1,4 +1,4 @@
-import { startPortableLi, type PortableWatch } from "./portable-li";
+import { startPortableLi, type PortableUi, type PortableWatch } from "./portable-li";
 import { pageChatHttpClient } from "./page-chat-http-client";
 import type { ChatGmRequest } from "./page-chat-fetch";
 /**
@@ -57,6 +57,8 @@ type GmFetch = (
 export type PillChatDeps = {
   origin: string;
   chatRequest?: ChatGmRequest;
+  /** 随身Li's chat window, the main site's DebugChat (src/portable-ui-loader.ts). */
+  portableUi?: () => Promise<PortableUi | null>;
   watch?: PortableWatch;
   signal?: AbortSignal;
   gmFetch: GmFetch;
@@ -223,6 +225,8 @@ export function pillChat(d: PillChatDeps) {
         call: pageChatHttpClient(d.origin, d.hostOrigin ?? location.origin, d.chatRequest),
         watch: d.watch,
         signal: d.signal,
+        // In the page's realm the page could replace eval: the plain panel only.
+        ...(isolated && d.portableUi ? { ui: d.portableUi } : {}),
       })
     : undefined;
   let open: { destroy(): void } | null = null;

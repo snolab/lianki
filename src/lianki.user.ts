@@ -14,7 +14,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.45
+// @version     2.24.48
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -59,6 +59,7 @@ import { publishUserscriptVersion } from "../lib/userscript-install";
 import { startPortableLi } from "./portable-li";
 import { pageChatHttpClient } from "./page-chat-http-client";
 import { pageChatFetch } from "./page-chat-fetch";
+import { portableUiLoader } from "./portable-ui-loader";
 import { mirrorPartnerSwitch, startPartner } from "./partner";
 import { pillChat, watchPillChatFlag } from "./pill-chat";
 import { fillUs, friendlyError, userscriptStrings } from "./userscript-strings";
@@ -1116,6 +1117,16 @@ function main() {
   const liChat = pillChat({
     origin: ORIGIN,
     chatRequest: GM_xmlhttpRequest as never,
+    // 随身Li draws the main site's chat window (src/portable-ui-loader.ts), loaded on first show.
+    portableUi: portableUiLoader({
+      src:
+        typeof __LK_PARTNER_SRC__ === "string" ? __LK_PARTNER_SRC__ : `${ORIGIN}/partner-embed.js`,
+      gmFetch,
+      getValue: GM_getValue,
+      setValue: GM_setValue,
+      deleteValue: GM_deleteValue,
+      report: (what, detail) => console.debug(`[Lianki] ${what}: ${detail}`),
+    }),
     watch: portableWatch,
     signal,
     gmFetch,

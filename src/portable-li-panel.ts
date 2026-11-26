@@ -11,10 +11,11 @@ export type PortableChatCall = (
   signal?: AbortSignal,
 ) => Promise<PageChatHttpResult>;
 export const PORTABLE_PANEL_CSS = `
-:host{all:initial!important;position:fixed!important;right:12px!important;bottom:80px!important;z-index:2147483644!important;font:14px/1.5 system-ui,sans-serif!important;color-scheme:light dark}
-*{box-sizing:border-box}section{width:min(360px,calc(100vw - 24px));max-height:min(560px,calc(100dvh - 92px));display:flex;flex-direction:column;border:1px solid #8888;border-radius:14px;background:Canvas;color:CanvasText;box-shadow:0 8px 30px #0003;overflow:hidden}
-header{display:flex;align-items:center;gap:8px;padding:8px 10px}header strong{flex:1;min-width:0;overflow-wrap:anywhere}button,a,textarea{font:inherit}button{cursor:pointer;border:1px solid #8888;border-radius:8px;padding:5px 8px;background:ButtonFace;color:ButtonText}button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid #4588ff;outline-offset:2px}button:disabled{opacity:.6;cursor:default}
-main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-behavior:contain}.line{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;padding:8px;border-radius:8px;background:#8881}.line[data-from=agent]{background:#4888ff12}.note{font-size:12px;padding:0 10px 8px;overflow-wrap:anywhere}.note a{color:LinkText}form{display:flex;gap:6px;padding:8px}textarea{resize:vertical;min-height:42px;max-height:120px;flex:1;min-width:0;border:1px solid #8888;border-radius:8px;padding:6px;background:Field;color:FieldText}[hidden]{display:none!important}.status{padding:0 10px;font-size:12px}.actions{display:flex;gap:6px;flex-wrap:wrap;padding:0 10px 8px}
+:host{all:initial!important;position:fixed!important;right:12px!important;bottom:80px!important;z-index:2147483644!important;font:14px/1.5 system-ui,sans-serif!important;color-scheme:light dark;--bg:oklch(0.97 0.01 82 / 0.94);--fg:oklch(0.25 0.02 65);--line:oklch(0.25 0.02 65 / 0.15);--soft:oklch(0.25 0.02 65 / 0.06);--seal:oklch(0.53 0.207 22.3);--on-seal:oklch(0.99 0 0)}
+@media (prefers-color-scheme:dark){:host{--bg:oklch(0.2 0.01 65 / 0.94);--fg:oklch(0.93 0.01 82);--line:oklch(0.93 0.01 82 / 0.15);--soft:oklch(0.93 0.01 82 / 0.08)}}
+*{box-sizing:border-box}section{width:min(360px,calc(100vw - 24px));max-height:min(560px,calc(100dvh - 92px));display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px;background:var(--bg);color:var(--fg);box-shadow:0 8px 30px oklch(0 0 0 / 0.2);backdrop-filter:blur(12px) saturate(1.4);overflow:hidden}
+header{display:flex;align-items:center;gap:8px;padding:8px 10px}header strong{flex:1;min-width:0;overflow-wrap:anywhere}button,a,textarea{font:inherit}button{cursor:pointer;min-height:40px;border:0;border-radius:999px;padding:5px 12px;background:var(--soft);color:var(--fg)}button[type=submit]{background:var(--seal);color:var(--on-seal)}button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid var(--seal);outline-offset:2px}button:disabled{opacity:.6;cursor:default}
+main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-behavior:contain}.line{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;padding:8px 10px;border-radius:12px;background:var(--soft)}.line[data-from=agent]{background:transparent;padding-inline:0}.note{font-size:12px;padding:0 10px 8px;overflow-wrap:anywhere}.note a{color:var(--seal)}form{display:flex;gap:6px;padding:8px}textarea{resize:none;min-height:40px;max-height:120px;flex:1;min-width:0;border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:transparent;color:var(--fg)}[hidden]{display:none!important}.status{padding:0 10px;font-size:12px}.actions{display:flex;gap:6px;flex-wrap:wrap;padding:0 10px 8px}
 `;
 export function attachPortableStyle(root: ShadowRoot, doc: Document, css: string) {
   // Constructed sheets are local static CSS, so strict style-src does not require remote CSS or policy edits.
@@ -58,15 +59,7 @@ export function portableLiPanel(d: {
   const main = doc.createElement("main");
   main.setAttribute("role", "log");
   main.setAttribute("aria-live", "polite");
-  const note = doc.createElement("div");
-  note.className = "note";
-  note.append(doc.createTextNode(d.common.chatOnly + " "));
-  const advanced = doc.createElement("a");
-  advanced.textContent = d.common.advanced;
-  advanced.href = d.origin + portableChatPath(d.hostOrigin);
-  advanced.target = "_blank";
-  advanced.rel = "noopener noreferrer";
-  note.append(advanced);
+  let note: HTMLDivElement | undefined;
   const status = doc.createElement("div");
   status.className = "status";
   status.setAttribute("role", "status");
@@ -90,7 +83,7 @@ export function portableLiPanel(d: {
   header.append(title, toggle);
   actions.append(retry, exclude);
   form.append(input, send);
-  section.append(header, note, main, status, actions, form);
+  section.append(header, main, status, actions, form);
   root.append(section);
   (doc.documentElement ?? doc.body).append(host);
   let destroyed = false,
@@ -186,7 +179,8 @@ export function portableLiPanel(d: {
     });
   };
   const update = () => {
-    for (const el of [main, note, status, actions, form]) el.hidden = collapsed;
+    for (const el of [main, status, actions, form]) el.hidden = collapsed;
+    if (note) note.hidden = collapsed;
     toggle.textContent = collapsed ? t.expand : t.collapse;
     toggle.setAttribute("aria-expanded", String(!collapsed));
     if (collapsed) stop();
@@ -255,7 +249,34 @@ export function portableLiPanel(d: {
     host.remove();
   };
   update();
+  // A capability action may call this only after its real permission gate rejects it.
+  // Ordinary chat text and normal startup never trigger a privilege notice.
+  const advancedDenied = () => {
+    if (destroyed) return;
+    note?.remove();
+    note = doc.createElement("div");
+    note.className = "note";
+    note.setAttribute("role", "status");
+    note.append(doc.createTextNode(d.common.chatOnly + " "));
+    const link = doc.createElement("a");
+    link.textContent = d.common.advanced;
+    link.href = d.origin + portableChatPath(d.hostOrigin);
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    const dismiss = doc.createElement("button");
+    dismiss.type = "button";
+    dismiss.textContent = "×";
+    dismiss.setAttribute("aria-label", d.common.close);
+    dismiss.addEventListener("click", () => {
+      note?.remove();
+      note = undefined;
+    });
+    note.append(link, dismiss);
+    section.insertBefore(note, main);
+    note.hidden = collapsed;
+  };
   return {
+    advancedDenied,
     destroy,
     collapse(value: boolean) {
       collapsed = value;

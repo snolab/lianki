@@ -14,7 +14,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.45
+// @version     2.24.48
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -3789,6 +3789,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "Portable Li is off in this browser.",
       exclude: "Exclude a website",
       removeExclusion: "Remove exclusion",
+      advancedHint: "Open it for this website on lianki.com",
     },
     zh: {
       title: "随身Li",
@@ -3807,6 +3808,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "此浏览器已关闭随身Li。",
       exclude: "排除网站",
       removeExclusion: "取消排除",
+      advancedHint: "去 lianki.com 为这个网站单独打开",
     },
     hi: {
       title: "साथ में Li",
@@ -3825,6 +3827,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "इस ब्राउज़र में साथ में Li बंद है।",
       exclude: "वेबसाइट बाहर रखें",
       removeExclusion: "बहिष्करण हटाएँ",
+      advancedHint: "इस वेबसाइट के लिए lianki.com पर अलग से खोलें",
     },
     es: {
       title: "Li contigo",
@@ -3843,6 +3846,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "Li contigo está desactivado en este navegador.",
       exclude: "Excluir un sitio",
       removeExclusion: "Quitar exclusión",
+      advancedHint: "Ábrelo para este sitio web en lianki.com",
     },
     fr: {
       title: "Li partout",
@@ -3861,6 +3865,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "Li partout est désactivé dans ce navigateur.",
       exclude: "Exclure un site",
       removeExclusion: "Retirer l’exclusion",
+      advancedHint: "Ouvrez-le pour ce site sur lianki.com",
     },
     ar: {
       title: "Li معك",
@@ -3879,6 +3884,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "Li معك متوقف في هذا المتصفح.",
       exclude: "استثناء موقع",
       removeExclusion: "إزالة الاستثناء",
+      advancedHint: "افتحه لهذا الموقع على lianki.com",
     },
     bn: {
       title: "সঙ্গে Li",
@@ -3897,6 +3903,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "এই ব্রাউজারে সঙ্গে Li বন্ধ আছে।",
       exclude: "ওয়েবসাইট বাদ দিন",
       removeExclusion: "বাদ দেওয়া সরান",
+      advancedHint: "এই ওয়েবসাইটের জন্য lianki.com-এ আলাদাভাবে খুলুন",
     },
     pt: {
       title: "Li com você",
@@ -3915,6 +3922,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "Li com você está desativado neste navegador.",
       exclude: "Excluir um site",
       removeExclusion: "Remover exclusão",
+      advancedHint: "Abra para este site no lianki.com",
     },
     ru: {
       title: "Li с собой",
@@ -3933,6 +3941,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "В этом браузере Li с собой выключен.",
       exclude: "Исключить сайт",
       removeExclusion: "Отменить исключение",
+      advancedHint: "Откройте для этого сайта на lianki.com",
     },
     ur: {
       title: "ساتھ Li",
@@ -3951,6 +3960,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "اس براؤزر میں ساتھ Li بند ہے۔",
       exclude: "ویب سائٹ خارج کریں",
       removeExclusion: "اخراج ہٹائیں",
+      advancedHint: "اس ویب سائٹ کے لیے lianki.com پر الگ سے کھولیں",
     },
     id: {
       title: "Li di mana saja",
@@ -3969,6 +3979,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "Li di mana saja mati di browser ini.",
       exclude: "Kecualikan situs",
       removeExclusion: "Hapus pengecualian",
+      advancedHint: "Buka untuk situs ini di lianki.com",
     },
     de: {
       title: "Li für unterwegs",
@@ -3987,6 +3998,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "Li für unterwegs ist in diesem Browser ausgeschaltet.",
       exclude: "Website ausschließen",
       removeExclusion: "Ausschluss entfernen",
+      advancedHint: "Für diese Website auf lianki.com öffnen",
     },
     ja: {
       title: "どこでもLi",
@@ -4005,6 +4017,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "このブラウザーでは、どこでもLi はオフです。",
       exclude: "サイトを除外",
       removeExclusion: "除外を解除",
+      advancedHint: "lianki.com でこのサイト用に開く",
     },
     sw: {
       title: "Li popote",
@@ -4023,6 +4036,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "Li popote imezimwa katika kivinjari hiki.",
       exclude: "Tenga tovuti",
       removeExclusion: "Ondoa utengaji",
+      advancedHint: "Fungua kwa tovuti hii kwenye lianki.com",
     },
     mr: {
       title: "सोबत Li",
@@ -4041,6 +4055,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "या ब्राउझरमध्ये सोबत Li बंद आहे.",
       exclude: "वेबसाइट वगळा",
       removeExclusion: "वगळणे रद्द करा",
+      advancedHint: "या वेबसाइटसाठी lianki.com वर स्वतंत्रपणे उघडा",
     },
     ko: {
       title: "어디서나 Li",
@@ -4059,6 +4074,7 @@ Sasisha kadi kwa anwani mpya?`,
       disabled: "이 브라우저에서는 어디서나 Li가 꺼져 있습니다.",
       exclude: "웹사이트 제외",
       removeExclusion: "제외 해제",
+      advancedHint: "lianki.com에서 이 웹사이트용으로 따로 열기",
     },
   };
 
@@ -4086,10 +4102,11 @@ Sasisha kadi kwa anwani mpya?`,
 
   // src/portable-li-panel.ts
   var PORTABLE_PANEL_CSS = `
-:host{all:initial!important;position:fixed!important;right:12px!important;bottom:80px!important;z-index:2147483644!important;font:14px/1.5 system-ui,sans-serif!important;color-scheme:light dark}
-*{box-sizing:border-box}section{width:min(360px,calc(100vw - 24px));max-height:min(560px,calc(100dvh - 92px));display:flex;flex-direction:column;border:1px solid #8888;border-radius:14px;background:Canvas;color:CanvasText;box-shadow:0 8px 30px #0003;overflow:hidden}
-header{display:flex;align-items:center;gap:8px;padding:8px 10px}header strong{flex:1;min-width:0;overflow-wrap:anywhere}button,a,textarea{font:inherit}button{cursor:pointer;border:1px solid #8888;border-radius:8px;padding:5px 8px;background:ButtonFace;color:ButtonText}button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid #4588ff;outline-offset:2px}button:disabled{opacity:.6;cursor:default}
-main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-behavior:contain}.line{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;padding:8px;border-radius:8px;background:#8881}.line[data-from=agent]{background:#4888ff12}.note{font-size:12px;padding:0 10px 8px;overflow-wrap:anywhere}.note a{color:LinkText}form{display:flex;gap:6px;padding:8px}textarea{resize:vertical;min-height:42px;max-height:120px;flex:1;min-width:0;border:1px solid #8888;border-radius:8px;padding:6px;background:Field;color:FieldText}[hidden]{display:none!important}.status{padding:0 10px;font-size:12px}.actions{display:flex;gap:6px;flex-wrap:wrap;padding:0 10px 8px}
+:host{all:initial!important;position:fixed!important;right:12px!important;bottom:80px!important;z-index:2147483644!important;font:14px/1.5 system-ui,sans-serif!important;color-scheme:light dark;--bg:oklch(0.97 0.01 82 / 0.94);--fg:oklch(0.25 0.02 65);--line:oklch(0.25 0.02 65 / 0.15);--soft:oklch(0.25 0.02 65 / 0.06);--seal:oklch(0.53 0.207 22.3);--on-seal:oklch(0.99 0 0)}
+@media (prefers-color-scheme:dark){:host{--bg:oklch(0.2 0.01 65 / 0.94);--fg:oklch(0.93 0.01 82);--line:oklch(0.93 0.01 82 / 0.15);--soft:oklch(0.93 0.01 82 / 0.08)}}
+*{box-sizing:border-box}section{width:min(360px,calc(100vw - 24px));max-height:min(560px,calc(100dvh - 92px));display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px;background:var(--bg);color:var(--fg);box-shadow:0 8px 30px oklch(0 0 0 / 0.2);backdrop-filter:blur(12px) saturate(1.4);overflow:hidden}
+header{display:flex;align-items:center;gap:8px;padding:8px 10px}header strong{flex:1;min-width:0;overflow-wrap:anywhere}button,a,textarea{font:inherit}button{cursor:pointer;min-height:40px;border:0;border-radius:999px;padding:5px 12px;background:var(--soft);color:var(--fg)}button[type=submit]{background:var(--seal);color:var(--on-seal)}button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid var(--seal);outline-offset:2px}button:disabled{opacity:.6;cursor:default}
+main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-behavior:contain}.line{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;padding:8px 10px;border-radius:12px;background:var(--soft)}.line[data-from=agent]{background:transparent;padding-inline:0}.note{font-size:12px;padding:0 10px 8px;overflow-wrap:anywhere}.note a{color:var(--seal)}form{display:flex;gap:6px;padding:8px}textarea{resize:none;min-height:40px;max-height:120px;flex:1;min-width:0;border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:transparent;color:var(--fg)}[hidden]{display:none!important}.status{padding:0 10px;font-size:12px}.actions{display:flex;gap:6px;flex-wrap:wrap;padding:0 10px 8px}
 `;
   function attachPortableStyle(root, doc, css) {
     const Sheet = doc.defaultView?.CSSStyleSheet;
@@ -4119,15 +4136,7 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
     const main = doc.createElement("main");
     main.setAttribute("role", "log");
     main.setAttribute("aria-live", "polite");
-    const note = doc.createElement("div");
-    note.className = "note";
-    note.append(doc.createTextNode(d.common.chatOnly + " "));
-    const advanced = doc.createElement("a");
-    advanced.textContent = d.common.advanced;
-    advanced.href = d.origin + portableChatPath(d.hostOrigin);
-    advanced.target = "_blank";
-    advanced.rel = "noopener noreferrer";
-    note.append(advanced);
+    let note;
     const status = doc.createElement("div");
     status.className = "status";
     status.setAttribute("role", "status");
@@ -4151,7 +4160,7 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
     header.append(title, toggle);
     actions.append(retry, exclude);
     form.append(input, send);
-    section.append(header, note, main, status, actions, form);
+    section.append(header, main, status, actions, form);
     root.append(section);
     (doc.documentElement ?? doc.body).append(host);
     let destroyed = false,
@@ -4249,7 +4258,8 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
       });
     };
     const update = () => {
-      for (const el of [main, note, status, actions, form]) el.hidden = collapsed;
+      for (const el of [main, status, actions, form]) el.hidden = collapsed;
+      if (note) note.hidden = collapsed;
       toggle.textContent = collapsed ? t.expand : t.collapse;
       toggle.setAttribute("aria-expanded", String(!collapsed));
       if (collapsed) stop();
@@ -4317,7 +4327,32 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
       host.remove();
     };
     update();
+    const advancedDenied = () => {
+      if (destroyed) return;
+      note?.remove();
+      note = doc.createElement("div");
+      note.className = "note";
+      note.setAttribute("role", "status");
+      note.append(doc.createTextNode(d.common.chatOnly + " "));
+      const link = doc.createElement("a");
+      link.textContent = d.common.advanced;
+      link.href = d.origin + portableChatPath(d.hostOrigin);
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      const dismiss = doc.createElement("button");
+      dismiss.type = "button";
+      dismiss.textContent = "×";
+      dismiss.setAttribute("aria-label", d.common.close);
+      dismiss.addEventListener("click", () => {
+        note?.remove();
+        note = undefined;
+      });
+      note.append(link, dismiss);
+      section.insertBefore(note, main);
+      note.hidden = collapsed;
+    };
     return {
+      advancedDenied,
       destroy,
       collapse(value) {
         collapsed = value;
@@ -4393,17 +4428,14 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
         }),
       );
     };
-    const show = () => {
-      if (destroyed || !host || trusted || !d.top || panel || d.doc.visibilityState === "hidden")
-        return;
+    const fallback = (principal) => {
       const p = store.read();
-      if (!p.principal || !globalChatAllowed(p, host, p.principal)) return;
       const locale = readPortableUiLanguage(d.gm, d.win.navigator.language);
-      panel = portableLiPanel({
+      return portableLiPanel({
         doc: d.doc,
         origin: d.origin,
         hostOrigin: d.hostOrigin,
-        principal: p.principal,
+        principal,
         call: d.call,
         locale,
         strings: PORTABLE_LI_STRINGS[locale],
@@ -4413,17 +4445,73 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
           store.collapse(host, value);
           publish();
         },
-        onExclude: () => {
-          store.exclude(host, true);
-          panel = undefined;
-          publish();
-        },
-        onInvalidAccount: () => {
-          store.invalidate();
-          close();
-          publish(true);
-        },
+        onExclude,
+        onInvalidAccount,
       });
+    };
+    const onExclude = () => {
+      store.exclude(host, true);
+      panel?.destroy();
+      panel = undefined;
+      publish();
+    };
+    const onInvalidAccount = () => {
+      store.invalidate();
+      close();
+      publish(true);
+    };
+    const show = () => {
+      if (destroyed || !host || trusted || !d.top || panel || d.doc.visibilityState === "hidden")
+        return;
+      const p = store.read();
+      if (!p.principal || !globalChatAllowed(p, host, p.principal)) return;
+      const principal = p.principal;
+      if (!d.ui) {
+        panel = fallback(principal);
+        return;
+      }
+      const gen = generation;
+      let mounted;
+      let gone = false;
+      const slot = {
+        destroy() {
+          gone = true;
+          mounted?.destroy();
+        },
+        collapse() {},
+        isCollapsed: () => false,
+      };
+      panel = slot;
+      const locale = readPortableUiLanguage(d.gm, d.win.navigator.language);
+      const t = PORTABLE_LI_STRINGS[locale];
+      d.ui()
+        .then((ui) => {
+          if (gone || generation !== gen || panel !== slot) return;
+          if (ui)
+            try {
+              mounted = ui.mount({
+                doc: d.doc,
+                appOrigin: d.origin,
+                call: d.call,
+                principal,
+                strings: {
+                  name: t.title,
+                  connecting: t.connecting,
+                  failed: t.failed,
+                  advancedHint: t.advancedHint,
+                  excludeHere: t.excludeHere,
+                },
+                advancedHref: d.origin + portableChatPath(d.hostOrigin),
+                onExclude,
+                onInvalidAccount,
+              });
+              return;
+            } catch {}
+          panel = fallback(principal);
+        })
+        .catch(() => {
+          if (!gone && generation === gen && panel === slot) panel = fallback(principal);
+        });
     };
     const allow = async () => {
       const gen = ++generation;
@@ -4897,6 +4985,44 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
         });
       });
     };
+  }
+
+  // src/portable-ui-loader.ts
+  var PORTABLE_STORE_PREFIX = "lianki_portable_ls:";
+  function portableUiLoader(d) {
+    let loading;
+    const load = async () => {
+      let code;
+      try {
+        const r = await d.gmFetch(d.src);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        code = await r.text();
+      } catch (e) {
+        d.report("portable-load", String(e?.message ?? e));
+        loading = undefined;
+        return null;
+      }
+      try {
+        const factory = (d.evaluate ?? ((c) => (0, eval)(c)))(code);
+        const built = factory({
+          get: (k) => d.getValue(PORTABLE_STORE_PREFIX + k, null),
+          set: (k, v) => d.setValue(PORTABLE_STORE_PREFIX + k, v),
+          del: (k) => d.deleteValue(PORTABLE_STORE_PREFIX + k),
+          keys: () => [],
+        });
+        const mount = built?.api?.mountPortable;
+        if (typeof mount !== "function" || !Array.isArray(built.css)) {
+          d.report("portable-load", "no mountPortable in this build");
+          return null;
+        }
+        const css = built.css;
+        return { mount: (o) => mount({ ...o, css, report: d.report }) };
+      } catch (e) {
+        d.report("portable-eval", String(e?.message ?? e));
+        return null;
+      }
+    };
+    return () => (loading ??= load());
   }
 
   // packages/debug-chat/src/embed/guard.ts
@@ -6002,6 +6128,7 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
           call: pageChatHttpClient(d.origin, d.hostOrigin ?? location.origin, d.chatRequest),
           watch: d.watch,
           signal: d.signal,
+          ...(isolated && d.portableUi ? { ui: d.portableUi } : {}),
         })
       : undefined;
     let open = null;
@@ -6798,6 +6925,17 @@ main{overflow:auto;min-height:80px;max-height:340px;padding:8px 10px;overscroll-
     const liChat = pillChat({
       origin: ORIGIN,
       chatRequest: GM_xmlhttpRequest,
+      portableUi: portableUiLoader({
+        src:
+          typeof __LK_PARTNER_SRC__ === "string"
+            ? __LK_PARTNER_SRC__
+            : `${ORIGIN}/partner-embed.js`,
+        gmFetch,
+        getValue: GM_getValue,
+        setValue: GM_setValue,
+        deleteValue: GM_deleteValue,
+        report: (what, detail) => console.debug(`[Lianki] ${what}: ${detail}`),
+      }),
       watch: portableWatch,
       signal,
       gmFetch,

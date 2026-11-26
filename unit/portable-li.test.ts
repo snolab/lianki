@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { Window } from "happy-dom";
 import { stubGlobals } from "./support/globals";
-import { startPortableLi } from "../src/portable-li";
+import { startPortableLi, type PortableUi } from "../src/portable-li";
 import { GLOBAL_CHAT_KEY, globalChatStore } from "../src/pill-chat-global";
 import { PILLCHAT_ON_KEY } from "../src/pill-chat-trust";
 import { PILL_UI_LANGUAGE_KEY } from "../src/pill-chat-language";
@@ -16,7 +16,7 @@ import type { PortableChatCall } from "../src/portable-li-panel";
 const turn = async () => {
   for (let i = 0; i < 12; i++) await Promise.resolve();
 };
-function fixture(url = "https://github.com/") {
+function fixture(url = "https://github.com/", ui?: () => Promise<PortableUi | null>) {
   const win = new Window({ url });
   win.document.documentElement.lang = "zh";
   const restore = stubGlobals({
@@ -93,6 +93,7 @@ function fixture(url = "https://github.com/") {
     top: true,
     call,
     signal: ac.signal,
+    ...(ui ? { ui } : {}),
     watch: (key, fn) => {
       const set = changes.get(key) ?? new Set();
       set.add(fn);
@@ -176,6 +177,57 @@ test("global opt-in never fetches chat first, survives site navigation, retracts
     expect(f.win.document.querySelector("lianki-portable-consent")).toBeNull();
   } finally {
     f.finish();
+  }
+});
+test("the main site's chat window is mounted with the broker and the hint link; the plain panel only when it cannot load", async () => {
+  const mounts: Parameters<PortableUi["mount"]>[0][] = [];
+  let destroyed = 0;
+  const ui: PortableUi = {
+    mount: (o) => {
+      mounts.push(o);
+      return { destroy: () => void destroyed++ };
+    },
+  };
+  let loads = 0;
+  const f = fixture("https://github.com/", async () => (loads++, ui));
+  try {
+    await turn();
+    f.click("同意所有网站");
+    await turn();
+    expect(loads).toBe(1);
+    expect(mounts).toHaveLength(1);
+    const o = mounts[0];
+    expect(o.principal).toBe("account_a");
+    expect(o.appOrigin).toBe("https://lianki.com");
+    expect(o.strings.name).toBe("随身Li");
+    expect(o.strings.advancedHint).toBe("去 lianki.com 为这个网站单独打开");
+    expect(o.advancedHref).toBe(
+      "https://lianki.com/chat?from=" + encodeURIComponent("https://github.com"),
+    );
+    // The plain panel is not drawn beside it, and no standing notice exists anywhere.
+    expect(f.win.document.querySelector("lianki-portable-chat")).toBeNull();
+    // The broker it was handed is the userscript's chat-only call.
+    await o.call({ op: "read", wait: false }, o.principal);
+    expect(f.calls.at(-1)).toEqual([{ op: "read", wait: false }, "account_a"]);
+    // "Hide on this website" from its menu excludes the site and takes it down.
+    o.onExclude();
+    await turn();
+    expect(f.controller.excluded()).toBe(true);
+    expect(destroyed).toBe(1);
+  } finally {
+    f.finish();
+  }
+  const g = fixture("https://github.com/", async () => null);
+  try {
+    await turn();
+    g.click("同意所有网站");
+    await turn();
+    expect(g.win.document.querySelector("lianki-portable-chat")).not.toBeNull();
+    const panel = g.roots.find((r) => r.host.localName === "lianki-portable-chat");
+    expect(panel?.textContent).toContain("随身Li");
+    expect(panel?.textContent).not.toContain("lianki.com");
+  } finally {
+    g.finish();
   }
 });
 test("failed login cannot grant consent, exclusions remove chat, flag-off dismisses consent and abort unhooks observers", async () => {

@@ -18,6 +18,7 @@ import { CHAT_STRINGS_EN } from "../wire";
 import { type Blocker, blockerText, cspBlocker } from "./guard";
 import { createShadowHost } from "./isolation";
 import { type PartnerClient, type PartnerDeps, createPartnerClient, pageLabel } from "./partner-client";
+import { type PortableCall, type PortableClient, createPortableClient } from "./portable-client";
 
 export type MountOptions = {
   doc: Document;
@@ -151,6 +152,90 @@ function Partner({ client, o, portal }: { client: PartnerClient; o: MountOptions
         : {})}
     />
   );
+}
+
+export type PortableMountOptions = {
+  doc: Document;
+  /** The widget's CSS, as for the partner (isolated on the way in). */
+  css: string[];
+  appOrigin: string;
+  /** The userscript's chat-only broker (read / send), never a ticket or token. */
+  call: PortableCall;
+  /** The account the broker bound at consent (x-lianki-chat-principal). */
+  principal: string;
+  /** From the userscript's tables (src/portable-li-strings.ts, intlayer `portable-li`). */
+  strings: { name: string; connecting: string; failed: string; advancedHint: string; excludeHere: string };
+  /** lianki.com's chat for this website (lib/portable-chat-url.ts), shown with the advanced hint. */
+  advancedHref: string;
+  onExclude: () => void;
+  onInvalidAccount: () => void;
+  report?: (what: string, detail: string) => void;
+};
+
+function Portable({ client, o, portal }: { client: PortableClient; o: PortableMountOptions; portal: Element }) {
+  const s = useSyncExternalStore(client.subscribe, client.get, client.get);
+  // Errors carry their own glyph and words, never the brand red alone.
+  const warning =
+    s.problem === "advanced" ? o.strings.advancedHint : s.problem === "failed" ? `⚠ ${o.strings.failed}` : undefined;
+  return (
+    <DebugChat
+      embedded
+      attach={false}
+      portalRoot={portal}
+      live={s.live}
+      // Li answers through the hub's AI reply whenever the broker reads: present while connected.
+      listeners={s.live ? 1 : 0}
+      messages={s.messages}
+      outgoing={s.outgoing}
+      onSend={(text, to, opts) => client.send(text, to, opts)}
+      busy={s.busy}
+      warning={warning}
+      {...(s.problem === "advanced"
+        ? { warningHref: { href: o.advancedHref, label: "lianki.com ↗", newTab: true as const } }
+        : {})}
+      agentAvatar={`${o.appOrigin}/icon-192.png`}
+      strings={{ name: o.strings.name }}
+      menuItems={[{ id: "exclude", label: o.strings.excludeHere, onSelect: o.onExclude }]}
+    />
+  );
+}
+
+/**
+ * 随身Li (portable Li): the main site's chat window, DebugChat itself, in a
+ * closed shadow root on a site, fed only by the userscript's chat-only broker.
+ */
+export function mountPortable(o: PortableMountOptions): {
+  portable: PortableClient;
+  /** For the tests and QA only: the userscript never hands it to the page. */
+  root: ShadowRoot;
+  destroy(): void;
+} {
+  const shadow = createShadowHost(o.doc, o.css);
+  if (shadow.styles === "blocked") {
+    shadow.destroy();
+    throw new Error("styles blocked");
+  }
+  const client = createPortableClient({
+    call: o.call,
+    principal: o.principal,
+    doc: o.doc,
+    busyLabel: o.strings.name,
+    failedLabel: o.strings.failed,
+    onInvalidAccount: o.onInvalidAccount,
+  });
+  const root = createRoot(shadow.container, {
+    onUncaughtError: (err) => o.report?.("portable-render", String((err as Error)?.message ?? err)),
+  });
+  root.render(<Portable client={client} o={o} portal={shadow.container} />);
+  return {
+    portable: client,
+    root: shadow.root,
+    destroy() {
+      client.stop();
+      root.unmount();
+      shadow.destroy();
+    },
+  };
 }
 
 /** Mount the partner (or its note) in a closed shadow root on its own host element. */

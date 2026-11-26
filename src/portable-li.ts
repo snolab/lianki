@@ -23,12 +23,37 @@ import {
   PORTABLE_SETTINGS_STATE,
   parsePortableSettingsRequest,
 } from "./portable-li-settings-wire";
+import { portableChatPath } from "../lib/portable-chat-url";
 const trustedOrigins = new Set([
   "https://lianki.com",
   "https://www.lianki.com",
   "https://preview.lianki.com",
 ]);
 export type PortableWatch = (key: string, changed: () => void) => () => void;
+type PortablePanel = { destroy(): void; collapse(value: boolean): void; isCollapsed(): boolean };
+/**
+ * The main site's chat window for 随身Li: packages/debug-chat's DebugChat in a
+ * closed shadow root (embed/partner-embed.tsx mountPortable), loaded lazily by
+ * the userscript. Null when it cannot run here; then the plain panel shows.
+ */
+export type PortableUi = {
+  mount(o: {
+    doc: Document;
+    appOrigin: string;
+    call: PortableChatCall;
+    principal: string;
+    strings: {
+      name: string;
+      connecting: string;
+      failed: string;
+      advancedHint: string;
+      excludeHere: string;
+    };
+    advancedHref: string;
+    onExclude(): void;
+    onInvalidAccount(): void;
+  }): { destroy(): void };
+};
 /** Only the new chat subsystem is managed here. LiCards startup and its legacy credentials are untouched. */
 export function startPortableLi(d: {
   gm: GmStore;
@@ -40,6 +65,8 @@ export function startPortableLi(d: {
   call: PortableChatCall;
   watch?: PortableWatch;
   signal?: AbortSignal;
+  /** Loads the main site's chat window (lazily, once); absent: the plain panel. */
+  ui?: () => Promise<PortableUi | null>;
 }) {
   const store = globalChatStore(d.gm);
   // Unsupported/non-web documents must disable only portable chat, never abort LiCards startup.
@@ -49,7 +76,7 @@ export function startPortableLi(d: {
     if ((url.protocol === "https:" || url.protocol === "http:") && url.origin === d.hostOrigin)
       host = siteKey(url.hostname);
   } catch {}
-  let panel: ReturnType<typeof portableLiPanel> | undefined,
+  let panel: PortablePanel | undefined,
     promptClose: (() => void) | undefined,
     destroyed = false,
     generation = 0;
@@ -78,37 +105,94 @@ export function startPortableLi(d: {
       }),
     );
   };
+  const fallback = (principal: string) => {
+    const p = store.read();
+    const locale = readPortableUiLanguage(d.gm, d.win.navigator.language);
+    return portableLiPanel({
+      doc: d.doc,
+      origin: d.origin,
+      hostOrigin: d.hostOrigin,
+      principal,
+      call: d.call,
+      locale,
+      strings: PORTABLE_LI_STRINGS[locale],
+      common: pillChatStrings(locale),
+      collapsed: p.collapsed.includes(host!),
+      onCollapse: (value) => {
+        store.collapse(host!, value);
+        publish();
+      },
+      onExclude,
+      onInvalidAccount,
+    });
+  };
+  const onExclude = () => {
+    store.exclude(host!, true);
+    panel?.destroy();
+    panel = undefined;
+    publish();
+  };
+  const onInvalidAccount = () => {
+    store.invalidate();
+    close();
+    publish(true);
+  };
   const show = () => {
     if (destroyed || !host || trusted || !d.top || panel || d.doc.visibilityState === "hidden")
       return;
     const p = store.read();
     if (!p.principal || !globalChatAllowed(p, host, p.principal)) return;
+    const principal = p.principal;
+    if (!d.ui) {
+      panel = fallback(principal);
+      return;
+    }
+    // The main site's chat window (packages/debug-chat), loaded on first show.
+    // Until it is drawn, a placeholder holds the slot so nothing opens twice.
+    const gen = generation;
+    let mounted: { destroy(): void } | undefined;
+    let gone = false;
+    const slot: PortablePanel = {
+      destroy() {
+        gone = true;
+        mounted?.destroy();
+      },
+      collapse() {},
+      isCollapsed: () => false,
+    };
+    panel = slot;
     const locale = readPortableUiLanguage(d.gm, d.win.navigator.language);
-    panel = portableLiPanel({
-      doc: d.doc,
-      origin: d.origin,
-      hostOrigin: d.hostOrigin,
-      principal: p.principal,
-      call: d.call,
-      locale,
-      strings: PORTABLE_LI_STRINGS[locale],
-      common: pillChatStrings(locale),
-      collapsed: p.collapsed.includes(host),
-      onCollapse: (value) => {
-        store.collapse(host, value);
-        publish();
-      },
-      onExclude: () => {
-        store.exclude(host, true);
-        panel = undefined;
-        publish();
-      },
-      onInvalidAccount: () => {
-        store.invalidate();
-        close();
-        publish(true);
-      },
-    });
+    const t = PORTABLE_LI_STRINGS[locale];
+    void d
+      .ui()
+      .then((ui) => {
+        if (gone || generation !== gen || panel !== slot) return;
+        if (ui)
+          try {
+            mounted = ui.mount({
+              doc: d.doc,
+              appOrigin: d.origin,
+              call: d.call,
+              principal,
+              strings: {
+                name: t.title,
+                connecting: t.connecting,
+                failed: t.failed,
+                advancedHint: t.advancedHint,
+                excludeHere: t.excludeHere,
+              },
+              advancedHref: d.origin + portableChatPath(d.hostOrigin),
+              onExclude,
+              onInvalidAccount,
+            });
+            return;
+          } catch {}
+        // The chat window could not load here (no eval, blocked styles): the plain panel.
+        panel = fallback(principal);
+      })
+      .catch(() => {
+        if (!gone && generation === gen && panel === slot) panel = fallback(principal);
+      });
   };
   const allow = async () => {
     const gen = ++generation;
