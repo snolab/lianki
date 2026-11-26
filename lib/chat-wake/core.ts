@@ -2,7 +2,7 @@
  * Chat wake, the core (docs/chat-wake.md): the hub kept new lines of a thread
  * (DebugSessions.chatLog "put", worker.ts). For every live token of that
  * thread a person's line names (`@<token name>`), one `chat_mention` row is
- * kept (D1, migration 0086), and the token's events go to every enabled wake
+ * kept (D1, migration 0087), and the token's events go to every enabled wake
  * adapter through one `wake()`.
  *
  * Deny by default: the flag mcp.events (the core), the token live with

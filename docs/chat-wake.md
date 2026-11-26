@@ -14,7 +14,7 @@ cursor), `lib/chat-wake/core.ts` (record and `wake()`),
 `lib/chat-wake/pull.ts` (the pull adapter), `lib/chat-wake/principal.ts`;
 the ChatGPT push adapter in `lib/mcp-events/*`; `app/api/mcp-events/route.ts`,
 `workers/mcp/src/mcp.ts` (forwarding), `worker.ts` `DebugSessions.chatLog` (the
-trigger), `db/migrations/0085_mcp_events.sql`, `0086_chat_wake.sql`. Tests:
+trigger), `db/migrations/0085_mcp_events.sql`, `0087_chat_wake.sql`. Tests:
 `unit/mcp-events.test.ts`, `unit/chat-wake.test.ts`.
 
 ## Adapters
@@ -89,7 +89,7 @@ When the hub puts new lines of a thread (`DebugSessions.chatLog`, below):
 The ChatGPT adapter ignores `fresh`. As before the refactor, a line put again is
 POSTed again with the same `eventId`, and ChatGPT dedupes on `webhook-id`.
 
-### D1 `chat_mention` (migration 0086)
+### D1 `chat_mention` (migration 0087)
 
 | column       | meaning                                                         |
 | ------------ | --------------------------------------------------------------- |
@@ -478,7 +478,7 @@ live, so a rename takes effect at the next line.
 
 ## Rollout
 
-1. Apply migrations 0085 and 0086 to D1 (owner step; not done).
+1. Apply migrations 0085 and 0087 to D1 (0086 is the costs branch) (owner step; not done).
 2. Deploy main and lianki-mcp.
 3. Turn `mcp.events` on at https://lianki.com/dev/flags#mcp.events. Check
    `mcp.eventsCallbackHosts` at /dev/config.
