@@ -29,9 +29,11 @@ const stampOf = (inputs: string[]) =>
     .join("|");
 
 /** The partner build, reused in this process while none of its inputs changed. */
-export async function partnerBuildCached(): Promise<PartnerBuild> {
+export async function partnerBuildCached(
+  build_: () => Promise<PartnerBuild> = buildPartner,
+): Promise<PartnerBuild> {
   if (last && stampOf(last.build.inputs) === last.stamp) return last.build;
-  const build = await buildPartner();
+  const build = await build_();
   last = { build, stamp: stampOf(build.inputs) };
   return build;
 }

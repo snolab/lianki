@@ -694,3 +694,97 @@ test("why the window fell back is recorded as a reason code on <html>, with no s
     drawn.finish();
   }
 });
+
+test("the pill wiring opens 随身Li in the lianki.com frame with a consented-account ticket; a navigated frame is torn down", async () => {
+  const { pillChat } = await import("../src/pill-chat");
+  const win = new Window({ url: "https://example.org/" });
+  const restore = stubGlobals({
+    window: win,
+    document: win.document,
+    CustomEvent: win.CustomEvent,
+    MutationObserver: win.MutationObserver,
+    location: win.location,
+  });
+  const roots: ShadowRoot[] = [];
+  const original = win.HTMLElement.prototype.attachShadow;
+  win.HTMLElement.prototype.attachShadow = function (o) {
+    const r = original.call(this, o);
+    roots.push(r as never);
+    return r;
+  };
+  const values = new Map<string, unknown>([
+    [PILLCHAT_ON_KEY, JSON.stringify({ on: true, at: Date.now() })],
+    [PILL_UI_LANGUAGE_KEY, "zh"],
+  ]);
+  const ac = new AbortController();
+  let shellDeps: { ticket: () => Promise<string | null>; label: string } | undefined;
+  let destroyed = 0;
+  const iframe = win.document.createElement("iframe");
+  const asked: string[] = [];
+  try {
+    pillChat({
+      origin: "https://lianki.com",
+      hostname: "example.org",
+      hostOrigin: "https://example.org",
+      path: "/a",
+      top: true,
+      doc: win.document as never,
+      win: win as never,
+      info: { sandboxMode: "raw" },
+      signal: ac.signal,
+      getValue: (key, fallback) => values.get(key) ?? fallback,
+      setValue: (key, value) => void values.set(key, value),
+      gmFetch: async () => {
+        throw Error("no general API fetch");
+      },
+      pageFetch: async (url) => {
+        asked.push(url);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ ticket: "tk", principal: "account_a" }),
+        };
+      },
+      chatRequest: ((details: { data?: string; onload: (r: unknown) => void }) => {
+        const input = JSON.parse(details.data ?? "{}");
+        const body =
+          input.op === "hello"
+            ? { ok: true, kind: "hello", principal: "account_a" }
+            : { ok: false, error: "unavailable" };
+        setTimeout(() => details.onload({ status: 200, responseText: JSON.stringify(body) }), 0);
+        return { abort() {} };
+      }) as never,
+      frame: ((deps: { ticket: () => Promise<string | null>; label: string }) => {
+        shellDeps = deps;
+        return {
+          result: Promise.resolve("ready" as const),
+          iframe,
+          host: win.document.createElement("div"),
+          destroy: () => void destroyed++,
+        };
+      }) as never,
+    });
+    await turn();
+    const allow = roots
+      .flatMap((r) => [...r.querySelectorAll("button")])
+      .find((b) => b.textContent === "同意所有网站");
+    (allow as unknown as { click(): void }).click();
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 5));
+      await turn();
+    }
+    expect(shellDeps?.label).toBe("example.org/a");
+    expect(await shellDeps!.ticket()).toBe("tk");
+    expect(asked).toEqual(["https://lianki.com/api/chat/page-ticket"]);
+    expect(win.document.documentElement.getAttribute("data-lk-portable")).toBe("frame");
+    iframe.dispatchEvent(new win.Event("load"));
+    expect(destroyed).toBe(0);
+    iframe.dispatchEvent(new win.Event("load"));
+    expect(destroyed).toBe(1);
+  } finally {
+    ac.abort();
+    win.HTMLElement.prototype.attachShadow = original;
+    restore();
+    await win.happyDOM.abort();
+  }
+});
