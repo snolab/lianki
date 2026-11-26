@@ -200,7 +200,15 @@ describe("protocol", () => {
 describe("tools", () => {
   test("tools/list with every permission: exactly the local server's tool names", async () => {
     const { env } = setup({
-      scopes: ["study", "chat:read", "chat:write", "chat:ask", "progress", "apps:publish"],
+      scopes: [
+        "identity:self",
+        "study",
+        "chat:read",
+        "chat:write",
+        "chat:ask",
+        "progress",
+        "apps:publish",
+      ],
     });
     const { result } = await (await handle(rpc("tools/list"), env)).json();
     expect(result.tools.map((t: { name: string }) => t.name)).toEqual(TOOLS.map((t) => t.name));

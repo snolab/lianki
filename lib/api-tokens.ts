@@ -48,6 +48,8 @@ export const SCOPES = [
   { id: "chat:ask", group: "chat" }, // post an ask card (only a tap answers it)
   // Publish single-file mini apps for this account; publication also requires chat:write.
   { id: "apps:publish", group: "apps" },
+  // Name and configure the calling agent identity itself (docs/agent-identities.md).
+  { id: "identity:self", group: "identity" },
   // Run code on the owner's open pages (eval.ts, lianki-dev), no pairing tap:
   // a site owner's token only (OWNER_SCOPES), at most EVAL_MAX_DAYS.
   { id: "eval", group: "owner" },
@@ -263,6 +265,36 @@ export async function listTokens(db: D1Like, owner: TokenOwner, now = Date.now()
   return results.map((r) => info(r, now));
 }
 
+/** Rename one of this account's tokens from Settings (no identity:self required). */
+export async function renameToken(
+  db: D1Like,
+  owner: TokenOwner,
+  id: unknown,
+  name: string,
+  now = Date.now(),
+): Promise<TokenInfo | null> {
+  if (typeof id !== "string" || !/^[0-9a-f]{64}$/.test(id)) return null;
+  const r = await db
+    .prepare(`UPDATE api_tokens SET name = ?4 WHERE token_hash = ?3 AND ${MINE} RETURNING *`)
+    .bind(owner.userId, owner.email, id, name)
+    .first<Row>();
+  return r ? info(r, now) : null;
+}
+
+/**
+ * Atomically claim the calling untitled token's name via its identity:self bootstrap.
+ * Returns true only once (when name was NULL or empty); permanently closed afterward.
+ */
+export async function renameSelfToken(db: D1Like, id: string, name: string): Promise<boolean> {
+  const row = await db
+    .prepare(
+      "UPDATE api_tokens SET name = ?1 WHERE token_hash = ?2 AND (name IS NULL OR name = '') RETURNING token_hash",
+    )
+    .bind(name, id)
+    .first<{ token_hash: string }>();
+  return row !== null;
+}
+
 /** Revoke one of this account's tokens by id; another account's is "not found". */
 export async function revokeToken(
   db: D1Like,
@@ -325,7 +357,7 @@ export type CheckResult =
     }
   | {
       ok: false;
-      reason: "malformed" | "unknown" | "expired" | "scope";
+      reason: "malformed" | "unknown" | "expired" | "untitled" | "scope";
       id?: string;
       userId?: string;
       needScope?: ScopeId;
@@ -342,7 +374,7 @@ export async function checkToken(
   token: unknown,
   need: ScopeId,
   now = Date.now(),
-  opts: { byHash?: boolean } = {},
+  opts: { byHash?: boolean; allowUntitled?: boolean } = {},
 ): Promise<CheckResult> {
   let id: string;
   if (opts.byHash) {
@@ -373,6 +405,7 @@ export async function checkToken(
     >();
   if (!r) return { ok: false, reason: "unknown" };
   if (isExpired(r.expires_at, now)) return { ok: false, reason: "expired", id, userId: r.uid };
+  if (!r.name && !opts.allowUntitled) return { ok: false, reason: "untitled", id, userId: r.uid };
   const scopes = rowScopes(r.scopes);
   if (!scopes.includes(need))
     return { ok: false, reason: "scope", id, userId: r.uid, ...tokenScopeRequest(id, need)! };

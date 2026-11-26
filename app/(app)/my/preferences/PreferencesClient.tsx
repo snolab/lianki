@@ -132,6 +132,7 @@ export default function PreferencesClient({
   appBadge = false,
   hasVibe = false,
   miniApps = false,
+  agentIdentities = false,
   children,
 }: {
   showKeySync?: boolean;
@@ -140,6 +141,8 @@ export default function PreferencesClient({
   hasVibe?: boolean;
   /** `mini-apps` is on and the account has an app: the Mini apps section (docs/mini-apps.md). */
   miniApps?: boolean;
+  /** `chat.agent-identities` is on: "Add My Agent" primary entry in API tokens. */
+  agentIdentities?: boolean;
   children?: React.ReactNode;
 }) {
   const {
@@ -446,7 +449,7 @@ export default function PreferencesClient({
         </section>
 
         {/* API Tokens */}
-        <TokenManager />
+        <TokenManager agentIdentities={agentIdentities} />
 
         {/* Mini apps: what each may use, and removing an answer (docs/mini-apps.md) */}
         {miniApps && <MiniAppsSettings />}

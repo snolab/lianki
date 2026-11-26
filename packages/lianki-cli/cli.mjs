@@ -123,6 +123,26 @@ const nextOf = (d) => (d?.nextUrl ? { url: d.nextUrl, title: d.nextTitle ?? null
 
 // ── Commands ──────────────────────────────────────────────────────────────
 
+async function cmdWhoami(c) {
+  const token = await needToken(c);
+  const { data } = await call(c, token, { path: "/api/my/identity" });
+  emit(c, "whoami", data, (d) =>
+    `${d.name || "(untitled)"}  ${d.account}  [${(d.scopes ?? []).join(", ")}]`,
+  );
+}
+
+async function cmdSetName(c) {
+  const token = await needToken(c);
+  const name = String(c.argv.name ?? "").trim();
+  if (!name) throw usage("name is required", 'lianki set-name "My Agent"');
+  const { data } = await call(c, token, {
+    method: "POST",
+    path: "/api/my/identity",
+    body: { name },
+  });
+  emit(c, "set-name", data, (d) => `named ${d.name}`);
+}
+
 async function cmdAdd(c) {
   const token = await needToken(c);
   const { data } = await call(c, token, {
@@ -1287,6 +1307,22 @@ function build(args, deps, box) {
           ),
         [['lianki progress --path /dev/cli --task "CLI: progress verbs" --status doing --eta 30m', ""]],
       ),
+    )
+    .command(
+      "whoami",
+      "Show this token's agent identity (works before naming)",
+      (y) => examples(y, [["lianki whoami --json", "inspect identity, scopes, untitled status"]]),
+      act(cmdWhoami),
+    )
+    .command(
+      "set-name <name>",
+      "Set this agent identity's display name on first connect",
+      (y) =>
+        examples(
+          y.positional("name", { type: "string", describe: "Display name (1-40 characters)" }),
+          [['lianki set-name "Claude Desktop"', "name this identity"]],
+        ),
+      act(cmdSetName),
     )
     .command(
       "mcp",

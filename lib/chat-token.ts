@@ -112,7 +112,10 @@ export async function chatTokenCheck(
   if (!c.ok) {
     if (c.reason === "malformed") return { ok: false, error: "bad request" };
     if (c.id && c.userId) await refused(db, c.userId, c.id, `${op} ${c.reason}`, now);
-    return { ok: false, error: c.reason === "unknown" ? "unknown" : c.reason };
+    return {
+      ok: false,
+      error: c.reason === "unknown" ? "unknown" : c.reason === "untitled" ? "scope" : c.reason,
+    };
   }
   if (op === "prepare") {
     const read = await checkToken(db, cred, "chat:read", now, { byHash });

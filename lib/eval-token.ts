@@ -77,7 +77,10 @@ export async function evalTokenCheck(
   if (!c.ok) {
     if (c.reason === "malformed") return { ok: false, error: "bad request" };
     if (c.id && c.userId) await refused(db, c.userId, c.id, `eval ${op} ${c.reason}`, now);
-    return { ok: false, error: c.reason === "unknown" ? "unknown" : c.reason };
+    return {
+      ok: false,
+      error: c.reason === "unknown" ? "unknown" : c.reason === "untitled" ? "scope" : c.reason,
+    };
   }
   // A token from before expiry dates has none: eval needs one, always.
   const expires = c.expiresAt ? Date.parse(c.expiresAt) : NaN;
