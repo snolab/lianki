@@ -366,11 +366,10 @@ export default function TokenManager({ hideHeading = false }: { hideHeading?: bo
                   key={p.name}
                   type="button"
                   disabled={busy}
+                  aria-pressed={active}
                   data-testid={`token-platform-${p.name.toLowerCase()}`}
                   onClick={() => {
                     setName(p.name);
-                    setScopes([...DEFAULT_TOKEN_SCOPES]);
-                    setExpiry((cur) => cur ?? { days: 90 });
                     setError(null);
                   }}
                   className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${
