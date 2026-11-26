@@ -191,6 +191,7 @@ that are expensive to rediscover.
 | ChatGPT / Claude.ai connecting to /mcp by OAuth (flag `mcp.oauth`)         | [docs/mcp-oauth.md](docs/mcp-oauth.md)                                         |
 | `lianki-dev`, the agent lanes' CLI: say, ask, progress, doctor             | [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md)                               |
 | Which lane answers him ("codex, …"), codex/agy listeners                   | [docs/lane-listen.md](docs/lane-listen.md)                                     |
+| Chat ↔ a user's own ay agent: ACP-profile event protocol (design)          | [docs/agent-channel-protocol.md](docs/agent-channel-protocol.md)               |
 | Hot islands: swappable components, shared state                            | [docs/dev-hot-islands.md](docs/dev-hot-islands.md)                             |
 | Live view: dev JS or whole dev pages (?live=) on lianki.com                | [docs/live-view.md](docs/live-view.md)                                         |
 | Custom frontends: a user's own dev server at ?live, the /api contract      | [docs/custom-frontend.md](docs/custom-frontend.md)                             |
