@@ -136,6 +136,33 @@ function setup(secret: string | undefined = ROOT) {
   };
 }
 
+describe("Partner progress context", () => {
+  it("only the internal binding path returns a small field allowlist", async () => {
+    const s = setup();
+    s.storage.store.set("e:/work", {
+      id: "/work",
+      task: "Build feature",
+      status: "doing",
+      pct: 40,
+      at: 123,
+      assignee: { name: "private-name" },
+      notes: ["private note"],
+      action: "private command",
+      needs: "private approval",
+      token: "private token",
+    });
+    s.storage.store.set("e:/done", { id: "/done", task: "Done", status: "done", at: 124 });
+    const result = await s.hub.fetch(new Request("https://lianki-push/internal/partner-state"));
+    expect(result.status).toBe(200);
+    expect(await result.json()).toEqual({
+      at: s.now(),
+      entries: [{ id: "/work", task: "Build feature", status: "doing", pct: 40, at: 123 }],
+    });
+    const external = await s.hub.fetch(new Request("https://lianki.com/internal/partner-state"));
+    expect(external.status).toBe(401);
+  });
+});
+
 describe("progress tokens", () => {
   it("knows the root, verifies a scoped token, and refuses forgeries and expiry", async () => {
     expect(await verifyProgressToken(ROOT, ROOT)).toEqual({ root: true });

@@ -14,7 +14,7 @@
  *   lianki-dev lane-listen --as claude --cwd … --everyone --system --skip-owner
  *
  * --everyone (tier ①, docs/lane-listen.md "Six tiers"): agents' lines are handed over
- * too, marked 【agent · coco】 (FYI, never answered), never the lane's own; the hub
+ * too, marked 【agent · coco】 (may respond or stay silent), never the lane's own; the hub
  * shows it as hearing all messages. --system (tier ⓪, implies --everyone): the system
  * lines as well (lane events, state-tree hub lines, alerts), marked 【系统】; the hub
  * shows "all messages + system notices". --skip-owner: not

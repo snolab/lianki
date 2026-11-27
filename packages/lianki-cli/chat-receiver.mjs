@@ -142,7 +142,9 @@ export function createChatReceiver({ bridge, prepare, config = {}, now = Date.no
         return bridge.accept(event);
       }
       if (!["owner", "friend", "user"].includes(m.from)) return;
-      if (scope !== "owner" && m.from === "owner") return;
+      // "own" is the public socket's authenticated own-thread alias, not a
+      // different account. A locked friend inbox still refuses owner lines.
+      if (scope !== "owner" && scope !== "own" && m.from === "owner") return;
       if (known.get(m.id)?.text === m.text) return;
       remember(m);
       if (urgent(m.text)) {

@@ -47,6 +47,8 @@ export type Sender = {
  * (optional; absent on older lines and on the agent's) draws the avatar.
  */
 export type ChatMessage = {
+  /** Authored by the Learning Partner's hub, never copied from a page/token request. */
+  coordination?: import("../../../lib/partner-coordination").PartnerCoordination;
   /** Current durable thread version; identity and logical display time remain stable. */
   seq?: number;
   removed?: true;

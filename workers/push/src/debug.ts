@@ -346,6 +346,17 @@ import {
   twoMicMatch,
 } from "../../../packages/debug-chat/src/two-mic";
 import { OwnerAi } from "./owner-ai";
+import { PartnerTurn, type TurnLine } from "./partner-turn";
+import { routeLine } from "../../../lib/lane-route";
+import {
+  PARTNER_STANDARD_FLAG,
+  PARTNER_TURN_DELAY_KEY,
+  PARTNER_TURN_DELAY_MS,
+  PARTNER_TURN_DELAY_MAX,
+  PARTNER_TURN_WAIT_KEY,
+  PARTNER_TURN_WAIT_MS,
+  PARTNER_TURN_WAIT_MAX,
+} from "../../../lib/partner-ai-config";
 import { partnerHistoryLine } from "../../../lib/partner-lines";
 import { type RosterEntry, rollCallText, rosterOf } from "../../../packages/debug-chat/src/roster";
 import { PARTNER_SUBPROTOCOL, STT_TICKET_SKEW_S } from "../../../lib/stt-ticket";
@@ -1073,6 +1084,25 @@ export class DebugHub {
   private ownerLaneAt = 0;
   /** Per thread: the latest AI turn started (a newer message makes an older reply stale). */
   private aiTurn = new Map<string, number>();
+  private standardTurns = new PartnerTurn<{
+    page: PageAtt;
+    context?: ChatContext;
+    scene?: SttScene;
+  }>({
+    timer: { set: (f, ms) => this.timer.set(f, ms), clear: (h) => this.timer.clear(h) },
+    delayMs: PARTNER_TURN_DELAY_MS,
+    maxWaitMs: PARTNER_TURN_WAIT_MS,
+    now: () => this.now(),
+    maxLines: PARTNER_POLISH_LINES,
+    reply: async (_thread, lines, { page, context, scene }, current) => {
+      const last = lines.at(-1)!;
+      await this.aiReply(page, page.email ?? "", last.at, context, scene, last.id, {
+        lines,
+        current,
+      });
+    },
+    failed: () => console.log(JSON.stringify({ msg: "partner.standard-failed" })),
+  });
   /** Li in the owner's thread (owner-ai.ts): his unaddressed lines no lane answered. */
   private ownerAi = new OwnerAi<{ page: PageAtt; context?: ChatContext; scene?: SttScene }>({
     now: () => this.now(),
@@ -2343,7 +2373,15 @@ export class DebugHub {
     if (mark?.shown) this.toOwnerPages({ type: "echo-gone", ids: [id] });
     await this.post({ ...line, thread: OWNER_THREAD });
     // "This was me" on his page: now it is his line, and Li may answer it (owner-ai.ts).
-    if (page && line.from === "owner")
+    if (
+      page &&
+      line.from === "owner" &&
+      !(await this.standardReply(page, {
+        id: line.id,
+        at: line.at,
+        spoken: line.source === "stt",
+      }))
+    )
       await this.ownerAi.line(
         {
           id: line.id,
@@ -5033,9 +5071,18 @@ export class DebugHub {
           // An echo is never polished (nor read back): it was not posted.
           const posted = await line(speaker);
           await accepted(typeof posted === "number" ? posted : undefined);
-          if (posted !== false && m.source === "stt") this.autoPolishSoon(page);
+          const standard =
+            typeof posted === "number" &&
+            (!speaker || speaker.decision === "me") &&
+            (await this.standardReply(
+              page,
+              { id: m.id, at: t, spoken: m.source === "stt" },
+              m.context,
+              m.scene,
+            ));
+          if (!standard && posted !== false && m.source === "stt") this.autoPolishSoon(page);
           // A new line of his: Li may answer it if no lane does (owner-ai.ts).
-          if (typeof posted === "number")
+          if (!standard && typeof posted === "number")
             await this.ownerAi.line(
               {
                 id: m.id,
@@ -5175,6 +5222,7 @@ export class DebugHub {
       ...(spoken ? { source: "stt", ...(scene ? { scene } : {}) } : {}),
     });
     await accepted?.(seq);
+    if (await this.standardReply(page, { id, at: t, spoken }, context, scene)) return;
     // The owner's thread never gets here (OWNER_THREAD lines go to the owner's lanes).
     const ai = await this.aiState();
     if (ai === "on") await this.aiReply(page, email, t, context, scene, id);
@@ -5232,6 +5280,7 @@ export class DebugHub {
       ...(spoken ? { source: "stt", ...(scene ? { scene } : {}) } : {}),
     });
     await accepted?.(seq);
+    if (await this.standardReply(page, { id, at: t, spoken }, context, scene)) return;
     const ai = await this.aiState();
     if (ai === "on") await this.aiReply(page, "", t, context, scene, id);
     else if (ai === "unsure")
@@ -5394,6 +5443,39 @@ export class DebugHub {
    * The reply is dropped when an agent (a lane) posted in this thread after
    * the line, or a newer line started its own turn: a human reply wins.
    */
+  private async standardOn() {
+    // An older main Worker has no model RPC: do not ask it for flags either.
+    if (!this.sessions?.partnerReply) return false;
+    return (
+      (await this.flagValue(PARTNER_STANDARD_FLAG).catch(() => false)) === true &&
+      (await this.aiOn())
+    );
+  }
+
+  private async standardReply(
+    page: PageAtt,
+    line: TurnLine,
+    context?: ChatContext,
+    scene?: SttScene,
+  ) {
+    if (!(await this.standardOn())) return false;
+    this.ownerAi.cancel();
+    const [value, wait] = await Promise.all([
+      this.sessions?.config?.(PARTNER_TURN_DELAY_KEY).catch(() => undefined),
+      this.sessions?.config?.(PARTNER_TURN_WAIT_KEY).catch(() => undefined),
+    ]);
+    const delay =
+      typeof value === "number" && Number.isFinite(value) && value >= 0
+        ? Math.min(value, PARTNER_TURN_DELAY_MAX)
+        : PARTNER_TURN_DELAY_MS;
+    const maxWait =
+      typeof wait === "number" && Number.isFinite(wait) && wait >= 0
+        ? Math.min(wait, PARTNER_TURN_WAIT_MAX)
+        : PARTNER_TURN_WAIT_MS;
+    await this.standardTurns.add(page.thread, line, { page, context, scene }, delay, maxWait);
+    return true;
+  }
+
   private async aiReply(
     page: PageAtt,
     email: string,
@@ -5401,6 +5483,7 @@ export class DebugHub {
     context?: ChatContext,
     scene?: SttScene,
     msgId?: string,
+    standard?: { lines: readonly TurnLine[]; current(): boolean },
   ) {
     const thread = page.thread;
     const rpc = this.sessions;
@@ -5431,6 +5514,12 @@ export class DebugHub {
     const recent = (await this.history(thread))
       .filter((m) => m.from === (ownerAccount ? "owner" : "friend") || m.from === "agent")
       .slice(-HISTORY_LINES);
+    const sourceIds = new Set(standard?.lines.map((x) => x.id));
+    const sourceLines = recent.filter((m) => sourceIds.has(m.id) && m.from !== "agent");
+    const sources = sourceLines.map((m) => ({
+      id: m.id,
+      text: (m.raw ?? m.text).slice(0, PARTNER_POLISH_LINE_CHARS),
+    }));
     // Li's own lines as its own; every other agent's attributed, never as Li's (partner-lines.ts).
     const lines = recent.map(partnerHistoryLine);
     // Cache order (flag partner.stable-prompt, default on): the frozen window; unsure = the old order.
@@ -5486,7 +5575,12 @@ export class DebugHub {
     const pageChars = Object.values(pageInfo).reduce((n, v) => n + (v?.length ?? 0), 0);
     // The most this call can cost: a ceiling on input tokens for everything the
     // prompt can hold (lib/partner-ai-config.ts), and every output token used.
-    const reserveIn = reserveInTokens(chars + pageChars);
+    const reserveIn = reserveInTokens(
+      chars +
+        pageChars +
+        sources.reduce((n, m) => n + m.id.length + m.text.length, 0) +
+        (standard && ownerAccount && !page.chatOnly ? 1600 : 0),
+    );
     const reserveTokens = reserveIn + MAX_OUTPUT_TOKENS;
     const reserveMicro = Math.ceil(costUsd(reserveIn, MAX_OUTPUT_TOKENS) * 1e6);
     const overUser = used + reserveTokens > caps.userTokens;
@@ -5520,6 +5614,8 @@ export class DebugHub {
     const req: PartnerRequest = {
       userId,
       ...(page.chatOnly ? { chatOnly: true as const } : {}),
+      ...(standard ? { standard: true as const } : {}),
+      ...(standard ? { turn: sources } : {}),
       ...(msgId ? { msgId } : {}),
       ...(ownerAccount ? { owner: true as const } : {}),
       ...(roster.length ? { roster } : {}),
@@ -5557,7 +5653,9 @@ export class DebugHub {
       Math.ceil(costUsd(tokensIn, tokensOut) * 1e6) - reserveMicro,
       win,
     );
-    const stale = this.aiTurn.get(thread) !== turn || (this.agentAt.get(thread) ?? 0) >= lineAt;
+    const stale =
+      this.aiTurn.get(thread) !== turn ||
+      (standard ? !standard.current() : (this.agentAt.get(thread) ?? 0) >= lineAt);
     // Token counts and latency only: never the text, the user or the page.
     console.log(
       JSON.stringify({
@@ -5595,12 +5693,34 @@ export class DebugHub {
     }
     // The polish section stands on its own: applied even when a lane's reply made Li's stale.
     if (owner && res.polish?.length) await this.liPolish(polish, res.polish);
-    if (stale) return;
+    if (stale || (standard && (!standard.current() || !(await this.standardOn())))) return;
+    const targets = [
+      ...new Set(
+        sources.flatMap((m) => {
+          const route = routeLine(m.text);
+          return route.addressed ? route.lanes : [];
+        }),
+      ),
+    ];
+    const seqs = sourceLines.map((m) => m.seq).filter((n): n is number => typeof n === "number");
     await this.post({
       id: crypto.randomUUID().slice(0, 8),
       from: "agent",
       label: PARTNER_AI_LABEL,
       text: res.text,
+      ...(standard && sources.length
+        ? {
+            coordination: {
+              v: 1 as const,
+              state: "answered" as const,
+              from: ownerAccount ? ("owner" as const) : ("friend" as const),
+              sources,
+              targets,
+              summary: res.handoff || sources.map((m) => m.text).join("\n"),
+              ...(seqs.length ? { fromSeq: Math.min(...seqs), throughSeq: Math.max(...seqs) } : {}),
+            },
+          }
+        : {}),
       at: this.now(),
       thread,
       email,

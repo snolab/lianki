@@ -9,6 +9,15 @@
 /** The owner's switch at /dev/flags (lib/flags.ts). Off: nothing routes to the model. */
 export const PARTNER_AI_FLAG = "partner.ai-reply";
 
+/** Shared reply and hand-off flow, including accounts with development grants. */
+export const PARTNER_STANDARD_FLAG = "partner.standard-flow";
+export const PARTNER_TURN_DELAY_KEY = "partner.turnPauseMs";
+export const PARTNER_TURN_DELAY_MS = 8000;
+export const PARTNER_TURN_DELAY_MAX = 30000;
+export const PARTNER_TURN_WAIT_KEY = "partner.turnMaxWaitMs";
+export const PARTNER_TURN_WAIT_MS = 30000;
+export const PARTNER_TURN_WAIT_MAX = 120000;
+
 /**
  * The owner's own thread answered by the model too (docs/partner-ai.md,
  * "The owner's thread"), on top of PARTNER_AI_FLAG: only his unaddressed
@@ -366,6 +375,12 @@ export type PartnerRequest = {
    * and the main Worker then serves the account only if it is the owner's.
    */
   owner?: true;
+  /** The shared flow; independently gated again before the model is called. */
+  standard?: true;
+  /** Hub-supplied source references, bounded again at the RPC boundary. */
+  turn?: { id: string; text: string }[];
+  /** Read by the main Worker after checking the dev grant; never accepted from RPC input. */
+  progress?: string;
   /** From a signed page-chat attachment only: no study/language/private-data reads. */
   chatOnly?: true;
   /**
@@ -410,6 +425,8 @@ export type PartnerResult =
       cachedIn?: number;
       /** The reply's polish section, held to the ids sent (absent: none, or unusable). */
       polish?: { id: string; text: string }[];
+      /** Advisory brief from the same model call; never a routing/permission decision. */
+      handoff?: string;
     }
   | {
       ok: false;

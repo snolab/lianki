@@ -544,6 +544,10 @@ export default {
       isInternal(url)
     )
       return env.DEBUG.get(env.DEBUG.idFromName("debug")).fetch(req);
+    if (url.pathname === "/internal/partner-state" && req.method === "GET" && isInternal(url)) {
+      if (!env.PROGRESS) return new Response("unavailable", { status: 503 });
+      return env.PROGRESS.get(env.PROGRESS.idFromName("progress")).fetch(req);
+    }
     if (url.pathname === "/internal/publish" && req.method === "POST" && isInternal(url))
       return env.HUB.get(env.HUB.idFromName("version")).fetch(req);
     // Pages from before the switch listen on the old Server-Sent Events
