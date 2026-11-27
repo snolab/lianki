@@ -3306,6 +3306,54 @@ export class DebugHub {
     return out;
   }
 
+  private etaOwnerPosting: Promise<void> = Promise.resolve();
+
+  /** One rolling chat line per agent in a fixed one-minute window; receipt prompts stay separate. */
+  private async postEtaOwner(line: ChatMessage & { thread: string }, assignee: string) {
+    const run = this.etaOwnerPosting.then(async () => {
+      const key = `etaowner:${assignee}`;
+      const old = await this.ctx.storage.get<{ id: string; at: number; items: [string, string][] }>(
+        key,
+      );
+      const current =
+        old && this.now() - old.at >= 0 && this.now() - old.at < 60_000
+          ? (await this.history(OWNER_THREAD)).find((m) => m.id === old.id && m.source === "eta")
+          : undefined;
+      if (old && current && old.items.length < 16) {
+        const items = new Map(old.items);
+        items.set(line.eta!.id, line.text);
+        const next: ChatMessage = {
+          ...current,
+          text: [...items.values()].join("\n"),
+          edited: { at: this.now(), by: ETA_AGENT, count: (current.edited?.count ?? 0) + 1 },
+        };
+        await this.writeLine(undefined, next);
+        await this.chatLogUpdate(OWNER_THREAD, next);
+        await this.ctx.storage.put(key, { ...old, items: [...items] });
+        await this.tellEdit(
+          {
+            type: "edited",
+            id: next.id,
+            thread: OWNER_THREAD,
+            text: next.text,
+            raw: next.text,
+            edited: next.edited!,
+          },
+          next.to,
+        );
+        return;
+      }
+      await this.post(line);
+      await this.ctx.storage.put(key, {
+        id: line.id,
+        at: this.now(),
+        items: [[line.eta!.id, line.text]],
+      });
+    });
+    this.etaOwnerPosting = run.catch(() => {});
+    await run;
+  }
+
   private async etaApi(req: Request): Promise<Response> {
     if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
     let ping: ReturnType<typeof parseEtaPing> = null;
@@ -3354,7 +3402,8 @@ export class DebugHub {
         ...(re ? { re } : {}),
       },
     };
-    await this.post(line);
+    if (!reply && !forLanes(ping) && ping.assignee) await this.postEtaOwner(line, ping.assignee);
+    else await this.post(line);
     // The reminder a later reply answers (eta.re): this node's latest lanes' line.
     if (forLanes(ping)) await this.ctx.storage.put(`etaline:${ping.id}`, line.id);
     console.log(

@@ -77,6 +77,7 @@ import {
   isPathId,
   isProgressId,
   mergeProgress,
+  clearProgressReminders,
   newChangeId,
   newestHistory,
   parseProgressReport,
@@ -1135,6 +1136,14 @@ export class ProgressHub {
     let pruned = 0;
     let next = Infinity;
     for (const e of all.values()) {
+      // Repair completed entries written before completion cleared notification state.
+      if (e.status === "done") {
+        const clean = clearProgressReminders(e);
+        if (clean !== e) {
+          await this.ctx.storage.put(progressKey(e), clean);
+          all.set(e.id, clean);
+        }
+      }
       if (
         e.status !== "done" &&
         ownerWaits(e) &&

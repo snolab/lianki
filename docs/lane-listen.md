@@ -273,6 +273,10 @@ Keychain prompt, `[y/N]`). Its own reports cannot say so, so a watcher on the
 Mac does: `scripts/dev/stall-watch.ts` (pure parts in
 `scripts/dev/stall-watch-lib.ts`).
 
+The generic idle input placeholder `What do you want to do?` is not a stall,
+including when ay reports it as `needs_input`. A real approval menu beneath
+it is still detected; other task-specific questions retain the quiet timer.
+
 - **What it reads.** One `ay ls --watch --local --cwd ~/ws/snolab/lianki`
   stream: ay's own diff of its agent registry, state edges
   (`active | idle | needs_input | stuck | stopped`) as NDJSON, no network.

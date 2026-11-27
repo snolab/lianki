@@ -4765,8 +4765,9 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
     const owner = s.page();
     await post(s, { ...ping, title: "Swipe: drag it", kind: "silent" });
     const silent = chats(owner).at(-1) as Record<string, unknown>;
-    expect(silent.text).toBe("Swipe 超时，未说明原因");
+    expect(silent.text).toBe("Swipe: drag it 超时，未说明原因");
     expect(silent.quiet).toBeUndefined();
+    s.tick(60_000);
     await post(s, { ...ping, kind: "late", reason: "CI 排队", etaAt: Date.now() + 20 * 60_000 });
     const late = chats(owner).at(-1) as Record<string, unknown>;
     expect(late.text).toMatch(/^Native swipe 超时：CI 排队。再要 \d+ 分钟$/);
@@ -4775,17 +4776,53 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
     expect((await post(s, { ...ping, kind: "late" })).status).toBe(400);
   });
 
+  it("groups one agent's owner reminders within a fixed minute, retaining descriptions and receipt lines", async () => {
+    const s = setup(on());
+    const owner = s.page();
+    await post(s, { ...ping, id: "/w/a", title: "verify: consent saved", kind: "silent" });
+    s.tick(59_999);
+    await post(s, { ...ping, id: "/w/b", title: "verify: title fits", kind: "silent" });
+    expect(chats(owner)).toHaveLength(1);
+    let lines = await s.hub.history();
+    expect(lines.filter((m) => m.source === "eta")).toHaveLength(1);
+    expect(lines.at(-1)!.text).toBe(
+      "verify: consent saved 超时，未说明原因\nverify: title fits 超时，未说明原因",
+    );
+    expect(owner.last("edited")).toMatchObject({ text: lines.at(-1)!.text });
+    // A changed reminder for the same task replaces its old wording, rather than duplicating it.
+    await post(s, {
+      ...ping,
+      id: "/w/a",
+      title: "verify: consent saved",
+      kind: "waiting",
+      reason: "review",
+    });
+    lines = await s.hub.history();
+    expect(lines.at(-1)!.text).not.toContain("consent saved 超时");
+    await post(s, { ...ping, id: "/w/c", kind: "silent", assignee: "other" });
+    expect(chats(owner)).toHaveLength(2);
+    s.tick(1);
+    await post(s, { ...ping, id: "/w/d", kind: "silent" });
+    expect(chats(owner)).toHaveLength(3);
+    // Each agent-facing receipt still gets its own message and code.
+    await lane(s, owner);
+    await post(s, { ...ping, code: "abcdef" });
+    await post(s, { ...ping, id: "/w/e", code: "ghijkl" });
+    expect(chats(owner)).toHaveLength(5);
+  });
+
   it("waiting on the owner: his reminder carries the reason, read aloud, no lane prompt", async () => {
     const s = setup(on());
     const owner = s.page();
     await post(s, { ...ping, title: "DNS 切换: apex", kind: "waiting", reason: "批准 DNS 改动" });
     const line = chats(owner).at(-1) as Record<string, unknown>;
-    expect(line.text).toBe("DNS 切换：在等你——批准 DNS 改动");
+    expect(line.text).toBe("DNS 切换: apex：在等你——批准 DNS 改动");
     expect(line.quiet).toBeUndefined();
     expect(line).toMatchObject({ source: "eta", from: "agent" });
     // No reason (status waiting-owner without needs) is still one.
+    s.tick(60_000);
     await post(s, { ...ping, title: "DNS 切换: apex", kind: "waiting" });
-    expect((chats(owner).at(-1) as Record<string, unknown>).text).toBe("DNS 切换：在等你");
+    expect((chats(owner).at(-1) as Record<string, unknown>).text).toBe("DNS 切换: apex：在等你");
   });
 
   it("flag off (or unreadable): nothing posted; unreadable is a 503 so the progress hub retries", async () => {
@@ -4881,7 +4918,7 @@ describe("DebugHub ETA pings (/internal/eta, lib/eta-ping.ts)", () => {
     await post(s, { ...ping, title: "DNS: apex", kind: "blocked", lane: "owner", reason: "批准" });
     const his = chats(owner).at(-1) as Record<string, any>;
     expect(his.quiet).toBeUndefined();
-    expect(his.text).toBe("DNS 卡住了，等你——批准");
+    expect(his.text).toBe("DNS: apex 卡住了，等你——批准");
     // A nudge must name who.
     expect((await post(s, { ...ping, kind: "blocked" })).status).toBe(400);
   });

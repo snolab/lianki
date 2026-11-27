@@ -103,6 +103,7 @@ const CHROME: RegExp[] = [
   /\bfor shortcuts\b/i, // "? for shortcuts"
   /new task\? \/clear|\/clear to save/i,
   /Ask Codex to do anything|context left/i,
+  /^(?:[❯›>]\s*)?What do you want to do\?$/i, // generic idle-input placeholder, not an approval
   /^[✻✳✶✢✽·*⏺•]\s*\S+ (?:for|in) \d+[smh]/, // "✻ Brewed for 45s", "• Worked for 6s"
   /^(?:Worked|Brewed|Churned|Cooked|Baked) for \d/i,
   /^\[pid \d+ /, // ay's own header
@@ -323,7 +324,12 @@ export class StallTracker {
     const hash = screenHash(tail);
     let v = classifyScreen(tail);
     // ay's own needs_input reading counts as a prompt when our patterns miss it.
-    if (!v && tr.ev.state === "needs_input" && tr.ev.question)
+    if (
+      !v &&
+      tr.ev.state === "needs_input" &&
+      tr.ev.question &&
+      !isChrome(cleanLine(tr.ev.question))
+    )
       v = { kind: "prompt", pattern: "ay-needs-input", line: tr.ev.question.split(/\s+•\s+/)[0]! };
     const moving = tr.ev.state === "active";
 

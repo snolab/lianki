@@ -90,6 +90,21 @@ describe("classifyScreen", () => {
     expect(classifyScreen("Press Enter to continue")?.kind).toBe("prompt");
     expect(classifyScreen("Do you trust the files in this folder?")?.kind).toBe("prompt");
   });
+  it("ignores the generic input placeholder, including ay's needs_input fallback", () => {
+    expect(classifyScreen("❯ What do you want to do?")).toBeNull();
+    const tracker = new StallTracker(stallConfig({}));
+    tracker.onEvent({
+      pid: 999,
+      ts: 0,
+      cwd: "/repo",
+      cli: "claude",
+      state: "needs_input",
+      question: "What do you want to do?",
+    });
+    expect(tracker.onTail(999, "settled", "❯ What do you want to do?", 0)).toEqual([]);
+    expect(tracker.onTail(999, "grace", "❯ What do you want to do?", 120_000)).toEqual([]);
+    expect(classifyScreen("What do you want to do?\n1. Yes")).toMatchObject({ kind: "prompt" });
+  });
   it("an idle Claude or Codex screen is nothing", () => {
     expect(classifyScreen(CLAUDE_IDLE)).toBeNull();
     expect(classifyScreen(CODEX_IDLE)).toBeNull();

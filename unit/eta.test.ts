@@ -447,7 +447,7 @@ describe("waiting on the owner: one reminder with the reason, then spaced ones",
     expect(h.pings).toEqual([
       expect.objectContaining({ id: "/x/approve", kind: "waiting", reason: "批准 DNS 改动" }),
     ]);
-    expect(etaLineText(h.pings[0] as never)).toBe("DNS 切换：在等你——批准 DNS 改动");
+    expect(etaLineText(h.pings[0] as never)).toBe("DNS 切换: move the apex：在等你——批准 DNS 改动");
     const etaAt = h.entry("/x/approve")!.etaAt!;
     expect(h.entry("/x/approve")).toMatchObject({ etaSent: etaAt, etaSilent: etaAt, remindN: 1 });
     expect(h.storage.alarm).toBe(h.now() + DAY);
@@ -598,13 +598,13 @@ describe("the ETA line as the agents read it", () => {
     expect(due).toContain("ETA reached for Native swipe: drag it (/words/swipe)");
     expect(due).toContain("--agent swipe-agent --path /words/swipe");
     expect(due).toContain('--eta <N>m --late "');
-    expect(due).toContain('"Native swipe 超时，未说明原因"');
+    expect(due).toContain('"Native swipe: drag it 超时，未说明原因"');
     expect(etaLineText({ id: "/a", title: "Box: x", etaAt: 0, kind: "silent" })).toBe(
-      "Box 超时，未说明原因",
+      "Box: x 超时，未说明原因",
     );
     expect(
       etaLineText({ id: "/a", title: "Box: x", etaAt: 20 * MIN, kind: "late", reason: "CI" }, 1),
-    ).toBe("Box 超时：CI。再要 20 分钟");
+    ).toBe("Box: x 超时：CI。再要 20 分钟");
     expect(parseEtaPing({ id: "/a", title: "t", etaAt: 5 })).toEqual({
       id: "/a",
       title: "t",

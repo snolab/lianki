@@ -551,6 +551,35 @@ export function parseProgressReport(body: unknown): ProgressReport | Error {
   return out;
 }
 
+/** Remove pending notification state without changing the task or its estimate history. */
+export function clearProgressReminders(entry: ProgressEntry): ProgressEntry {
+  let clean = entry;
+  for (const key of [
+    "etaSent",
+    "etaSilent",
+    "etaCode",
+    "etaQueued",
+    "etaHeardAt",
+    "etaAcked",
+    "etaMain",
+    "silentN",
+    "silentAt",
+    "replyFor",
+    "nudgeFor",
+    "nudgeN",
+    "nudgeAt",
+    "nudgeQueued",
+    "remindFor",
+    "remindN",
+    "remindAt",
+  ] as const) {
+    if (entry[key] === undefined) continue;
+    if (clean === entry) clean = { ...entry };
+    delete clean[key];
+  }
+  return clean;
+}
+
 /**
  * The node a report makes, given what was there (`prev`). The first real
  * write claims an auto-created node; the owner's subtree is always his,
@@ -663,7 +692,7 @@ export function mergeProgress(
     entry.estimateMs = estimate;
     entry.etaRevisions = 0;
   }
-  return entry;
+  return entry.status === "done" ? clearProgressReminders(entry) : entry;
 }
 
 /** A change id when the writer gave none: base36 time and a random tail. */
