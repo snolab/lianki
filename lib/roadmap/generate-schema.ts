@@ -77,18 +77,19 @@ export function fitRoadmap(raw: LooseRoadmap): { nodes: RoadmapStep[] } | null {
     let id = slug(n.id ?? "") || slug(title) || `step_${order + 1}`;
     while (seen.has(id)) id = `${id}_${order + 1}`;
     seen.add(id);
+    // Every keyword, the model's and the fallbacks alike, goes through `add`:
+    // trimmed to KEYWORD_MAX and deduplicated (case-insensitive).
     const kw: string[] = [];
-    for (const k of [...(n.keywords ?? []), title]) {
-      const v = trimText(String(k), KEYWORD_MAX);
+    const add = (k: unknown) => {
+      if (kw.length >= MAX_KEYWORDS) return;
+      const v = trimText(String(k ?? ""), KEYWORD_MAX);
       if (v && !kw.some((x) => x.toLowerCase() === v.toLowerCase())) kw.push(v);
-      if (kw.length >= MAX_KEYWORDS) break;
-    }
-    // Two keywords at least: the title's words fill in.
-    for (const w of title.split(/\s+/)) {
-      if (kw.length >= MIN_KEYWORDS) break;
-      if (w && !kw.some((x) => x.toLowerCase() === w.toLowerCase())) kw.push(w);
-    }
-    while (kw.length < MIN_KEYWORDS) kw.push(`${title} ${kw.length + 1}`);
+    };
+    for (const k of n.keywords ?? []) add(k);
+    add(title);
+    // Two keywords at least: the title's words fill in, then numbered stand-ins.
+    for (const w of title.split(/\s+/)) if (kw.length < MIN_KEYWORDS) add(w);
+    for (let i = 1; kw.length < MIN_KEYWORDS; i++) add(`step ${order + 1}.${i}`);
     return {
       id,
       title,

@@ -21,6 +21,7 @@ import {
   type GenerateOnce,
 } from "@/lib/roadmap/generate";
 import { deckHref, matchExamDecks } from "@/lib/roadmap/exam-match";
+import { SaveRoadmapSchema } from "@/lib/roadmap/save-schema";
 import catalogue from "@/public/words/index.json";
 
 const step = (i: number, extra: Partial<LooseRoadmap["nodes"][number]> = {}) => ({
@@ -59,6 +60,22 @@ describe("fitRoadmap: clamp and trim instead of rejecting", () => {
     expect(r.nodes[1].keywords.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("caps and dedupes the fallback keywords too (long title, one long word, no keywords)", () => {
+    const long = "Superlongwordwithoutanyspacesatallthatkeepsgoingonandon";
+    const r = fitRoadmap({
+      nodes: [
+        step(0, { title: `${"Kanji ".repeat(20)}end`, keywords: [] }),
+        step(1, { title: long, keywords: undefined }),
+        step(2, { title: "Kanji", keywords: ["kanji", "KANJI", "Kanji "] }),
+      ],
+    })!;
+    for (const n of r.nodes) {
+      expect(n.keywords.length).toBeGreaterThanOrEqual(2);
+      for (const k of n.keywords) expect(k.length).toBeLessThanOrEqual(KEYWORD_MAX);
+      expect(new Set(n.keywords.map((k) => k.toLowerCase())).size).toBe(n.keywords.length);
+    }
+  });
+
   it("clamps more than 12 steps to 12, in order, renumbered from 0", () => {
     const r = fitRoadmap(roadmap(15))!;
     expect(r.nodes.length).toBe(MAX_STEPS);
@@ -76,6 +93,43 @@ describe("fitRoadmap: clamp and trim instead of rejecting", () => {
     })!;
     expect(r.nodes.map((n) => n.title)).toEqual(["Step 0", "Step 1", "Step 2"]);
     expect(new Set(r.nodes.map((n) => n.id)).size).toBe(3);
+  });
+});
+
+describe("the generate output is what POST /api/roadmap saves, as is", () => {
+  const big = "x".repeat(300);
+  const nasty: LooseRoadmap[] = [
+    roadmap(3),
+    roadmap(15),
+    {
+      nodes: Array.from({ length: 14 }, (_, i) =>
+        step(i, {
+          id: i % 2 ? undefined : "dup",
+          title: `${big} ${i}`,
+          description: `${"long words ".repeat(40)}`,
+          keywords: [...Array.from({ length: 11 }, (_, j) => `${big}${j}`), "", "a", "A"],
+          order: i % 3 === 0 ? undefined : 14 - i,
+        }),
+      ),
+    },
+    {
+      nodes: [
+        step(0, { keywords: [], description: undefined }),
+        step(1, { title: "語彙", keywords: undefined, order: 2.5 }),
+        step(2, { title: "x".repeat(120), keywords: ["x".repeat(120)] }),
+      ],
+    },
+  ];
+  it.each(nasty.map((r, i) => [i, r] as const))("case %d: accepted, no 400", (_i, raw) => {
+    const fitted = fitRoadmap(raw)!;
+    const parsed = SaveRoadmapSchema.safeParse({ topic: "jlpt n1", nodes: fitted.nodes });
+    if (!parsed.success) throw new Error(JSON.stringify(parsed.error.issues[0]));
+    expect(parsed.data.nodes).toEqual(fitted.nodes);
+  });
+
+  it("through the route's own path: generateWithRetry's value saves as is", async () => {
+    const r = await generateWithRetry(scripted([nasty[2]]), price, quiet);
+    expect(SaveRoadmapSchema.safeParse({ topic: "t", nodes: r.value.nodes }).success).toBe(true);
   });
 });
 
