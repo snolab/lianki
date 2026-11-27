@@ -52,6 +52,18 @@ function shadowedNames(): BunPlugin {
   return {
     name: "partner-shadowed-names",
     setup(build) {
+      // Like mediaDevices below, local recognition belongs to the first-party
+      // tab. Do not pull its browser runtime (and build-machine file URLs) into
+      // the userscript. A lazy attempt on an embedded page fails closed.
+      build.onResolve({ filter: /^onnxruntime-web\/webgpu$/ }, () => ({
+        path: "local-stt-disabled",
+        namespace: "partner-no-mic",
+      }));
+      build.onLoad({ filter: /.*/, namespace: "partner-no-mic" }, () => ({
+        contents:
+          'throw new Error("[Lianki] partner: local speech recognition is off on other sites"); export {};',
+        loader: "js",
+      }));
       build.onLoad({ filter: /\.(tsx?|jsx?|mjs|cjs)$/ }, (args) => {
         const src = readFileSync(args.path, "utf8");
         const ext = args.path.slice(args.path.lastIndexOf(".") + 1);

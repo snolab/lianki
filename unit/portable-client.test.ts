@@ -234,6 +234,28 @@ describe("createPortableClient", () => {
     c.stop();
   });
 
+  test("connection shutdown reports its exact reason so temporary refusal cannot erase stored consent", async () => {
+    for (const reason of ["account-changed", "signed-out", "off"]) {
+      const seen: string[] = [];
+      const c = createPortableClient({
+        call: async () => ({ ok: false, error: reason }),
+        principal: "acct",
+        doc: doc(),
+        busyLabel: "Li",
+        failedLabel: "failed",
+        onInvalidAccount: (error) => {
+          seen.push(error!);
+        },
+      });
+      try {
+        await turn();
+        expect(seen).toEqual([reason]);
+      } finally {
+        c.stop();
+      }
+    }
+  });
+
   test("hidden stops the read and goes offline; visible reads again; subscribers hear changes until they leave", async () => {
     const b = broker(range({ messages: [msg(1)], throughSeq: 1 }));
     const d = doc();

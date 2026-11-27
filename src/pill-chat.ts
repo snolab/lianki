@@ -73,7 +73,7 @@ export async function consentedFrameTicket(o: {
     });
     const body = await r.json().catch(() => null);
     if (!r.ok) {
-      if (body?.error === "account-changed" || body?.error === "signed-out") o.onAccountMismatch();
+      if (body?.error === "account-changed") o.onAccountMismatch();
       return null;
     }
     if (typeof body?.ticket !== "string") return null;

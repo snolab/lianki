@@ -33,7 +33,7 @@ function markerUi(win: Window): PortableUi {
       win.document.documentElement.append(host);
       void o.call({ op: "read", wait: false }, o.principal).then((r) => {
         if (!r.ok && ["account-changed", "signed-out", "off"].includes(r.error))
-          o.onInvalidAccount();
+          o.onInvalidAccount(r.error);
       });
       return { destroy: () => host.remove() };
     },
@@ -608,6 +608,11 @@ test("frame tickets are for the consented account only: a mismatch or a refusal 
     await consentedFrameTicket({ ...base, fetch: answer(409, { error: "account-changed" }) }),
   ).toBeNull();
   expect(mismatches).toBe(2);
+  // A missing session is not evidence of a different account or a withdrawal of consent.
+  expect(
+    await consentedFrameTicket({ ...base, fetch: answer(403, { error: "signed-out" }) }),
+  ).toBeNull();
+  expect(mismatches).toBe(2);
   // No echo or a malformed one (an older issuer): fail closed, but no re-consent.
   expect(await consentedFrameTicket({ ...base, fetch: answer(200, { ticket: "t?" }) })).toBeNull();
   expect(
@@ -652,7 +657,7 @@ test("frame tickets are for the consented account only: a mismatch or a refusal 
     expect(gone).toBeGreaterThan(0);
     expect(globalChatStore(f.gm).read().consent).toBe("unknown");
     expect(f.win.document.documentElement.getAttribute("data-lk-portable")).toBe(
-      "none frame:account-mismatch",
+      "none consent:account-changed",
     );
   } finally {
     f.finish();

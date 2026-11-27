@@ -19,6 +19,17 @@ const setup = () => {
   return { values, store };
 };
 describe("portable Li global consent", () => {
+  it("a stale invalidation cannot erase a newer account or renewed consent stamp", () => {
+    const { store } = setup();
+    store.consent("all", "account_a");
+    const prior = store.read();
+    store.consent("all", "account_b");
+    const current = store.read();
+    expect(store.invalidate(prior)).toBe(false);
+    expect(store.read()).toEqual(current);
+    expect(store.invalidate(current)).toBe(true);
+    expect(store.read()).toMatchObject({ principal: null, consent: "unknown" });
+  });
   it("does not upgrade old per-site approvals into approval for all websites", () => {
     const { values, store } = setup();
     values.set(

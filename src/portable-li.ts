@@ -71,7 +71,7 @@ export type PortableUi = {
     };
     advancedHref: string;
     onExclude(): void;
-    onInvalidAccount(): void;
+    onInvalidAccount(reason?: string): void;
   }): { destroy(): void };
 };
 /** Only the new chat subsystem is managed here. LiCards startup and its legacy credentials are untouched. */
@@ -114,6 +114,7 @@ export function startPortableLi(d: {
       host = siteKey(url.hostname);
   } catch {}
   let panel: PortablePanel | undefined,
+    panelConsent: { principal: string; consentStamp: string } | undefined,
     promptClose: (() => void) | undefined,
     destroyed = false,
     generation = 0;
@@ -125,6 +126,7 @@ export function startPortableLi(d: {
     generation++;
     panel?.destroy();
     panel = undefined;
+    panelConsent = undefined;
     promptClose?.();
     promptClose = undefined;
   };
@@ -147,11 +149,6 @@ export function startPortableLi(d: {
     panel?.destroy();
     panel = undefined;
     publish();
-  };
-  const onInvalidAccount = () => {
-    store.invalidate();
-    close();
-    publish(true);
   };
   /**
    * The main site's chat window, the same DebugChat everywhere: first in the
@@ -179,7 +176,41 @@ export function startPortableLi(d: {
       isCollapsed: () => false,
     };
     panel = slot;
+    panelConsent = { principal, consentStamp: p.consentStamp };
     const live = () => !gone && !destroyed && generation === gen && panel === slot;
+    const onInvalidAccount = (reason?: string) => {
+      if (!live()) return;
+      let policy;
+      try {
+        policy = store.read();
+      } catch {
+        close();
+        mark("none consent:storage-read-failed");
+        return;
+      }
+      // Another tab may have explicitly approved a new account or a new consent generation.
+      if (policy.principal !== p.principal || policy.consentStamp !== p.consentStamp) {
+        close();
+        refresh();
+        return;
+      }
+      if (reason === "account-changed") {
+        try {
+          store.invalidate(p);
+        } catch {
+          /* Stop the old connection even if the manager refuses the storage write. */
+        }
+      }
+      // signed-out/off can mean a temporarily unavailable session or flag: stop,
+      // but retain the user's decision, still bound to the original principal.
+      mark(
+        reason === "account-changed"
+          ? "none consent:account-changed"
+          : "none consent:connection-ended",
+      );
+      close();
+      publish(true);
+    };
     const t = strings();
     void (async () => {
       // Why the window is what it is (or absent), for a real-browser check: a
@@ -192,7 +223,7 @@ export function startPortableLi(d: {
             onAccountMismatch: () => {
               if (!live()) return;
               mark("none frame:account-mismatch");
-              onInvalidAccount();
+              onInvalidAccount("account-changed");
             },
           });
           current = f;
@@ -265,8 +296,12 @@ export function startPortableLi(d: {
       publish(true);
       return false;
     }
-    store.bind(result.principal);
-    store.consent("all", result.principal);
+    // One durable write: binding then granting separately exposed an intermediate unknown decision.
+    if (!store.consent("all", result.principal)) {
+      mark("none consent:storage-write-failed");
+      publish(true);
+      return false;
+    }
     publish();
     show();
     return true;
@@ -341,6 +376,12 @@ export function startPortableLi(d: {
       return;
     }
     const p = store.read();
+    if (
+      panel &&
+      panelConsent &&
+      (panelConsent.principal !== p.principal || panelConsent.consentStamp !== p.consentStamp)
+    )
+      close();
     if (!flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null))) {
       promptClose?.();
       promptClose = undefined;
