@@ -190,7 +190,9 @@ export async function callBytes(
   }
   const len = Number(r.headers?.get?.("content-length"));
   if (maxBytes && Number.isFinite(len) && len > maxBytes) {
-    await r.body?.cancel?.().catch(() => {});
+    try {
+      await r.body?.cancel?.();
+    } catch {}
     throw new CliError("server", EXIT.server, `${c.site} response exceeded ${maxBytes} bytes`);
   }
   const bytes = new Uint8Array(await r.arrayBuffer());

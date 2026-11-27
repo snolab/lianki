@@ -1415,6 +1415,11 @@ describe("recordings", () => {
                 "content-type": "audio/wav",
                 "content-length": "1300001",
               }),
+              body: {
+                cancel: async () => {
+                  throw new Error("cancel failed");
+                },
+              },
               arrayBuffer: async () => {
                 bodyRead = true;
                 return new ArrayBuffer(0);
@@ -1441,5 +1446,51 @@ describe("recordings", () => {
     const byBody = await h.run("recordings", "get", "body_too_large_000001", "--json");
     expect(byBody.code).toBe(4);
     expect(byBody.out + byBody.err).not.toContain(TOKEN);
+  });
+
+  test("get maps network errors, non-JSON HTTP errors, 404, malformed scope URLs and empty audio", async () => {
+    const net = harness({ env });
+    net.deps.fetch = async () => {
+      throw new Error("offline");
+    };
+    const netRes = await net.run("recordings", "get", CLIP_ID, "--json");
+    expect(netRes.code).toBe(4);
+    expect(envelope(netRes.err).error.code).toBe("network");
+
+    const http = harness({
+      env,
+      server: {
+        "GET /api/my/recordings": (c) => {
+          const clip = new URLSearchParams(c.query).get("clip");
+          if (clip === "plain_502_0000000001") return new Response("bad gateway", { status: 502 });
+          if (clip === "missing_clip_0000001") return json({ error: "not-found" }, 404);
+          if (clip === "bad_scope_url_000001")
+            return json(
+              { error: "scope", needScope: "recordings:read", requestUrl: "not-a-valid-url" },
+              403,
+            );
+          return new Response(new Uint8Array(0), {
+            status: 200,
+            headers: { "content-type": "audio/wav" },
+          });
+        },
+      },
+    });
+    const err502 = await http.run("recordings", "get", "plain_502_0000000001", "--json");
+    expect(err502.code).toBe(4);
+    expect(envelope(err502.err).error.code).toBe("server");
+
+    const err404 = await http.run("recordings", "get", "missing_clip_0000001", "--json");
+    expect(err404.code).toBe(3);
+    expect(envelope(err404.err).error.code).toBe("not_found");
+
+    const errScope = await http.run("recordings", "get", "bad_scope_url_000001", "--json");
+    expect(errScope.code).toBe(2);
+    expect(envelope(errScope.err).error.code).toBe("auth_refused");
+    expect(envelope(errScope.err).error.requestUrl).toBeUndefined();
+
+    const empty = await http.run("recordings", "get", "empty_audio_00000001", "--json");
+    expect(empty.code).toBe(4);
+    expect(envelope(empty.err).error.code).toBe("server");
   });
 });
