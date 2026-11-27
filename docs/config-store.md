@@ -115,6 +115,13 @@ read by the debug hub over `DebugSessions.config` at each pairing
 (`lib/eval-grant-config.ts`): `debug.evalGrantHours` (8; 720 = 30 days) and
 `debug.evalGrantPages` (`chosen`; `all` = every page of the owner, every device).
 
+/roadmap estimates (2026-11-28, `lib/roadmap/eta.ts`; docs/roadmap-next.md, "2a"):
+`roadmap.paceWindowDays` (server, 14: the days of learning log a pace is
+measured over), `roadmap.paceMinActiveDays` (server, 3: fewer active days is
+"too little history"), `roadmap.aheadDays` (public, 7: this many days early
+or more is "ahead") and `roadmap.docMaxChars` (public, 20000: a doc step's
+Markdown).
+
 Read outside the main Worker: `chat.ownerWaitRemindDays` (text, "1,3,7" days)
 is the progress hub's reminder spacing for nodes waiting on the owner
 (docs/state-tree.md, "Waiting on the owner"). lianki-push has no D1, so it asks

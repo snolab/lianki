@@ -49,7 +49,7 @@ export type XhrLike = {
  */
 export function uploadFile(
   file: Blob & { name: string; type: string },
-  source: "import" | "self-intro",
+  source: "import" | "self-intro" | "roadmap",
   onProgress: (p: number) => void,
   makeXhr: () => XhrLike = () => new XMLHttpRequest() as unknown as XhrLike,
 ): { done: Promise<UploadResult>; abort: () => void } {

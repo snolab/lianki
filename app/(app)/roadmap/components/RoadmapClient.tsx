@@ -4,11 +4,32 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useIntlayer } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import dynamic from "next/dynamic";
-import type { RoadmapGoalDTO as RoadmapGoal, RoadmapNode } from "@/types/roadmap";
+import type {
+  RoadmapDoc,
+  RoadmapGoalDTO as RoadmapGoal,
+  RoadmapNode,
+  RoadmapNodeProgress,
+} from "@/types/roadmap";
 import type { RoadmapProgress } from "@/types/roadmap";
 import { countLabel, fill } from "@/lib/roadmap/labels";
 import { deckHref, matchExamDecks, type ExamDeckMeta } from "@/lib/roadmap/exam-match";
 import { loadCatalog } from "@/lib/words/catalog-cache";
+import { normalizeSteps } from "@/lib/roadmap/notation";
+import { logToggle, setCheck } from "@/lib/roadmap/doc-checklist";
+import { measureStep } from "@/lib/roadmap/measure";
+import {
+  checkTargetDate,
+  overallShare,
+  paceVerdict,
+  roadmapEta,
+  utcDay,
+  type PaceState,
+} from "@/lib/roadmap/eta";
+import { etaText, verdictText } from "@/lib/roadmap/eta-text";
+import { publicCfg } from "@/lib/config-client";
+import StepList, { type StepView } from "./StepList";
+import PaceIndicator from "./PaceIndicator";
+import type { SaveResult } from "./DocEditor";
 
 /** Why making a roadmap failed, as the page words it. */
 type GenerateError = "failed" | "limited";
@@ -20,11 +41,20 @@ type Props = {
   initialGoals: RoadmapGoal[];
 };
 
-/** A step as the detail pane shows it: the counts are absent until progress arrives. */
-type StepView = RoadmapNode & { totalCards?: number; matureCards?: number; maturityRate?: number };
+/** The pace settings until the server's arrive (config roadmap.paceWindowDays / paceMinActiveDays defaults). */
+const PACE_FALLBACK = { windowDays: 14, minActiveDays: 3 };
 
 export default function RoadmapClient({ locale, initialGoals }: Props) {
   const text = useIntlayer("roadmap-page");
+  const st = useIntlayer("roadmap-steps");
+  // Goal editor: open, and its draft (the pace line follows the draft date at once).
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [draftTopic, setDraftTopic] = useState("");
+  const [draftDate, setDraftDate] = useState("");
+  const [goalError, setGoalError] = useState<"taken" | "failed" | null>(null);
+  const [savingGoal, setSavingGoal] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [newStep, setNewStep] = useState("");
   const [goals, setGoals] = useState<RoadmapGoal[]>(initialGoals);
   const [topic, setTopic] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -37,9 +67,13 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
   const failedWish = useRef("");
   // The word-list catalogue, for "this wish names an exam deck" (lib/roadmap/exam-match.ts).
   const [decks, setDecks] = useState<ExamDeckMeta[]>([]);
+  const [deckNames, setDeckNames] = useState<Record<string, string>>({});
   useEffect(() => {
     loadCatalog<{ lists?: ExamDeckMeta[] }>("/words/index.json")
-      .then((c) => setDecks((c.lists ?? []).filter((d) => d.exam)))
+      .then((c) => {
+        setDecks((c.lists ?? []).filter((d) => d.exam));
+        setDeckNames(Object.fromEntries((c.lists ?? []).map((d) => [d.id, d.name])));
+      })
       .catch(() => {});
   }, []);
   // Only the latest click may fill the pane: a slow answer for a roadmap the
@@ -51,6 +85,8 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
     const req = ++requestRef.current;
     // The steps are already here; show them at once and fill the counts in.
     setSelectedGoal(goal);
+    setEditingGoal(false);
+    setSaveFailed(false);
     setLoadingProgress(true);
     setProgressFailed(false);
     setProgress(null);
@@ -130,10 +166,172 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
     [selectedGoal],
   );
 
-  const steps: StepView[] = (progress?.nodes ?? selectedGoal?.nodes ?? [])
-    .slice()
-    .sort((a, b) => a.order - b.order);
+  // The goal's steps in notation order (old roadmaps: one stage per step).
+  const goalNodes: RoadmapNode[] = useMemo(
+    () => normalizeSteps(selectedGoal?.nodes ?? []),
+    [selectedGoal],
+  );
+  const steps: StepView[] = progress?.nodes ?? goalNodes;
   const pct = (rate: number) => Math.round(rate * 100);
+  const paceCfg = progress?.pace ?? { ...PACE_FALLBACK, today: utcDay(Date.now()) };
+  const settings = { today: paceCfg.today, minActiveDays: paceCfg.minActiveDays };
+  const overall = progress ? roadmapEta(progress.nodes, settings) : null;
+  const share = progress ? overallShare(progress.nodes) : null;
+  // While the editor is open the pace follows the draft date at once.
+  // An invalid or past draft date shows an error in the editor and gives no verdict.
+  const draftCheck = checkTargetDate(draftDate, settings.today);
+  const target = editingGoal
+    ? draftCheck.ok
+      ? draftCheck.value
+      : null
+    : (selectedGoal?.targetDate ?? null);
+  const verdict = overall
+    ? paceVerdict(overall, target, settings.today, publicCfg("roadmap.aheadDays"))
+    : null;
+  const etaStrings = {
+    daysOne: st.daysOne.value,
+    daysOther: st.daysOther.value,
+    etaLine: st.etaLine.value,
+    etaFinished: st.etaFinished.value,
+    etaTooLittle: st.etaTooLittle.value,
+    etaNone: st.etaNone.value,
+  };
+  const paceStrings = {
+    ...etaStrings,
+    paceOnPaceDetail: st.paceOnPaceDetail.value,
+    paceAheadDetail: st.paceAheadDetail.value,
+    paceBehindDetail: st.paceBehindDetail.value,
+    paceNoDataDetail: st.paceNoDataDetail.value,
+    paceNoTarget: st.paceNoTarget.value,
+    needWords: st.needWords.value,
+    needItems: st.needItems.value,
+  };
+  const paceLabels: Record<PaceState, string> = {
+    "on-pace": st.paceOnPace.value,
+    ahead: st.paceAhead.value,
+    behind: st.paceBehind.value,
+    "no-data": st.paceNoData.value,
+  };
+
+  /** Save a change to the shown roadmap; the list and the pane take the saved goal. */
+  const patchGoal = async (patch: {
+    topic?: string;
+    targetDate?: string | null;
+    nodes?: RoadmapNode[];
+  }): Promise<{ ok: true; goal: RoadmapGoal } | { ok: false; status: number }> => {
+    if (!selectedGoal) return { ok: false, status: 0 };
+    try {
+      const r = await fetch(`/api/roadmap/${selectedGoal._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!r.ok) return { ok: false, status: r.status };
+      const saved = (await r.json()) as RoadmapGoal;
+      const g = { ...saved, _id: String(saved._id ?? selectedGoal._id) };
+      setGoals((prev) => prev.map((x) => (String(x._id) === g._id ? g : x)));
+      setSelectedGoal(g);
+      return { ok: true, goal: g };
+    } catch {
+      return { ok: false, status: 0 };
+    }
+  };
+
+  /** The pane's steps after a doc change, measured again here (no reload). */
+  const withDoc = (id: string, doc: RoadmapDoc) => {
+    const nodes = goalNodes.map((n) => (n.id === id ? { ...n, doc } : n));
+    setProgress((p) =>
+      p
+        ? {
+            ...p,
+            goal: { ...p.goal, nodes },
+            nodes: p.nodes.map(
+              (n): RoadmapNodeProgress =>
+                n.id === id
+                  ? { ...n, doc, measure: measureStep({ ...n, doc }, { ...paceCfg, decks: {} }) }
+                  : n,
+            ),
+          }
+        : p,
+    );
+    return nodes;
+  };
+
+  const toggleCheck = async (id: string, index: number, checked: boolean) => {
+    const node = goalNodes.find((n) => n.id === id);
+    if (!node) return;
+    const before = node.doc ?? {};
+    const doc = {
+      ...before,
+      markdown: setCheck(before.markdown ?? "", index, checked),
+      doneLog: logToggle(before.doneLog, checked, new Date()),
+    };
+    const nodes = withDoc(id, doc);
+    setSelectedGoal((g) => (g ? { ...g, nodes } : g));
+    const r = await patchGoal({ nodes });
+    setSaveFailed(!r.ok);
+    if (!r.ok) {
+      withDoc(id, before);
+      setSelectedGoal((g) => (g ? { ...g, nodes: goalNodes } : g));
+    }
+  };
+
+  const saveDoc = async (id: string, doc: RoadmapDoc): Promise<SaveResult> => {
+    const nodes = goalNodes.map((n) => (n.id === id ? { ...n, doc } : n));
+    const r = await patchGoal({ nodes });
+    if (!r.ok) return r.status === 413 ? "too-long" : "failed";
+    withDoc(id, doc);
+    return "ok";
+  };
+
+  const addDocStep = async () => {
+    const title = newStep.trim().slice(0, 100);
+    if (!title || goalNodes.length >= 20) return;
+    const last = goalNodes.reduce((m, n) => Math.max(m, n.stage ?? 0), 0);
+    const node: RoadmapNode = {
+      id: `doc_${Date.now().toString(36)}`,
+      title,
+      description: "",
+      keywords: [],
+      order: goalNodes.length,
+      stage: last + 1,
+      kind: "doc",
+      doc: { markdown: "" },
+    };
+    const r = await patchGoal({ nodes: [...goalNodes, node] });
+    setSaveFailed(!r.ok);
+    if (r.ok) {
+      setNewStep("");
+      await loadProgress(r.goal);
+    }
+  };
+
+  const openGoalEditor = () => {
+    if (!selectedGoal) return;
+    setDraftTopic(selectedGoal.topic);
+    setDraftDate(selectedGoal.targetDate ?? "");
+    setGoalError(null);
+    setEditingGoal(true);
+  };
+
+  const saveGoalEdit = async () => {
+    const topicNow = draftTopic.trim();
+    if (!topicNow || !selectedGoal) return;
+    const date = checkTargetDate(draftDate, settings.today);
+    // A date left as it was saved may lie in the past by now: keep it.
+    const unchanged = draftDate === (selectedGoal.targetDate ?? "");
+    if (!date.ok && !(unchanged && date.error === "past")) return;
+    setSavingGoal(true);
+    const r = await patchGoal({
+      ...(topicNow !== selectedGoal.topic ? { topic: topicNow } : {}),
+      targetDate: draftDate.trim() || null,
+    });
+    setSavingGoal(false);
+    if (r.ok) {
+      setEditingGoal(false);
+      setProgress((p) => (p ? { ...p, goal: { ...p.goal, ...r.goal, nodes: p.goal.nodes } } : p));
+    } else setGoalError(r.status === 409 ? "taken" : "failed");
+  };
   const examDecks = useMemo(
     () => (selectedGoal ? matchExamDecks(selectedGoal.topic, decks) : []),
     [selectedGoal, decks],
@@ -248,16 +446,155 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
         <div ref={detailRef} className="flex-1 min-w-0 scroll-mt-20">
           {selectedGoal && (
             <div data-roadmap-detail data-loaded={progress ? "1" : "0"}>
-              <div className="flex items-baseline justify-between gap-3 mb-4">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 min-w-0 break-words">
+              <div className="flex items-start gap-2 mb-2">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 min-w-0 flex-1 break-words">
                   {selectedGoal.topic}
                 </h2>
-                {progress && (
-                  <span className="text-sm text-gray-500 dark:text-gray-400 shrink-0">
-                    {fill(text.percentComplete.value, { pct: pct(progress.overallMaturityRate) })}
-                  </span>
-                )}
+                <button
+                  type="button"
+                  onClick={() => (editingGoal ? setEditingGoal(false) : openGoalEditor())}
+                  aria-expanded={editingGoal}
+                  title={st.editGoal.value}
+                  data-edit-goal
+                  className="-me-2 -mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                >
+                  <Icon name="pencilSimple" label={st.editGoal.value} />
+                </button>
               </div>
+
+              {editingGoal && (
+                <form
+                  data-goal-editor
+                  className="mb-4 space-y-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void saveGoalEdit();
+                  }}
+                >
+                  <label className="block text-xs text-gray-500 dark:text-gray-400">
+                    {st.goalLabel}
+                    <input
+                      value={draftTopic}
+                      onChange={(e) => setDraftTopic(e.target.value)}
+                      maxLength={500}
+                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 md:text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                    />
+                  </label>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="block text-xs text-gray-500 dark:text-gray-400">
+                      {st.targetDateLabel}
+                      <input
+                        type="date"
+                        value={draftDate}
+                        onChange={(e) => setDraftDate(e.target.value)}
+                        data-target-date
+                        aria-invalid={!draftCheck.ok || undefined}
+                        aria-describedby={!draftCheck.ok ? "roadmap-date-error" : undefined}
+                        className="mt-1 block min-h-10 rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 md:text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                      />
+                    </label>
+                    {draftDate && (
+                      <button
+                        type="button"
+                        onClick={() => setDraftDate("")}
+                        className="min-h-10 rounded-lg px-3 text-sm text-gray-700 dark:text-gray-300"
+                      >
+                        {st.clearDate}
+                      </button>
+                    )}
+                  </div>
+                  {!draftCheck.ok && (
+                    <p
+                      id="roadmap-date-error"
+                      role="alert"
+                      data-date-error={draftCheck.error}
+                      className="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-300"
+                    >
+                      <Icon name="warning" />
+                      {draftCheck.error === "past" ? st.datePast : st.dateInvalid}
+                    </p>
+                  )}
+                  {goalError && (
+                    <p
+                      role="alert"
+                      className="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-300"
+                    >
+                      <Icon name="warning" />
+                      {goalError === "taken" ? st.topicTaken : st.saveFailed}
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={
+                        savingGoal ||
+                        !draftTopic.trim() ||
+                        (!draftCheck.ok &&
+                          !(
+                            draftCheck.error === "past" &&
+                            draftDate === (selectedGoal.targetDate ?? "")
+                          ))
+                      }
+                      className="min-h-10 rounded-lg bg-primary px-4 text-sm font-medium text-on-primary disabled:opacity-50"
+                    >
+                      {savingGoal ? st.saving : st.save}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingGoal(false)}
+                      className="min-h-10 rounded-lg px-3 text-sm text-gray-700 dark:text-gray-300"
+                    >
+                      {st.cancel}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {overall && (
+                <div data-roadmap-eta={overall.kind} className="mb-4">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    {st.etaHeading}
+                  </div>
+                  <div className="flex flex-wrap items-baseline gap-x-3">
+                    <span
+                      className={
+                        overall.kind === "too-little" || overall.kind === "na"
+                          ? "text-sm text-gray-700 dark:text-gray-300"
+                          : "text-xl font-semibold text-gray-900 dark:text-gray-100"
+                      }
+                    >
+                      {overall.kind === "too-little"
+                        ? st.roadmapTooLittle
+                        : overall.kind === "na"
+                          ? st.roadmapNoEstimate
+                          : etaText(overall, locale, settings.today, etaStrings)}
+                    </span>
+                    {share != null && (
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                        {fill(text.percentComplete.value, { pct: pct(share) })}
+                      </span>
+                    )}
+                  </div>
+                  {verdict && (
+                    <PaceIndicator
+                      verdict={verdict}
+                      labels={paceLabels}
+                      label={st.paceLabel.value}
+                      detail={verdictText(verdict, locale, settings.today, paceStrings)}
+                    />
+                  )}
+                </div>
+              )}
+
+              {saveFailed && (
+                <p
+                  role="alert"
+                  className="mb-3 flex items-center gap-1 text-sm text-gray-700 dark:text-gray-300"
+                >
+                  <Icon name="warning" />
+                  {st.saveFailed}
+                </p>
+              )}
 
               {examDecks.length > 0 && (
                 <div data-exam-decks className="flex flex-wrap gap-2 mb-4">
@@ -330,65 +667,48 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
                 </div>
               )}
 
-              {/* Step list */}
-              <ol className="mt-6 space-y-2">
-                {steps.map((node) => {
-                  const known = node.maturityRate != null;
-                  const rate = node.maturityRate ?? 0;
-                  return (
-                    <li
-                      key={node.id}
-                      data-step
-                      className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800"
-                    >
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                          rate >= 1
-                            ? "bg-green-600 text-white"
-                            : rate > 0
-                              ? "bg-yellow-400 text-gray-900"
-                              : "bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-300"
-                        }`}
-                      >
-                        {rate >= 1 ? (
-                          <Icon name="check" label={text.stepDone.value} />
-                        ) : (
-                          node.order + 1
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {node.title}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 md:truncate">
-                          {node.description}
-                        </div>
-                      </div>
-                      <div
-                        className="shrink-0 text-right min-w-[3.5rem]"
-                        title={text.cardsCountTitle.value}
-                      >
-                        {known ? (
-                          <>
-                            <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-                              {pct(rate)}%
-                            </div>
-                            <div className="text-xs text-gray-400 dark:text-gray-500">
-                              {node.totalCards
-                                ? `${node.matureCards}/${node.totalCards}`
-                                : text.noCards}
-                            </div>
-                          </>
-                        ) : (
-                          <div className="text-sm text-gray-300 dark:text-gray-600" aria-hidden>
-                            …
-                          </div>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
+              <StepList
+                locale={locale}
+                steps={steps}
+                today={settings.today}
+                minActiveDays={settings.minActiveDays}
+                docMaxChars={publicCfg("roadmap.docMaxChars")}
+                deckNames={deckNames}
+                noCards={text.noCards.value}
+                cardsCountTitle={text.cardsCountTitle.value}
+                stepDone={text.stepDone.value}
+                onToggle={(id, i, c) => void toggleCheck(id, i, c)}
+                onSaveDoc={saveDoc}
+              />
+
+              {progress && goalNodes.length < 20 && (
+                <form
+                  className="mt-4 flex gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void addDocStep();
+                  }}
+                >
+                  <input
+                    value={newStep}
+                    onChange={(e) => setNewStep(e.target.value)}
+                    maxLength={100}
+                    placeholder={st.newStepTitle.value}
+                    aria-label={st.newStepTitle.value}
+                    className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 placeholder:text-gray-400 md:text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newStep.trim()}
+                    title={st.addDocStep.value}
+                    className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg border border-blue-600 px-3 text-sm font-medium text-blue-600 disabled:opacity-50 dark:border-blue-300 dark:text-blue-300"
+                  >
+                    <Icon name="plus" />
+                    <span className="hidden sm:inline">{st.addDocStep}</span>
+                    <span className="sm:hidden">{st.add}</span>
+                  </button>
+                </form>
+              )}
             </div>
           )}
 

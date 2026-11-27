@@ -222,6 +222,24 @@ const dictionary = {
         sw: "Gumzo",
         mr: "चॅट",
       }),
+      roadmap: t({
+        en: "Roadmap images",
+        zh: "路线图图片",
+        ja: "ロードマップの画像",
+        ko: "로드맵 이미지",
+        hi: "रोडमैप की तस्वीरें",
+        es: "Imágenes de hojas de ruta",
+        fr: "Images des feuilles de route",
+        ar: "صور خرائط الطريق",
+        bn: "রোডম্যাপের ছবি",
+        pt: "Imagens dos roteiros",
+        ru: "Изображения дорожных карт",
+        ur: "روڈ میپ کی تصاویر",
+        id: "Gambar peta jalan",
+        de: "Roadmap-Bilder",
+        sw: "Picha za ramani za njia",
+        mr: "रोडमॅपची चित्रे",
+      }),
       voiceprint: t({
         en: "Voiceprint",
         zh: "声纹",
@@ -285,6 +303,8 @@ const context: KeyContext<typeof dictionary.content> = {
     books:
       "Folder heading on /my/files for book files (EPUB e-books, text) the user imported on /books (My books) to read. One plural noun.",
     chat: "Folder heading on /my/files for files attached in the Learning Partner chat. One word.",
+    roadmap:
+      "Folder heading on /my/files for images the user pasted or uploaded into a document step of one of their roadmaps on /roadmap. 'Roadmap' as the /roadmap page names it (a plan of steps toward a goal). Short plural noun phrase.",
     voiceprint:
       "Folder heading on /my/files for the recordings of the sentences the user read aloud to enrol their voiceprint (kept so the voice features can be computed again later). The same word as the chat menu's 'Voiceprint'. One noun.",
     other: "Folder heading on /my/files for stored files from any other place. One word.",

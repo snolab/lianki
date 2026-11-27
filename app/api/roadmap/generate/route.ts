@@ -10,6 +10,9 @@ import { cappedJsonError, readJsonCapped, tooMany } from "@/lib/security/route-g
 import { accountKey } from "@/lib/security/throttle";
 import { LooseRoadmapSchema } from "@/lib/roadmap/generate-schema";
 import { ATTEMPTS, generateFailedResponse, generateWithRetry } from "@/lib/roadmap/generate";
+import { roadmapPrompt } from "@/lib/roadmap/prompt";
+import { matchExamDecks } from "@/lib/roadmap/exam-match";
+import catalogue from "@/public/words/index.json";
 
 /** Model calls per account (D1): each one is a paid generation. */
 const GENERATE_LIMIT = { max: 10, windowMs: 60 * 60_000 };
@@ -35,18 +38,9 @@ export async function POST(request: NextRequest) {
 
   const db = walletDb();
   const payer = { id: await walletUserId(db, email) };
-  const prompt = `Generate a learning roadmap for: "${topic}"
-
-Create 5-10 progressive learning milestones. Each node should represent a concrete skill or knowledge area.
-
-For each node, provide:
-- id: unique snake_case identifier
-- title: short milestone title (max 50 chars)
-- description: what the learner should know/do (max 200 chars)
-- keywords: 2-8 keywords that would appear in study materials/URLs for this topic (e.g. "python loops", "for loop", "iteration")
-- order: 0-based sequential number
-
-Progress from fundamentals to advanced. Keywords should be specific enough to match real study cards.`;
+  // Exam decks the wish names (JLPT N1…): offered to the model as deck steps.
+  const decks = matchExamDecks(topic, catalogue.lists).map((d) => ({ id: d.id, name: d.name }));
+  const prompt = roadmapPrompt(topic, decks);
   const model = textModel();
   const maxOut = MAX_OUT["roadmap.generate"];
   // The JSON schema the SDK adds to the prompt: held as SCHEMA_CHARS more characters.
@@ -72,6 +66,8 @@ Progress from fundamentals to advanced. Keywords should be specific enough to ma
             usd: (u) => textUsd(model, u.inputTokens ?? 0, u.outputTokens ?? 0),
             fallbackUsd: oneHoldUsd,
           },
+          undefined,
+          { decks: decks.map((d) => d.id) },
         ),
     );
     if (!paid.ok) return refusal(paid);

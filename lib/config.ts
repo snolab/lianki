@@ -2177,6 +2177,46 @@ export const CONFIG = {
     audience: "server",
     description: "每个账号滚动24小时上传的安全字节上限。",
   }),
+  // /roadmap pace and estimates (lib/roadmap/eta.ts, docs/roadmap-next.md "2a").
+  "roadmap.paceWindowDays": int({
+    default: 14,
+    min: 3,
+    max: 90,
+    unit: "days",
+    group: "roadmap",
+    audience: "server",
+    description:
+      "/roadmap 预计完成时间看最近多少天的学习记录：单词步骤看每天新学的词，文档步骤看每天勾掉的清单项。越近的日子权重越大。",
+  }),
+  "roadmap.paceMinActiveDays": int({
+    default: 3,
+    min: 1,
+    max: 30,
+    unit: "days",
+    group: "roadmap",
+    audience: "server",
+    description:
+      "/roadmap 一个步骤在上面的窗口里至少有几天有学习记录才给出预计时间；不够就显示「记录还太少，暂不估计」。",
+  }),
+  "roadmap.aheadDays": int({
+    default: 7,
+    min: 1,
+    max: 90,
+    unit: "days",
+    group: "roadmap",
+    audience: "public",
+    description:
+      "/roadmap 预计完成比目标日期早至少多少天才算「提前」；早于目标但不到这个天数算「按计划」，晚于目标算「落后」。",
+  }),
+  "roadmap.docMaxChars": int({
+    default: 20000,
+    min: 1000,
+    max: 200000,
+    unit: "chars",
+    group: "roadmap",
+    audience: "public",
+    description: "/roadmap 一个文档步骤的 Markdown 最长多少字符（图片只占它的链接）。",
+  }),
   // inbox.maxStoredBytes (2 GB safety cap) was removed 2026-11-26: files.quotaBytes replaces it.
   "files.quotaBytes": int({
     default: 5 * 1024 ** 3,

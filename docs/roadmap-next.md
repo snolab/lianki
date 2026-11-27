@@ -37,3 +37,43 @@ Also noticed while reviewing:
 - Progress reads every page card of the user per request (lean columns since
   this change). With item 1 it should become two indexed queries, or a cached
   per-goal count updated on review.
+
+## Built: 2a, the roadmap model and page (2026-11-28)
+
+The owner's 2a request, on top of the robust generator (#1160).
+
+- **Ordering notation.** A step has `stage` (1, 2, 3: one after another) and,
+  when it shares the stage, `lane` (A, B, C: side by side), shown as
+  `1, 2A, 2B, 2C, 3` (`lib/roadmap/notation.ts`). The generator asks for a
+  `step` label and `fitRoadmap` keeps it; saves and reads go through
+  `normalizeSteps`, which makes stages dense, letters only for shared stages,
+  and reads a roadmap saved before the notation (plain `order`) as one stage
+  per step. No data migration: old rows normalize on read and on the next save.
+- **Step kinds.** `keywords` (the old page-card match, the default), `deck`
+  (a catalogue word list by id; the generator may only use the exam decks
+  `matchExamDecks` found for the wish) and `doc`: Markdown of its own, a
+  /reader doc (`readerId`) and/or an official page (`url`). A doc's progress =
+  ticked / all task items `- [ ]` `- [x]`, nested ones included, code fences
+  skipped (`lib/roadmap/doc-checklist.ts`); no task items = n/a. The
+  checkboxes on /roadmap toggle and save back (PATCH `/api/roadmap/<id>`).
+- **Images in a doc** go through the user's file store (source `roadmap`,
+  `lib/roadmap/doc-image.ts`): the account's `files.quotaBytes`, listed on
+  /my/files under "Roadmap images", the Markdown holds `/api/my/files/<id>`.
+  A full file space refuses the image with a link to /my/files; the Markdown
+  is untouched and still saves (the PATCH never touches the store).
+- **Estimate instead of "NN% complete".** Per step and for the whole
+  roadmap, from the learner's own log over `roadmap.paceWindowDays` (14):
+  new words a day in their lists of a deck (`word_reviews`, state New), items
+  ticked a day for a doc (`doc.doneLog`). Recent days weigh more. Fewer active
+  days than `roadmap.paceMinActiveDays` (3) says "too little history". The
+  whole roadmap: each stage as long as its slowest lane, stages add up
+  (`lib/roadmap/eta.ts`). The percentage stays, small.
+- **Target date and pace.** A pencil button edits the goal and its target
+  date (`roadmap_goals.target_date`, migration 0088). The pace indicator shows
+  all four states (on pace, ahead, behind, no data) with the active one
+  filled seal red; behind says by how many days and the daily amount needed
+  ("need ~20 new words a day to hit 1 March"). It recomputes in the page as
+  the date changes. "Ahead" = at least `roadmap.aheadDays` (7) early.
+
+Strings: `roadmap-steps` (`app/(app)/roadmap/roadmap-steps.content.ts`).
+Tests: `unit/roadmap-model.test.ts`.
