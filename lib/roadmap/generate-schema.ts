@@ -8,6 +8,8 @@
  * `MIN_STEPS` usable steps) is refused.
  */
 import { z } from "zod";
+import type { RoadmapDoc, RoadmapNodeKind } from "@/types/roadmap";
+import { normalizeSteps, parseStepLabel } from "./notation";
 
 export const MIN_STEPS = 3;
 export const MAX_STEPS = 12;
@@ -17,6 +19,9 @@ export const MIN_KEYWORDS = 2;
 export const MAX_KEYWORDS = 8;
 /** The save route's per-keyword limit (app/api/roadmap/route.ts). */
 export const KEYWORD_MAX = 50;
+/** A generated doc step's checklist: at most this many items, each this long. */
+export const MAX_CHECKLIST = 12;
+export const CHECKLIST_ITEM_MAX = 120;
 
 /** What the model must return: types only, no length limits (those are fixed after). */
 export const LooseRoadmapSchema = z.object({
@@ -27,6 +32,12 @@ export const LooseRoadmapSchema = z.object({
       description: z.string().optional(),
       keywords: z.array(z.string()).optional(),
       order: z.number().optional(),
+      /** The ordering notation: "1", "2A", "2B", "3" (lib/roadmap/notation.ts). */
+      step: z.union([z.string(), z.number()]).optional(),
+      /** A word-list deck id from the ones offered in the prompt. */
+      deck: z.string().optional(),
+      /** A doc step's checklist items, one per line. */
+      checklist: z.array(z.string()).optional(),
     }),
   ),
 });
@@ -39,6 +50,11 @@ export type RoadmapStep = {
   description: string;
   keywords: string[];
   order: number;
+  stage?: number;
+  lane?: string;
+  kind?: RoadmapNodeKind;
+  deck?: { id: string };
+  doc?: RoadmapDoc;
 };
 
 /** Cut to `max` characters at a word boundary when one is near, with an ellipsis. */
@@ -59,20 +75,34 @@ const slug = (s: string) =>
     .slice(0, 40);
 
 /**
- * The model's answer made to fit: steps in their order, at most `MAX_STEPS`;
- * each with a unique id, a trimmed title and description, and 2–8 distinct
- * keywords (the title fills in when fewer came back). Null when fewer than
- * `MIN_STEPS` usable steps remain — the caller tries again or gives up.
+ * The model's answer made to fit: steps in notation order (its `step` labels
+ * when given, else its `order`), at most `MAX_STEPS`; each with a unique id,
+ * a trimmed title and description, and 2–8 distinct keywords (the title
+ * fills in when fewer came back). A `deck` is kept only when it is one of
+ * `opts.decks` (the exam decks offered in the prompt); a `checklist` makes a
+ * doc step. Null when fewer than `MIN_STEPS` usable steps remain — the
+ * caller tries again or gives up.
  */
-export function fitRoadmap(raw: LooseRoadmap): { nodes: RoadmapStep[] } | null {
+export function fitRoadmap(
+  raw: LooseRoadmap,
+  opts: { decks?: readonly string[] } = {},
+): { nodes: RoadmapStep[] } | null {
+  const decks = new Set(opts.decks ?? []);
   const usable = raw.nodes
-    .map((n, i) => ({ n, i }))
+    .map((n, i) => ({ n, i, at: parseStepLabel(n.step) }))
     .filter(({ n }) => typeof n.title === "string" && n.title.trim().length > 0)
-    .sort((a, b) => (a.n.order ?? a.i) - (b.n.order ?? b.i) || a.i - b.i)
+    .sort(
+      (a, b) =>
+        (a.at && b.at
+          ? a.at.stage - b.at.stage || (a.at.lane ?? "").localeCompare(b.at.lane ?? "")
+          : 0) ||
+        (a.n.order ?? a.i) - (b.n.order ?? b.i) ||
+        a.i - b.i,
+    )
     .slice(0, MAX_STEPS);
   if (usable.length < MIN_STEPS) return null;
   const seen = new Set<string>();
-  const nodes = usable.map(({ n }, order) => {
+  const nodes = usable.map(({ n, at }, order) => {
     const title = trimText(n.title, TITLE_MAX);
     let id = slug(n.id ?? "") || slug(title) || `step_${order + 1}`;
     while (seen.has(id)) id = `${id}_${order + 1}`;
@@ -90,13 +120,36 @@ export function fitRoadmap(raw: LooseRoadmap): { nodes: RoadmapStep[] } | null {
     // Two keywords at least: the title's words fill in, then numbered stand-ins.
     for (const w of title.split(/\s+/)) if (kw.length < MIN_KEYWORDS) add(w);
     for (let i = 1; kw.length < MIN_KEYWORDS; i++) add(`step ${order + 1}.${i}`);
-    return {
+    const step: RoadmapStep = {
       id,
       title,
       description: trimText(n.description ?? "", DESCRIPTION_MAX),
       keywords: kw,
       order,
     };
+    if (at) {
+      step.stage = at.stage;
+      if (at.lane) step.lane = at.lane;
+    }
+    const deck = typeof n.deck === "string" ? n.deck.trim() : "";
+    const items = (n.checklist ?? [])
+      .map((c) =>
+        trimText(
+          String(c ?? "").replace(/^\s*(?:[-*+]\s*)?(?:\[[ xX]\]\s*)?/, ""),
+          CHECKLIST_ITEM_MAX,
+        ),
+      )
+      .filter(Boolean)
+      .slice(0, MAX_CHECKLIST);
+    if (deck && decks.has(deck)) {
+      step.kind = "deck";
+      step.deck = { id: deck };
+    } else if (items.length) {
+      step.kind = "doc";
+      step.doc = { markdown: items.map((c) => `- [ ] ${c}`).join("\n") };
+    }
+    return step;
   });
-  return { nodes };
+  // Steps with labels and steps without mix as notation.ts says; then dense 1, 2A, 2B, 3.
+  return { nodes: normalizeSteps(nodes) };
 }

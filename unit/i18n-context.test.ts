@@ -88,6 +88,7 @@ import apiTokens from "@/app/components/api-tokens.content";
 import connectedApps from "@/app/components/connected-apps.content";
 import agentGuide from "@/lib/agent-guide.content";
 import roadmapPage from "@/app/(app)/roadmap/page.content";
+import roadmapSteps from "@/app/(app)/roadmap/roadmap-steps.content";
 import chatHistoryPage from "@/app/(app)/chat/history/page.content";
 import chatSitesPage from "@/app/(app)/chat/sites/page.content";
 import pillInstall from "@/app/(app)/chat/sites/pill-install.content";
@@ -228,6 +229,7 @@ describe.each([
   ["my-boxes", myBoxes],
   ["agent-guide", agentGuide],
   ["roadmap-page", roadmapPage],
+  ["roadmap-steps", roadmapSteps],
   ["chat-history-page", chatHistoryPage],
   ["chat-sites-page", chatSitesPage],
   ["pill-install", pillInstall],

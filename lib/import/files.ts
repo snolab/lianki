@@ -6,7 +6,8 @@
  * only, and deleted when they say so.
  *
  * - **Sources.** `import` (the /words Import panel), `self-intro` (the
- *   /self-intro add-file area), `books` (an own book on /books, gate `books.mine`). `chat` (the chat's attachments) is listed and
+ *   /self-intro add-file area), `books` (an own book on /books, gate `books.mine`),
+ *   `roadmap` (an image in a /roadmap doc step, the `import.any` gate). `chat` (the chat's attachments) is listed and
  *   deletable on /my/files, never uploaded here.
  * - **Gate.** `import.any` through `importAnyOn` (lib/import/words-handler.ts):
  *   a flag (on: every signed-in user; off: `dev` holders), never an email.
@@ -48,6 +49,8 @@ export const UPLOAD_SOURCES = [
   "books",
   // The voiceprint's enrolment recordings (the Voiceprint panel; gate stt.voiceprint-cloud + dev).
   "voiceprint",
+  // Images pasted or uploaded into a /roadmap doc step (lib/roadmap/doc-image.ts).
+  "roadmap",
 ] as const satisfies readonly InboxSource[];
 export type UploadSource = (typeof UPLOAD_SOURCES)[number];
 

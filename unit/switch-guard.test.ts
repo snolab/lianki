@@ -50,6 +50,7 @@ const KNOWN: Record<string, Partial<Record<"checkboxes" | "litPills", number>>> 
   "app/(app)/data/CardTable.tsx": { checkboxes: 2 }, // select rows / select all
   "app/(app)/lab/ai-vocab/[lang]/AiVocabLangClient.tsx": { checkboxes: 1 }, // pick entries
   "app/(app)/words/WordsClient.tsx": { checkboxes: 1 }, // tick nodes of the list tree
+  "app/(app)/roadmap/components/DocMarkdown.tsx": { checkboxes: 1 }, // a doc's checklist items (- [ ]), content, not a setting
   "app/components/TokenPickers.tsx": { checkboxes: 1, litPills: 2 }, // scopes; expiry options side by side
   // The permissions an app asks for on the OAuth consent page, all listed, each ticked or not.
   "app/(app)/my/connected-apps/new/page.tsx": { checkboxes: 1 },

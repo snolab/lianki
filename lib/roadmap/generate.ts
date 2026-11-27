@@ -45,6 +45,7 @@ export async function generateWithRetry(
   once: GenerateOnce,
   price: { usd: (u: NonNullable<Usage>) => number; fallbackUsd: number },
   log: (o: Record<string, unknown>) => void = (o) => console.warn(JSON.stringify(o)),
+  fit: { decks?: readonly string[] } = {},
 ): Promise<{ value: { nodes: RoadmapStep[] }; usd: number }> {
   let spent = 0;
   let last: RoadmapGenerateError = new RoadmapGenerateError("no-object");
@@ -52,7 +53,7 @@ export async function generateWithRetry(
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
     try {
       const r = await once();
-      const fitted = fitRoadmap(r.object);
+      const fitted = fitRoadmap(r.object, fit);
       const c = cost(r.usage);
       if (fitted) return { value: fitted, usd: spent + (c || price.fallbackUsd) };
       spent += c;

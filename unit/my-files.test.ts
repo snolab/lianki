@@ -192,7 +192,16 @@ describe("My Files: one store, folders by origin, the owner only", () => {
     expect(folderOf("constructor")).toBe("other");
     expect(folderOf("books")).toBe("books");
     expect(folderOf("voiceprint")).toBe("voiceprint");
-    expect(FOLDERS).toEqual(["selfIntro", "import", "books", "chat", "voiceprint", "other"]);
+    expect(folderOf("roadmap")).toBe("roadmap");
+    expect(FOLDERS).toEqual([
+      "selfIntro",
+      "import",
+      "books",
+      "roadmap",
+      "chat",
+      "voiceprint",
+      "other",
+    ]);
   });
 
   test("list rows: folder headings in folder order, each followed by its files", () => {
