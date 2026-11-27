@@ -484,6 +484,7 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
   const idleUnloadMs = deps.idleUnloadMs ?? DEFAULT_WEBGPU_IDLE_UNLOAD_MS;
   const engine = deps.engine ?? createDefaultWebGpuEngine();
   const f = deps.fetch ?? (globalThis.fetch as FetchLike | undefined);
+  let confirmDownload = deps.confirmDownload;
   const setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = deps.clearTimer ?? ((id) => clearTimeout(id as ReturnType<typeof setTimeout>));
 
@@ -596,7 +597,7 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
         assets: assetUrls.map((url) => ({ url })),
         cacheName: WEBGPU_CACHE,
         estimatedMb,
-        confirm: deps.confirmDownload,
+        confirm: confirmDownload,
         network: deps.network,
         cache: deps.cache,
         fetch: f as typeof fetch,
@@ -661,6 +662,9 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
     snapshot,
     engine: () => engine,
     modelId: () => modelId,
+    setConfirmDownload(fn: WebGpuManagerDeps["confirmDownload"]) {
+      confirmDownload = fn;
+    },
     estimateSize,
     ensureReady(): Promise<boolean> {
       if (loaded && status === "ready") {
@@ -701,24 +705,29 @@ export type WebGpuConfig = {
 
 let sharedManager: WebGpuModelManager | null = null;
 let sharedKey = "";
+let sharedConf: Partial<WebGpuConfig> = {};
 
 export function getSharedWebGpuManager(
   conf?: Partial<WebGpuConfig> & Pick<WebGpuManagerDeps, "confirmDownload" | "engine">,
 ): WebGpuModelManager {
-  const key = JSON.stringify({
-    modelUrl: conf?.modelUrl,
-    cacheMb: conf?.cacheMb,
-    idleUnloadMs: conf?.idleUnloadMs,
-  });
-  if (!sharedManager || (conf && key !== sharedKey)) {
+  const nextConf: Partial<WebGpuConfig> = {
+    modelUrl: conf?.modelUrl !== undefined ? conf.modelUrl : sharedConf.modelUrl,
+    cacheMb: conf?.cacheMb !== undefined ? conf.cacheMb : sharedConf.cacheMb,
+    idleUnloadMs: conf?.idleUnloadMs !== undefined ? conf.idleUnloadMs : sharedConf.idleUnloadMs,
+  };
+  const key = JSON.stringify(nextConf);
+  if (!sharedManager || key !== sharedKey || conf?.engine) {
+    sharedConf = nextConf;
     sharedKey = key;
     sharedManager = createWebGpuModelManager({
-      ...(conf?.modelUrl ? { modelUrl: conf.modelUrl } : {}),
-      ...(conf?.cacheMb !== undefined ? { cacheMb: conf.cacheMb } : {}),
-      ...(conf?.idleUnloadMs !== undefined ? { idleUnloadMs: conf.idleUnloadMs } : {}),
+      ...(nextConf.modelUrl ? { modelUrl: nextConf.modelUrl } : {}),
+      ...(nextConf.cacheMb !== undefined ? { cacheMb: nextConf.cacheMb } : {}),
+      ...(nextConf.idleUnloadMs !== undefined ? { idleUnloadMs: nextConf.idleUnloadMs } : {}),
       ...(conf?.confirmDownload ? { confirmDownload: conf.confirmDownload } : {}),
       ...(conf?.engine ? { engine: conf.engine } : {}),
     });
+  } else if (conf?.confirmDownload) {
+    sharedManager.setConfirmDownload(conf.confirmDownload);
   }
   return sharedManager;
 }

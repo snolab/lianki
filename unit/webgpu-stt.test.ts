@@ -429,10 +429,15 @@ describe("real lazy WebGPU engine factory & race integration", () => {
     const eng = createDefaultWebGpuEngine();
     await expect(eng.final(1, new Float32Array([0.1]))).rejects.toThrow("webgpu-engine-not-loaded");
 
-    const s1 = getSharedWebGpuManager({ modelUrl: "https://cdn.example/a.onnx", cacheMb: 64 });
-    const s2 = getSharedWebGpuManager({ modelUrl: "https://cdn.example/a.onnx", cacheMb: 64 });
+    const s1 = getSharedWebGpuManager({
+      modelUrl: "https://cdn.example/a.onnx",
+      cacheMb: 64,
+      idleUnloadMs: 120_000,
+    });
+    const s2 = getSharedWebGpuManager({ confirmDownload: () => true });
+    expect(s2).toBe(s1);
+    expect((await s2.estimateSize()).maxMb).toBe(64);
     const s3 = getSharedWebGpuManager({ modelUrl: "https://cdn.example/b.onnx", cacheMb: 64 });
-    expect(s1).toBe(s2);
     expect(s3).not.toBe(s1);
     const seenSnaps: string[] = [];
     const unsub = s3.subscribe((s) => seenSnaps.push(s.status));
