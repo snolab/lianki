@@ -555,6 +555,8 @@ describe("real lazy WebGPU engine factory & race integration", () => {
       "encoder_hidden_states",
       "past_key_values.0.decoder.key",
       "past_key_values.0.decoder.value",
+      "past_key_values.0.encoder.key",
+      "past_key_values.0.encoder.value",
       "use_cache_branch",
     ];
     const recordedFeeds: Array<Record<string, { dims?: number[]; data: ArrayLike<unknown> }>> = [];
@@ -594,14 +596,22 @@ describe("real lazy WebGPU engine factory & race integration", () => {
             }
             return {
               inputNames: decInputNames,
-              outputNames: ["logits", "present.0.decoder.key", "present.0.decoder.value"],
+              outputNames: [
+                "logits",
+                "present.0.decoder.key",
+                "present.0.decoder.value",
+                "present.0.encoder.key",
+                "present.0.encoder.value",
+              ],
               async run(feeds: Record<string, unknown>) {
                 recordedFeeds.push(
                   feeds as Record<string, { dims?: number[]; data: ArrayLike<unknown> }>,
                 );
                 const tok = emitted[step] ?? 50257;
+                const isFirst = step === 0;
                 step++;
-                const seqLen = step === 1 ? 3 : 1;
+                const seqLen = isFirst ? 3 : 1;
+                const encSeq = isFirst ? 1500 : 0;
                 const logits = new Float32Array(seqLen * 50365);
                 logits[(seqLen - 1) * 50365 + tok] = 10;
                 return {
@@ -613,6 +623,14 @@ describe("real lazy WebGPU engine factory & race integration", () => {
                   "present.0.decoder.value": {
                     data: new Float32Array(6 * step * 64),
                     dims: [1, 6, step, 64],
+                  },
+                  "present.0.encoder.key": {
+                    data: new Float32Array(6 * encSeq * 64),
+                    dims: [1, 6, encSeq, 64],
+                  },
+                  "present.0.encoder.value": {
+                    data: new Float32Array(6 * encSeq * 64),
+                    dims: [1, 6, encSeq, 64],
                   },
                 };
               },
@@ -641,6 +659,9 @@ describe("real lazy WebGPU engine factory & race integration", () => {
       expect(f["input_ids"]!.dims).toEqual([1, s === 0 ? 3 : 1]);
       expect(f["past_key_values.0.decoder.key"]!.dims).toEqual([1, 6, s, 64]);
       expect(f["past_key_values.0.decoder.value"]!.dims).toEqual([1, 6, s, 64]);
+      const expectedEncDims = s === 0 ? [1, 6, 0, 64] : [1, 6, 1500, 64];
+      expect(f["past_key_values.0.encoder.key"]!.dims).toEqual(expectedEncDims);
+      expect(f["past_key_values.0.encoder.value"]!.dims).toEqual(expectedEncDims);
     }
     await engine.unload?.();
   });

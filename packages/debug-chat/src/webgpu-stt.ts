@@ -469,6 +469,10 @@ export function createDefaultWebGpuEngine(opts: {
         for (const [outName, val] of Object.entries(decOut)) {
           if (outName.startsWith("present.")) {
             const pastName = `past_key_values.${outName.slice("present.".length)}`;
+            if (useCache && outName.includes(".encoder.") && pastKv.has(pastName)) {
+              nextKv.set(pastName, pastKv.get(pastName));
+              continue;
+            }
             nextKv.set(
               pastName,
               new ort.Tensor(
