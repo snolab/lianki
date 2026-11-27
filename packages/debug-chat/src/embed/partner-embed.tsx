@@ -186,7 +186,7 @@ export type PortableMountOptions = {
   /** lianki.com's chat for this website (lib/portable-chat-url.ts), shown with the advanced hint. */
   advancedHref: string;
   onExclude: () => void;
-  onInvalidAccount: () => void;
+  onInvalidAccount: (reason?: string) => void;
   report?: (what: string, detail: string) => void;
 };
 

@@ -1100,6 +1100,9 @@ describe("build-partner-embed: shadowed globals", () => {
     expect(b.code).toContain(PROLOGUE);
     expect(b.inputs.some((p) => p.endsWith("embed/partner-embed.tsx"))).toBe(true);
     expect(b.code).toContain("mountPartner");
+    expect(b.code).toContain("local speech recognition is off on other sites");
+    expect(b.inputs.some((p) => /onnxruntime-web[\\/].*dist[\\/]/.test(p))).toBe(false);
+    expect(b.code).not.toContain("file:///");
   }, 60_000);
 
   it("takes the app's colours and halo from globals.css, light and dark", () => {

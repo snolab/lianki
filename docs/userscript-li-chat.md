@@ -1,5 +1,28 @@
 # Li chat from the userscript pill (design stub)
 
+## Consent persistence and connection failures
+
+The global GM decision stays bound to its authenticated principal. A temporary
+`signed-out` or feature `off` reply closes the connection without deleting that
+decision; neither response proves a switch to another account. Every chat
+request still carries its expected principal and the server refuses a different
+account. A confirmed `account-changed` reply invalidates only the principal and
+consent stamp captured by that window. Superseded windows cannot revoke a newer
+decision. Changes observed through GM listeners remount the window with its new
+binding.
+
+An explicit opt-in writes the principal and decision together, then checks GM
+readback before dismissing the prompt. A failed write stays a failure. The
+existing `data-lk-portable` diagnostics use only reason codes such as
+`consent:storage-write-failed`, `consent:account-changed` and
+`consent:connection-ended`, never an account id, consent stamp or credential.
+Separate userscript installations still have separate GM storage; this does not
+copy approval between production and development installations.
+An approval or refusal observed from another tab dismisses an old prompt. The
+`data-lk-portable-consent` QA marker contains only the decision and whether a
+binding and stamp exist; it exposes neither value and is not an authorization
+signal.
+
 Tree: /ext/li-chat
 
 State-tree node `/ext/li-chat`. Status: **M1 shipped (userscript 2.24.30)**

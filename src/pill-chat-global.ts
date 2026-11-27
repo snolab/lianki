@@ -93,8 +93,13 @@ export function globalChatStore(gm: GmStore) {
     revoke() {
       write({ ...read(), consent: "off", consentStamp: uuidv4() });
     },
-    invalidate() {
+    invalidate(expected?: Pick<GlobalChatPolicy, "principal" | "consentStamp">): boolean {
       const p = read();
+      if (
+        expected &&
+        (p.principal !== expected.principal || p.consentStamp !== expected.consentStamp)
+      )
+        return false;
       write({
         ...p,
         principal: null,
@@ -102,11 +107,23 @@ export function globalChatStore(gm: GmStore) {
         consent: p.consent === "off" ? "off" : "unknown",
         collapsed: [],
       });
+      return true;
     },
     consent(value: "all" | "off", principal: string): boolean {
       if (!principalOk(principal)) return false;
-      write({ ...read(), principal, consent: value, consentStamp: uuidv4() });
-      return true;
+      try {
+        const policy = { ...read(), principal, consent: value, consentStamp: uuidv4() };
+        write(policy);
+        // GM writes can fail or be discarded: never dismiss the prompt as saved without a readback.
+        const saved = read();
+        return (
+          saved.principal === principal &&
+          saved.consent === value &&
+          saved.consentStamp === policy.consentStamp
+        );
+      } catch {
+        return false;
+      }
     },
     bind(principal: string): boolean {
       if (!principalOk(principal)) return false;

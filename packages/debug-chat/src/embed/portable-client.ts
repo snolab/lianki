@@ -48,8 +48,8 @@ export type PortableClientDeps = {
   busyLabel: string;
   /** The reason on a line that could not be sent. */
   failedLabel: string;
-  /** Signed out, another account, or the feature switched off: the host closes the panel. */
-  onInvalidAccount: () => void;
+  /** Close the connection; only account-changed proves the stored consent belongs to another account. */
+  onInvalidAccount: (reason?: string) => void;
 };
 
 export type PortableClient = {
@@ -94,7 +94,7 @@ export function createPortableClient(d: PortableClientDeps): PortableClient {
   const invalid = (error: string) => {
     if (!INVALID.has(error)) return false;
     stop();
-    d.onInvalidAccount();
+    d.onInvalidAccount(error);
     return true;
   };
 
