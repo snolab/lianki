@@ -79,7 +79,13 @@ export function OwnerBoots({
   /** Flag stt.webgpu + dev: client-side WebGPU local STT race route. */
   webgpuStt?:
     | boolean
-    | { enabled: boolean; modelUrl?: string; cacheMb?: number; idleUnloadMs?: number };
+    | {
+        enabled: boolean;
+        modelUrl?: string;
+        cacheMb?: number;
+        idleUnloadMs?: number;
+        ortWasmBase?: string;
+      };
   /** The chat's full screen for every chat user (partner.fullscreen on); off, the owner only. */
   chatFull?: boolean;
   /** Flag `voice.li-hub`: Li's sound hub observes the owner's pages (docs/li-sound-hub.md). */

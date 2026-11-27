@@ -150,6 +150,10 @@ jobs:
       # files, keys or server source maps (docs/security-measures.md).
       - name: Static asset hygiene
         run: bun scripts/security/check-public-dir.ts .open-next/assets
+      # Workers refuse any static asset over 25 MiB, but wrangler says so only at
+      # deploy, after the D1 migrations below. Fail here instead.
+      - name: Static asset size
+        run: bun scripts/ci/check-asset-size.ts .open-next/assets
       # By directory, never one file: tracked in d1_migrations, so idempotent and
       # never leaves the schema a migration behind the code.
       - name: D1 migrations

@@ -29,6 +29,16 @@ export const DEFAULT_WEBGPU_MODEL_URL =
 export const DEFAULT_WEBGPU_ESTIMATED_MB = 44;
 export const DEFAULT_WEBGPU_CACHE_MB = 256;
 export const DEFAULT_WEBGPU_IDLE_UNLOAD_MS = 300_000;
+/**
+ * Where onnxruntime-web fetches its wasm runtime (`ort.env.wasm.wasmPaths`): a
+ * CDN pinned to the exact installed version (package.json). The ~26 MiB
+ * `ort-wasm-simd-threaded.jsep.wasm` is over the Workers 25 MiB per-asset
+ * limit, so it must never be emitted into the Next build (next.config.mjs
+ * aliases `onnxruntime-web/webgpu` to the build without the bundled wasm).
+ * Live value: cfg("stt.webgpuOrtWasmBase").
+ */
+export const DEFAULT_WEBGPU_ORT_WASM_BASE =
+  "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/";
 
 export const WHISPER_ASSET_PATHS = [
   "onnx/encoder_model_quantized.onnx",
@@ -89,6 +99,7 @@ export type OrtSessionLike = {
 };
 
 export type OrtLike = {
+  env?: { wasm?: { wasmPaths?: unknown } };
   Tensor: new (
     type: string,
     data: Float32Array | BigInt64Array | Uint8Array | boolean[],
@@ -380,11 +391,14 @@ function argmaxLastStep(
  */
 export function createDefaultWebGpuEngine(opts: {
   importOrt?: () => Promise<OrtLike>;
+  /** Base URL of the ORT wasm files (`ort.env.wasm.wasmPaths`). */
+  ortWasmBase?: string;
   maxTokens?: number;
   melFrames?: number;
 } = {}): WebGpuEngine {
   const importOrt =
-    opts.importOrt ?? (() => import("onnxruntime-web") as unknown as Promise<OrtLike>);
+    opts.importOrt ?? (() => import("onnxruntime-web/webgpu") as unknown as Promise<OrtLike>);
+  const ortWasmBase = opts.ortWasmBase || DEFAULT_WEBGPU_ORT_WASM_BASE;
   const maxTokens = opts.maxTokens ?? 128;
   const melFrames = opts.melFrames ?? WHISPER_MAX_FRAMES;
 
@@ -397,7 +411,10 @@ export function createDefaultWebGpuEngine(opts: {
 
   return {
     async load(_modelId, input) {
-      ort ??= await importOrt();
+      if (!ort) {
+        ort = await importOrt();
+        if (ort.env?.wasm) ort.env.wasm.wasmPaths = ortWasmBase;
+      }
       const bundle: WhisperModelBundle =
         input instanceof Uint8Array ? { encoder: input, decoder: input } : input;
       tokenizer = parseWhisperTokenizer(bundle.tokenizerJson, bundle.configJson);
@@ -512,6 +529,8 @@ export type WebGpuManagerDeps = {
   modelUrl?: string;
   cacheMb?: number;
   idleUnloadMs?: number;
+  /** Base URL of the ORT wasm files for the default engine. */
+  ortWasmBase?: string;
   estimatedMb?: number;
   probe?: () => Promise<WebGpuProbe>;
   fetch?: FetchLike;
@@ -587,7 +606,9 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
   const assetUrls = modelAssetUrls(baseUrl);
   const cacheMb = deps.cacheMb ?? DEFAULT_WEBGPU_CACHE_MB;
   const idleUnloadMs = deps.idleUnloadMs ?? DEFAULT_WEBGPU_IDLE_UNLOAD_MS;
-  const engine = deps.engine ?? createDefaultWebGpuEngine();
+  const engine =
+    deps.engine ??
+    createDefaultWebGpuEngine(deps.ortWasmBase ? { ortWasmBase: deps.ortWasmBase } : {});
   const f = deps.fetch ?? (globalThis.fetch as FetchLike | undefined);
   let confirmDownload = deps.confirmDownload;
   const setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
@@ -806,6 +827,7 @@ export type WebGpuConfig = {
   modelUrl?: string;
   cacheMb?: number;
   idleUnloadMs?: number;
+  ortWasmBase?: string;
 };
 
 let sharedManager: WebGpuModelManager | null = null;
@@ -819,6 +841,7 @@ export function getSharedWebGpuManager(
     modelUrl: conf?.modelUrl !== undefined ? conf.modelUrl : sharedConf.modelUrl,
     cacheMb: conf?.cacheMb !== undefined ? conf.cacheMb : sharedConf.cacheMb,
     idleUnloadMs: conf?.idleUnloadMs !== undefined ? conf.idleUnloadMs : sharedConf.idleUnloadMs,
+    ortWasmBase: conf?.ortWasmBase !== undefined ? conf.ortWasmBase : sharedConf.ortWasmBase,
   };
   const key = JSON.stringify(nextConf);
   if (!sharedManager || key !== sharedKey || conf?.engine) {
@@ -828,6 +851,7 @@ export function getSharedWebGpuManager(
       ...(nextConf.modelUrl ? { modelUrl: nextConf.modelUrl } : {}),
       ...(nextConf.cacheMb !== undefined ? { cacheMb: nextConf.cacheMb } : {}),
       ...(nextConf.idleUnloadMs !== undefined ? { idleUnloadMs: nextConf.idleUnloadMs } : {}),
+      ...(nextConf.ortWasmBase ? { ortWasmBase: nextConf.ortWasmBase } : {}),
       ...(conf?.confirmDownload ? { confirmDownload: conf.confirmDownload } : {}),
       ...(conf?.engine ? { engine: conf.engine } : {}),
     });

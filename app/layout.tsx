@@ -207,6 +207,7 @@ export default async function RootLayout({
           modelUrl: await cfg("stt.webgpuModelUrl"),
           cacheMb: await cfg("stt.webgpuCacheMb"),
           idleUnloadMs: await cfg("stt.webgpuIdleUnloadMs"),
+          ortWasmBase: await cfg("stt.webgpuOrtWasmBase"),
         }
       : undefined;
   const boots = {

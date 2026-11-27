@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createLocalStt, localSttRoute, type WsLike } from "../packages/debug-chat/src/local-stt";
 import {
   DEFAULT_WEBGPU_MODEL_URL,
+  DEFAULT_WEBGPU_ORT_WASM_BASE,
   WEBGPU_STT_URL,
   createDefaultWebGpuEngine,
   createWebGpuModelManager,
@@ -664,5 +665,47 @@ describe("real lazy WebGPU engine factory & race integration", () => {
       expect(f["past_key_values.0.encoder.value"]!.dims).toEqual(expectedEncDims);
     }
     await engine.unload?.();
+  });
+});
+
+describe("ORT wasm comes from a pinned CDN, never the Next build", () => {
+  const pkg = require("../package.json") as { dependencies?: Record<string, string> };
+  const fakeOrt = (env: { wasm: { wasmPaths?: unknown } }): OrtLike => ({
+    env,
+    Tensor: class {} as unknown as OrtLike["Tensor"],
+    InferenceSession: {
+      async create() {
+        return {
+          async run() {
+            return {};
+          },
+        };
+      },
+    },
+  });
+
+  test("default base is pinned to the exact installed onnxruntime-web", () => {
+    const v = pkg.dependencies?.["onnxruntime-web"];
+    expect(v).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(DEFAULT_WEBGPU_ORT_WASM_BASE).toBe(
+      `https://cdn.jsdelivr.net/npm/onnxruntime-web@${v}/dist/`,
+    );
+  });
+
+  test("load() sets ort.env.wasm.wasmPaths to the default base", async () => {
+    const env: { wasm: { wasmPaths?: unknown } } = { wasm: {} };
+    const engine = createDefaultWebGpuEngine({ importOrt: async () => fakeOrt(env) });
+    await engine.load("m", { encoder: new Uint8Array(1), decoder: new Uint8Array(1) });
+    expect(env.wasm.wasmPaths).toBe(DEFAULT_WEBGPU_ORT_WASM_BASE);
+  });
+
+  test("the manager passes a configured base to the default engine", async () => {
+    const env: { wasm: { wasmPaths?: unknown } } = { wasm: {} };
+    const engine = createDefaultWebGpuEngine({
+      importOrt: async () => fakeOrt(env),
+      ortWasmBase: "https://cdn.example/ort/",
+    });
+    await engine.load("m", new Uint8Array(1));
+    expect(env.wasm.wasmPaths).toBe("https://cdn.example/ort/");
   });
 });
