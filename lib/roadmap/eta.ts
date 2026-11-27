@@ -184,3 +184,10 @@ export function overallShare(nodes: readonly { measure?: StepMeasure }[]): numbe
   );
   return shares.length ? shares.reduce((a, b) => a + b, 0) / shares.length : null;
 }
+
+/** The pace indicator's states, in the order shown, all always visible. */
+export const PACE_STATES: readonly PaceState[] = ["on-pace", "ahead", "behind", "no-data"];
+
+/** The highlighted state, or null (no target date yet). */
+export const activeState = (v: PaceVerdict): PaceState | null =>
+  v.state === "no-target" ? null : v.state;

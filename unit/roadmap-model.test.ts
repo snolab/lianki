@@ -23,9 +23,17 @@ import {
   paceVerdict,
   roadmapEta,
   stepEta,
+  activeState,
+  PACE_STATES,
 } from "@/lib/roadmap/eta";
 import { dayText, etaText, needText, verdictText } from "@/lib/roadmap/eta-text";
-import { addDocImage, applyImageUpload, imageSrc, insertImage } from "@/lib/roadmap/doc-image";
+import {
+  addDocImage,
+  applyImageUpload,
+  imageSrc,
+  insertImage,
+  readerIdOf,
+} from "@/lib/roadmap/doc-image";
 import { checkRoadmapPatch } from "@/lib/roadmap/patch";
 import { fitRoadmap } from "@/lib/roadmap/generate-schema";
 import { roadmapPrompt } from "@/lib/roadmap/prompt";
@@ -35,8 +43,6 @@ import { uploadErrorOf } from "@/lib/import/uploads-client";
 import { storeUpload, type InboxBucket, type InboxDeps } from "@/lib/inbox/handlers";
 import type { InboxDb } from "@/lib/inbox/store";
 import { RoadmapGoalsD1Repo } from "@/lib/repos/d1Repos";
-import { activeState, PACE_STATES } from "@/app/(app)/roadmap/components/PaceIndicator";
-import { readerIdOf } from "@/app/(app)/roadmap/components/DocEditor";
 import type { StepMeasure } from "@/types/roadmap";
 
 const node = (i: number, extra: { measure?: StepMeasure; [k: string]: unknown } = {}) => ({
@@ -254,7 +260,10 @@ describe("images in a doc", () => {
       Object.assign(new Blob([png], { type: "image/png" }), { name: "a.png" }),
       md,
       md.length,
-      () => ({ done: Promise.resolve({ ok: false, error: reason }), abort: () => {} }),
+      (_f, _s, onProgress) => {
+        onProgress(0.5);
+        return { done: Promise.resolve({ ok: false, error: reason }), abort: () => {} };
+      },
     );
     expect(out).toEqual({ ok: false, md, reason: "full" });
     // …and saving the Markdown goes through as always.
@@ -507,5 +516,35 @@ describe("D1: the target date and edits", () => {
       updatedAt: now,
     });
     expect((await repo.getById(id))?.targetDate).toBe("2027-07-05");
+  });
+});
+
+describe("each step kind's measure", () => {
+  const base = { ...node(0), totalCards: 4, matureCards: 1, maturityRate: 0.25 };
+  const ctx = {
+    today: TODAY,
+    windowDays: 3,
+    decks: { "ja-jlpt-n3": { seen: 120, total: 100, byDay: { [TODAY]: 5 } } },
+  };
+  it("deck: words seen (capped at the size), the deck's per-day log", () => {
+    expect(measureStep({ ...base, kind: "deck", deck: { id: "ja-jlpt-n3" } }, ctx)).toEqual({
+      unit: "words",
+      done: 100,
+      total: 100,
+      daily: [0, 0, 5],
+    });
+    expect(measureStep({ ...base, kind: "deck", deck: { id: "none" } }, ctx)).toEqual({
+      unit: "words",
+      done: 0,
+      total: null,
+      daily: [0, 0, 0],
+    });
+  });
+  it("keywords: mature page cards over matching ones, no log", () => {
+    expect(measureStep(base, ctx)).toEqual({ unit: "cards", done: 1, total: 4, daily: null });
+  });
+  it("a non-image file is not taken into a doc", async () => {
+    const f = Object.assign(new Blob(["x"], { type: "text/plain" }), { name: "a.txt" });
+    expect(await addDocImage(f, "md", 0)).toEqual({ ok: false, md: "md", reason: "failed" });
   });
 });

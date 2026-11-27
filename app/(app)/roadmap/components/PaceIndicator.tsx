@@ -7,13 +7,7 @@
  * filled seal red; the rest stay grey with a dashed outline. Without a
  * target date none is active and the line below invites setting one.
  */
-import type { PaceState, PaceVerdict } from "@/lib/roadmap/eta";
-
-export const PACE_STATES: readonly PaceState[] = ["on-pace", "ahead", "behind", "no-data"];
-
-/** The highlighted state, or null (no target date yet). */
-export const activeState = (v: PaceVerdict): PaceState | null =>
-  v.state === "no-target" ? null : v.state;
+import { PACE_STATES, activeState, type PaceState, type PaceVerdict } from "@/lib/roadmap/eta";
 
 export default function PaceIndicator({
   verdict,

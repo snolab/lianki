@@ -72,3 +72,11 @@ export async function addDocImage(
   const result = await upload(file, "roadmap", () => {}).done;
   return applyImageUpload(md, at, file.name || "image", result);
 }
+
+/** A pasted /reader link or a bare id → the doc's readerId; anything else → "". */
+export function readerIdOf(v: string): string {
+  const s = v.trim();
+  const m = s.match(/\/reader\/([A-Za-z0-9_-]{1,100})(?:[/?#]|$)/);
+  if (m) return m[1];
+  return /^[A-Za-z0-9_-]{1,100}$/.test(s) ? s : "";
+}

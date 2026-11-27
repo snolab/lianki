@@ -10,7 +10,7 @@
 import { useRef, useState } from "react";
 import { Icon } from "@/app/components/icons";
 import type { RoadmapDoc } from "@/types/roadmap";
-import { FILES_PAGE, addDocImage, isImageFile } from "@/lib/roadmap/doc-image";
+import { FILES_PAGE, addDocImage, isImageFile, readerIdOf } from "@/lib/roadmap/doc-image";
 
 export type DocEditorStrings = {
   docPlaceholder: string;
@@ -32,14 +32,6 @@ export type DocEditorStrings = {
 
 export type SaveResult = "ok" | "too-long" | "failed";
 type Notice = "full" | "too-large" | "failed" | "too-long" | "save-failed" | null;
-
-/** A pasted /reader link or a bare id → the id; anything else → "". */
-export function readerIdOf(v: string): string {
-  const s = v.trim();
-  const m = s.match(/\/reader\/([A-Za-z0-9_-]{1,100})(?:[/?#]|$)/);
-  if (m) return m[1];
-  return /^[A-Za-z0-9_-]{1,100}$/.test(s) ? s : "";
-}
 
 export default function DocEditor({
   doc,
