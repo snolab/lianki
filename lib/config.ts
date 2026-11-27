@@ -1564,6 +1564,22 @@ export const CONFIG = {
     description:
       "客户端 WebGPU 本地语音识别的 onnxruntime-web wasm 文件基础地址（固定到已安装的版本，末尾带 /）。wasm 超过 Workers 单文件 25 MiB 上限，不随站点打包。",
   },
+  "stt.webgpuOrtMjsSha256": {
+    default: "3ee381d20a80f51a788a1c4a5872f6f1d047538dd4342f4af00062de5f9ea4c6",
+    schema: z.string().regex(/^[0-9a-f]{64}$/),
+    group: "stt",
+    audience: "public",
+    description:
+      "onnxruntime-web 1.27.0 的 ort-wasm-simd-threaded.jsep.mjs 的 SHA-256。下载后校验，不一致就拒绝加载。换版本时与基础地址一起改。",
+  },
+  "stt.webgpuOrtWasmSha256": {
+    default: "78feeeb3d08f6bcee94d938ed322f69073bb8076b5f9d34697a574ffba8deb48",
+    schema: z.string().regex(/^[0-9a-f]{64}$/),
+    group: "stt",
+    audience: "public",
+    description:
+      "onnxruntime-web 1.27.0 的 ort-wasm-simd-threaded.jsep.wasm 的 SHA-256。下载后校验，不一致就拒绝加载。换版本时与基础地址一起改。",
+  },
   "stt.webgpuCacheMb": int({
     default: 256,
     min: 32,

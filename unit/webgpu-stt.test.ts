@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { createLocalStt, localSttRoute, type WsLike } from "../packages/debug-chat/src/local-stt";
 import {
   DEFAULT_WEBGPU_MODEL_URL,
+  DEFAULT_WEBGPU_ORT_MJS_SHA256,
   DEFAULT_WEBGPU_ORT_WASM_BASE,
+  DEFAULT_WEBGPU_ORT_WASM_SHA256,
+  WEBGPU_ORT_MJS_FILE,
+  WEBGPU_ORT_WASM_FILE,
   WEBGPU_STT_URL,
   createDefaultWebGpuEngine,
   createWebGpuModelManager,
@@ -34,6 +38,25 @@ function memoryCacheApi(): () => Promise<Pick<Cache, "match" | "put" | "delete">
     },
   };
   return async () => api;
+}
+
+// Stand-in ORT runtime files and their pinned hashes: the manager downloads them
+// with the model through the same guard and verifies them.
+const ORT_MJS = new TextEncoder().encode("export default {}");
+const ORT_WASM = new Uint8Array([0, 97, 115, 109]);
+const sha256 = (b: Uint8Array) => new Bun.CryptoHasher("sha256").update(b).digest("hex");
+const ortDeps = { ortMjsSha256: sha256(ORT_MJS), ortWasmSha256: sha256(ORT_WASM) };
+type TestFetch = (url: string, init?: RequestInit) => Promise<Response>;
+function withOrt(f: TestFetch): TestFetch {
+  return (url, init) => {
+    if (init?.method !== "HEAD" && url.endsWith(WEBGPU_ORT_MJS_FILE)) {
+      return Promise.resolve(new Response(ORT_MJS));
+    }
+    if (init?.method !== "HEAD" && url.endsWith(WEBGPU_ORT_WASM_FILE)) {
+      return Promise.resolve(new Response(ORT_WASM));
+    }
+    return f(url, init);
+  };
 }
 
 function fakeEngine(
@@ -137,7 +160,8 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
       onReadyEvent: () => {
         readyEvents++;
       },
-      fetch: async (_url, init) => {
+      ...ortDeps,
+      fetch: withOrt(async (_url, init) => {
         if (init?.method === "HEAD") {
           return new Response(null, {
             status: 200,
@@ -146,12 +170,15 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
         }
         gets++;
         return new Response(payload, { status: 200 });
-      },
+      }),
     });
 
     expect(await mgr.ensureReady()).toBe(true);
-    expect(confirmed).toEqual([{ estimatedMb: 3, risk: "restricted" }]);
-    expect(mgr.snapshot().sizeLabel).toBe("6 B");
+    // HEAD of the model and both ORT runtime files: 3 x 3 MiB.
+    expect(confirmed).toEqual([{ estimatedMb: 9, risk: "restricted" }]);
+    expect(mgr.snapshot().sizeLabel).toBe(
+      formatModelSize(payload.byteLength + ORT_MJS.byteLength + ORT_WASM.byteLength),
+    );
     expect(gets).toBe(1);
     expect(eng.loads).toBe(1);
     expect(readyEvents).toBe(1);
@@ -178,7 +205,8 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
       probe: async () => ({ supported: true }),
       network: () => ({ online: true, connection: { type: "cellular" } }),
       confirmDownload: () => false,
-      fetch: async (_url, init) => {
+      ...ortDeps,
+      fetch: withOrt(async (_url, init) => {
         if (init?.method === "HEAD") {
           return new Response(null, {
             status: 200,
@@ -187,12 +215,12 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
         }
         gets++;
         return new Response(new Uint8Array([1, 2]), { status: 200 });
-      },
+      }),
     });
     expect(await mgr.ensureReady()).toBe(false);
     expect(mgr.status()).toBe("blocked");
     expect(gets).toBe(0);
-    expect(mgr.snapshot().sizeLabel).toBe("40.0 MB");
+    expect(mgr.snapshot().sizeLabel).toBe("120.0 MB");
   });
 
   test("rejects downloads exceeding cacheMb limit", async () => {
@@ -314,7 +342,8 @@ describe("real lazy WebGPU engine factory & race integration", () => {
       engine: realEngine,
       probe: async () => ({ supported: true }),
       network: () => ({ online: true, connection: { type: "wifi" } }),
-      fetch: async (url, init) => {
+      ...ortDeps,
+      fetch: withOrt(async (url, init) => {
         if (init?.method === "HEAD") {
           return new Response(null, { status: 200, headers: { "content-length": "1024" } });
         }
@@ -322,7 +351,7 @@ describe("real lazy WebGPU engine factory & race integration", () => {
         if (url.endsWith("decoder_model_merged_quantized.onnx")) return new Response(decoderBuf);
         if (url.endsWith("tokenizer.json")) return new Response(tokenizerBytes);
         return new Response(configBytes);
-      },
+      }),
     });
 
     expect(modelAssetUrls(DEFAULT_WEBGPU_MODEL_URL)).toHaveLength(4);
@@ -358,7 +387,8 @@ describe("real lazy WebGPU engine factory & race integration", () => {
       engine: eng,
       probe: async () => ({ supported: true }),
       network: () => ({ online: true, connection: { type: "wifi" } }),
-      fetch: (_url, init) => {
+      ...ortDeps,
+      fetch: withOrt((_url, init) => {
         if (init?.method === "HEAD") {
           return Promise.resolve(
             new Response(null, { status: 200, headers: { "content-length": "3" } }),
@@ -367,7 +397,7 @@ describe("real lazy WebGPU engine factory & race integration", () => {
         return new Promise<Response>((res) => {
           resolveFetch = res;
         });
-      },
+      }),
     });
 
     const events: Record<string, unknown>[] = [];
@@ -450,7 +480,8 @@ describe("real lazy WebGPU engine factory & race integration", () => {
       engine: fakeEngine(),
       probe: async () => ({ supported: true }),
       network: () => ({ online: true, connection: { type: "wifi" } }),
-      fetch: (_url, init) => {
+      ...ortDeps,
+      fetch: withOrt((_url, init) => {
         if (init?.method === "HEAD") {
           return Promise.resolve(new Response(null, { status: 200 }));
         }
@@ -459,7 +490,7 @@ describe("real lazy WebGPU engine factory & race integration", () => {
             rej(Object.assign(new Error("aborted"), { name: "AbortError" })),
           );
         });
-      },
+      }),
     });
     const p = cancelMgr.ensureReady();
     await new Promise((r) => setTimeout(r, 10));
@@ -477,7 +508,8 @@ describe("real lazy WebGPU engine factory & race integration", () => {
       }),
       probe: async () => ({ supported: true }),
       network: () => ({ online: true, connection: { type: "wifi" } }),
-      fetch: async () => new Response(new Uint8Array([1, 2]), { status: 200 }),
+      ...ortDeps,
+      fetch: withOrt(async () => new Response(new Uint8Array([1, 2]), { status: 200 })),
     });
     expect(await errMgr.ensureReady()).toBe(true);
     const sock = openWebGpuStt(errMgr);
@@ -668,9 +700,10 @@ describe("real lazy WebGPU engine factory & race integration", () => {
   });
 });
 
-describe("ORT wasm comes from a pinned CDN, never the Next build", () => {
+describe("ORT runtime: pinned, guarded, verified, handed over as bytes", () => {
   const pkg = require("../package.json") as { dependencies?: Record<string, string> };
-  const fakeOrt = (env: { wasm: { wasmPaths?: unknown } }): OrtLike => ({
+  type Env = { wasm: { wasmPaths?: unknown; wasmBinary?: unknown; numThreads?: number } };
+  const fakeOrt = (env: Env): OrtLike => ({
     env,
     Tensor: class {} as unknown as OrtLike["Tensor"],
     InferenceSession: {
@@ -683,29 +716,160 @@ describe("ORT wasm comes from a pinned CDN, never the Next build", () => {
       },
     },
   });
+  const model = { encoder: new Uint8Array([1]), decoder: new Uint8Array([2]) };
 
-  test("default base is pinned to the exact installed onnxruntime-web", () => {
+  test("defaults are pinned to the exact installed onnxruntime-web", () => {
     const v = pkg.dependencies?.["onnxruntime-web"];
     expect(v).toMatch(/^\d+\.\d+\.\d+$/);
     expect(DEFAULT_WEBGPU_ORT_WASM_BASE).toBe(
       `https://cdn.jsdelivr.net/npm/onnxruntime-web@${v}/dist/`,
     );
+    // The installed files are the ones the CDN serves for that version.
+    const dist = `${import.meta.dir}/../node_modules/onnxruntime-web/dist/`;
+    const fs = require("fs") as typeof import("fs");
+    if (fs.existsSync(dist + WEBGPU_ORT_WASM_FILE)) {
+      expect(sha256(fs.readFileSync(dist + WEBGPU_ORT_MJS_FILE))).toBe(
+        DEFAULT_WEBGPU_ORT_MJS_SHA256,
+      );
+      expect(sha256(fs.readFileSync(dist + WEBGPU_ORT_WASM_FILE))).toBe(
+        DEFAULT_WEBGPU_ORT_WASM_SHA256,
+      );
+    }
   });
 
-  test("load() sets ort.env.wasm.wasmPaths to the default base", async () => {
-    const env: { wasm: { wasmPaths?: unknown } } = { wasm: {} };
-    const engine = createDefaultWebGpuEngine({ importOrt: async () => fakeOrt(env) });
-    await engine.load("m", { encoder: new Uint8Array(1), decoder: new Uint8Array(1) });
-    expect(env.wasm.wasmPaths).toBe(DEFAULT_WEBGPU_ORT_WASM_BASE);
-  });
-
-  test("the manager passes a configured base to the default engine", async () => {
-    const env: { wasm: { wasmPaths?: unknown } } = { wasm: {} };
+  test("load() hands ORT the verified bytes and a module URL, single-threaded, then revokes it", async () => {
+    const env: Env = { wasm: {} };
+    const made: Uint8Array[] = [];
+    let revoked = 0;
     const engine = createDefaultWebGpuEngine({
       importOrt: async () => fakeOrt(env),
-      ortWasmBase: "https://cdn.example/ort/",
+      moduleUrl: (b) => {
+        made.push(b);
+        return { url: "blob:verified-glue", revoke: () => revoked++ };
+      },
     });
-    await engine.load("m", new Uint8Array(1));
-    expect(env.wasm.wasmPaths).toBe("https://cdn.example/ort/");
+    await engine.load("m", { ...model, ortMjs: ORT_MJS, ortWasm: ORT_WASM });
+    expect(env.wasm.wasmBinary).toBe(ORT_WASM);
+    expect(env.wasm.wasmPaths).toEqual({ mjs: "blob:verified-glue" });
+    expect(env.wasm.numThreads).toBe(1);
+    expect(made).toEqual([ORT_MJS]);
+    expect(revoked).toBe(1);
+  });
+
+  test("load() refuses a real ORT without verified runtime bytes (ORT never fetches its own)", async () => {
+    const env: Env = { wasm: {} };
+    const engine = createDefaultWebGpuEngine({ importOrt: async () => fakeOrt(env) });
+    await expect(engine.load("m", model)).rejects.toThrow("webgpu-ort-runtime-unverified");
+    expect(env.wasm.wasmPaths).toBeUndefined();
+  });
+
+  const managerWith = (o: {
+    fetch: TestFetch;
+    engine?: WebGpuEngine;
+    confirm?: (d: { estimatedMb: number }) => boolean;
+    network?: string;
+  }) =>
+    createWebGpuModelManager({
+      modelUrl: "https://cdn.example/model.onnx",
+      ortWasmBase: "https://cdn.example/ort",
+      ...ortDeps,
+      cacheMb: 256,
+      cache: memoryCacheApi(),
+      engine: o.engine ?? fakeEngine(),
+      probe: async () => ({ supported: true }),
+      network: () => ({ online: true, connection: { type: o.network ?? "wifi" } }),
+      ...(o.confirm ? { confirmDownload: o.confirm } : {}),
+      fetch: o.fetch,
+    });
+
+  test("the size shown for confirmation includes the ORT .mjs and .wasm", async () => {
+    const heads: string[] = [];
+    const confirmed: number[] = [];
+    const sizes: Record<string, number> = {
+      "https://cdn.example/model.onnx": 40 * 1024 * 1024,
+      [`https://cdn.example/ort/${WEBGPU_ORT_MJS_FILE}`]: 46_614,
+      [`https://cdn.example/ort/${WEBGPU_ORT_WASM_FILE}`]: 26_827_543,
+    };
+    const mgr = managerWith({
+      network: "cellular",
+      confirm: (d) => {
+        confirmed.push(d.estimatedMb);
+        return false;
+      },
+      fetch: async (url, init) => {
+        if (init?.method === "HEAD") {
+          heads.push(url);
+          return new Response(null, { headers: { "content-length": String(sizes[url] ?? 0) } });
+        }
+        throw new Error("nothing may be fetched before the confirm");
+      },
+    });
+    expect(await mgr.ensureReady()).toBe(false);
+    expect(mgr.status()).toBe("blocked");
+    expect(heads.sort()).toEqual(Object.keys(sizes).sort());
+    // 41,943,040 + 46,614 + 26,827,543 bytes = 65.6 MiB, rounded up.
+    expect(confirmed).toEqual([66]);
+    expect(mgr.snapshot().sizeLabel).toBe("65.6 MB");
+  });
+
+  test("a runtime file with the wrong SHA-256 is refused and never reaches ORT", async () => {
+    const eng = fakeEngine();
+    const mgr = managerWith({
+      engine: eng,
+      fetch: async (url, init) => {
+        if (init?.method === "HEAD") return new Response(null, { status: 200 });
+        if (url.endsWith(WEBGPU_ORT_WASM_FILE)) return new Response(new Uint8Array([6, 6, 6]));
+        if (url.endsWith(WEBGPU_ORT_MJS_FILE)) return new Response(ORT_MJS);
+        return new Response(new Uint8Array([1, 2]));
+      },
+    });
+    expect(await mgr.ensureReady()).toBe(false);
+    expect(mgr.status()).toBe("error");
+    expect(mgr.snapshot().error).toBe("model-download-digest");
+    expect(eng.loads).toBe(0);
+  });
+
+  test("cancelling during the ORT wasm download stops it and loads nothing", async () => {
+    const eng = fakeEngine();
+    const got: string[] = [];
+    const mgr = managerWith({
+      engine: eng,
+      fetch: (url, init) => {
+        if (init?.method === "HEAD") return Promise.resolve(new Response(null, { status: 200 }));
+        got.push(url);
+        if (!url.endsWith(WEBGPU_ORT_WASM_FILE)) {
+          return Promise.resolve(
+            new Response(url.endsWith(WEBGPU_ORT_MJS_FILE) ? ORT_MJS : new Uint8Array([1])),
+          );
+        }
+        return new Promise((_res, rej) => {
+          init?.signal?.addEventListener("abort", () =>
+            rej(Object.assign(new Error("aborted"), { name: "AbortError" })),
+          );
+        });
+      },
+    });
+    const p = mgr.ensureReady();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(got.at(-1)).toBe(`https://cdn.example/ort/${WEBGPU_ORT_WASM_FILE}`);
+    mgr.cancelDownload();
+    expect(await p).toBe(false);
+    expect(["idle", "blocked"]).toContain(mgr.status());
+    expect(eng.loads).toBe(0);
+  });
+
+  test("the verified runtime bytes reach the engine with the model", async () => {
+    let seen: { ortMjs?: Uint8Array; ortWasm?: Uint8Array } | null = null;
+    const mgr = managerWith({
+      engine: fakeEngine({
+        async load(_id, b) {
+          seen = b as { ortMjs?: Uint8Array; ortWasm?: Uint8Array };
+        },
+      }),
+      fetch: withOrt(async () => new Response(new Uint8Array([1]))),
+    });
+    expect(await mgr.ensureReady()).toBe(true);
+    expect(seen!.ortMjs).toEqual(ORT_MJS);
+    expect(seen!.ortWasm).toEqual(ORT_WASM);
   });
 });

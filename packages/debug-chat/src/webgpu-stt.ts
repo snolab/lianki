@@ -30,15 +30,27 @@ export const DEFAULT_WEBGPU_ESTIMATED_MB = 44;
 export const DEFAULT_WEBGPU_CACHE_MB = 256;
 export const DEFAULT_WEBGPU_IDLE_UNLOAD_MS = 300_000;
 /**
- * Where onnxruntime-web fetches its wasm runtime (`ort.env.wasm.wasmPaths`): a
- * CDN pinned to the exact installed version (package.json). The ~26 MiB
- * `ort-wasm-simd-threaded.jsep.wasm` is over the Workers 25 MiB per-asset
- * limit, so it must never be emitted into the Next build (next.config.mjs
- * aliases `onnxruntime-web/webgpu` to the build without the bundled wasm).
- * Live value: cfg("stt.webgpuOrtWasmBase").
+ * The onnxruntime-web runtime files the WebGPU engine needs at run time, from a
+ * CDN pinned to the exact installed version (package.json). The ~26 MiB jsep
+ * wasm is over the Workers 25 MiB per-asset limit, so it is never part of the
+ * Next build (next.config.mjs aliases `onnxruntime-web/webgpu` to the build
+ * without the bundled wasm; `ort.webgpu.min.mjs` itself is in our own build).
+ * Both files go through the same guarded download as the model
+ * (`downloadModelAssets`: metered confirm, cancel, SHA-256) and ORT is handed
+ * the verified bytes; it never fetches them itself.
+ * Live values: cfg("stt.webgpuOrtWasmBase"), cfg("stt.webgpuOrtMjsSha256"),
+ * cfg("stt.webgpuOrtWasmSha256").
  */
 export const DEFAULT_WEBGPU_ORT_WASM_BASE =
   "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/";
+export const WEBGPU_ORT_MJS_FILE = "ort-wasm-simd-threaded.jsep.mjs";
+export const WEBGPU_ORT_WASM_FILE = "ort-wasm-simd-threaded.jsep.wasm";
+export const DEFAULT_WEBGPU_ORT_MJS_SHA256 =
+  "3ee381d20a80f51a788a1c4a5872f6f1d047538dd4342f4af00062de5f9ea4c6";
+export const DEFAULT_WEBGPU_ORT_WASM_SHA256 =
+  "78feeeb3d08f6bcee94d938ed322f69073bb8076b5f9d34697a574ffba8deb48";
+/** Size of the ORT runtime (26,827,543 + 46,614 bytes), for the fallback estimate. */
+export const DEFAULT_WEBGPU_ORT_ESTIMATED_MB = 26;
 
 export const WHISPER_ASSET_PATHS = [
   "onnx/encoder_model_quantized.onnx",
@@ -79,6 +91,10 @@ export type WhisperModelBundle = {
   decoder: Uint8Array;
   tokenizerJson?: Uint8Array;
   configJson?: Uint8Array;
+  /** Verified ORT runtime glue (`ort-wasm-simd-threaded.jsep.mjs`). */
+  ortMjs?: Uint8Array;
+  /** Verified ORT runtime wasm (`ort-wasm-simd-threaded.jsep.wasm`). */
+  ortWasm?: Uint8Array;
 };
 
 export type WebGpuEngine = {
@@ -99,7 +115,7 @@ export type OrtSessionLike = {
 };
 
 export type OrtLike = {
-  env?: { wasm?: { wasmPaths?: unknown } };
+  env?: { wasm?: { wasmPaths?: unknown; wasmBinary?: unknown; numThreads?: number } };
   Tensor: new (
     type: string,
     data: Float32Array | BigInt64Array | Uint8Array | boolean[],
@@ -391,14 +407,19 @@ function argmaxLastStep(
  */
 export function createDefaultWebGpuEngine(opts: {
   importOrt?: () => Promise<OrtLike>;
-  /** Base URL of the ORT wasm files (`ort.env.wasm.wasmPaths`). */
-  ortWasmBase?: string;
+  /** Turns verified glue bytes into an importable URL (default: a blob URL). */
+  moduleUrl?: (bytes: Uint8Array) => { url: string; revoke(): void };
   maxTokens?: number;
   melFrames?: number;
 } = {}): WebGpuEngine {
   const importOrt =
     opts.importOrt ?? (() => import("onnxruntime-web/webgpu") as unknown as Promise<OrtLike>);
-  const ortWasmBase = opts.ortWasmBase || DEFAULT_WEBGPU_ORT_WASM_BASE;
+  const moduleUrl =
+    opts.moduleUrl ??
+    ((bytes: Uint8Array) => {
+      const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "text/javascript" }));
+      return { url, revoke: () => URL.revokeObjectURL(url) };
+    });
   const maxTokens = opts.maxTokens ?? 128;
   const melFrames = opts.melFrames ?? WHISPER_MAX_FRAMES;
 
@@ -411,12 +432,21 @@ export function createDefaultWebGpuEngine(opts: {
 
   return {
     async load(_modelId, input) {
-      if (!ort) {
-        ort = await importOrt();
-        if (ort.env?.wasm) ort.env.wasm.wasmPaths = ortWasmBase;
-      }
+      ort ??= await importOrt();
       const bundle: WhisperModelBundle =
         input instanceof Uint8Array ? { encoder: input, decoder: input } : input;
+      // The real ORT has env.wasm: hand it the verified runtime, never let it fetch one.
+      let glue: { url: string; revoke(): void } | null = null;
+      if (ort.env?.wasm) {
+        if (!bundle.ortMjs?.byteLength || !bundle.ortWasm?.byteLength) {
+          throw new Error("webgpu-ort-runtime-unverified");
+        }
+        glue = moduleUrl(bundle.ortMjs);
+        ort.env.wasm.wasmBinary = bundle.ortWasm;
+        ort.env.wasm.wasmPaths = { mjs: glue.url };
+        // Threads would spawn workers from the glue URL; one thread loads nothing else.
+        ort.env.wasm.numThreads = 1;
+      }
       tokenizer = parseWhisperTokenizer(bundle.tokenizerJson, bundle.configJson);
       if (bundle.configJson?.byteLength) {
         try {
@@ -432,12 +462,16 @@ export function createDefaultWebGpuEngine(opts: {
           }
         } catch {}
       }
-      encoderSession = await ort.InferenceSession.create(bundle.encoder, {
-        executionProviders: ["webgpu"],
-      });
-      decoderSession = await ort.InferenceSession.create(bundle.decoder, {
-        executionProviders: ["webgpu"],
-      });
+      try {
+        encoderSession = await ort.InferenceSession.create(bundle.encoder, {
+          executionProviders: ["webgpu"],
+        });
+        decoderSession = await ort.InferenceSession.create(bundle.decoder, {
+          executionProviders: ["webgpu"],
+        });
+      } finally {
+        glue?.revoke();
+      }
     },
     async final(_utteranceId, pcm) {
       if (!ort || !encoderSession || !decoderSession || !tokenizer) {
@@ -529,8 +563,10 @@ export type WebGpuManagerDeps = {
   modelUrl?: string;
   cacheMb?: number;
   idleUnloadMs?: number;
-  /** Base URL of the ORT wasm files for the default engine. */
+  /** Base URL of the ORT runtime files (with a trailing /). */
   ortWasmBase?: string;
+  ortMjsSha256?: string;
+  ortWasmSha256?: string;
   estimatedMb?: number;
   probe?: () => Promise<WebGpuProbe>;
   fetch?: FetchLike;
@@ -604,11 +640,16 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
   const modelId = deps.modelId || DEFAULT_WEBGPU_MODEL_ID;
   const baseUrl = deps.modelUrl || DEFAULT_WEBGPU_MODEL_URL;
   const assetUrls = modelAssetUrls(baseUrl);
+  const ortBase = (deps.ortWasmBase || DEFAULT_WEBGPU_ORT_WASM_BASE).replace(/\/*$/, "/");
+  const ortAssets = [
+    { url: ortBase + WEBGPU_ORT_MJS_FILE, sha256: deps.ortMjsSha256 || DEFAULT_WEBGPU_ORT_MJS_SHA256 },
+    { url: ortBase + WEBGPU_ORT_WASM_FILE, sha256: deps.ortWasmSha256 || DEFAULT_WEBGPU_ORT_WASM_SHA256 },
+  ];
+  // One manifest: the model and the runtime share the confirm, the cancel and the size.
+  const allUrls = [...assetUrls, ...ortAssets.map((a) => a.url)];
   const cacheMb = deps.cacheMb ?? DEFAULT_WEBGPU_CACHE_MB;
   const idleUnloadMs = deps.idleUnloadMs ?? DEFAULT_WEBGPU_IDLE_UNLOAD_MS;
-  const engine =
-    deps.engine ??
-    createDefaultWebGpuEngine(deps.ortWasmBase ? { ortWasmBase: deps.ortWasmBase } : {});
+  const engine = deps.engine ?? createDefaultWebGpuEngine();
   const f = deps.fetch ?? (globalThis.fetch as FetchLike | undefined);
   let confirmDownload = deps.confirmDownload;
   const setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
@@ -661,7 +702,7 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
     if (f) {
       try {
         const heads = await Promise.all(
-          assetUrls.map((u) => f(u, { method: "HEAD" }).catch(() => null)),
+          allUrls.map((u) => f(u, { method: "HEAD" }).catch(() => null)),
         );
         let sum = 0;
         let sawAny = false;
@@ -710,7 +751,8 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
     const estimatedMb =
       est.bytes !== null
         ? Math.max(1, Math.ceil(est.bytes / (1024 * 1024)))
-        : (deps.estimatedMb ?? Math.min(DEFAULT_WEBGPU_ESTIMATED_MB, cacheMb));
+        : (deps.estimatedMb ??
+          Math.min(DEFAULT_WEBGPU_ESTIMATED_MB + DEFAULT_WEBGPU_ORT_ESTIMATED_MB, cacheMb));
 
     status = "downloading";
     progress = { loadedBytes: 0, totalBytes: est.bytes ?? 0, pct: 0 };
@@ -720,7 +762,7 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
     let bundle: WhisperModelBundle;
     try {
       const assets = await downloadModelAssets({
-        assets: assetUrls.map((url) => ({ url })),
+        assets: [...assetUrls.map((url) => ({ url })), ...ortAssets],
         cacheName: WEBGPU_CACHE,
         estimatedMb,
         confirm: confirmDownload,
@@ -734,15 +776,17 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
       knownSizeBytes = totalBytes;
       progress = { loadedBytes: totalBytes, totalBytes, pct: 100 };
       const byUrl = new Map(assets.map((a) => [a.url, new Uint8Array(a.bytes)]));
+      const runtime = { ortMjs: byUrl.get(ortAssets[0]!.url), ortWasm: byUrl.get(ortAssets[1]!.url) };
       if (assetUrls.length === 1) {
         const single = byUrl.get(assetUrls[0]!)!;
-        bundle = { encoder: single, decoder: single };
+        bundle = { encoder: single, decoder: single, ...runtime };
       } else {
         bundle = {
           encoder: byUrl.get(assetUrls[0]!)!,
           decoder: byUrl.get(assetUrls[1]!)!,
           tokenizerJson: byUrl.get(assetUrls[2]!),
           configJson: byUrl.get(assetUrls[3]!),
+          ...runtime,
         };
       }
     } catch (e) {
@@ -828,6 +872,8 @@ export type WebGpuConfig = {
   cacheMb?: number;
   idleUnloadMs?: number;
   ortWasmBase?: string;
+  ortMjsSha256?: string;
+  ortWasmSha256?: string;
 };
 
 let sharedManager: WebGpuModelManager | null = null;
@@ -842,6 +888,8 @@ export function getSharedWebGpuManager(
     cacheMb: conf?.cacheMb !== undefined ? conf.cacheMb : sharedConf.cacheMb,
     idleUnloadMs: conf?.idleUnloadMs !== undefined ? conf.idleUnloadMs : sharedConf.idleUnloadMs,
     ortWasmBase: conf?.ortWasmBase !== undefined ? conf.ortWasmBase : sharedConf.ortWasmBase,
+    ortMjsSha256: conf?.ortMjsSha256 !== undefined ? conf.ortMjsSha256 : sharedConf.ortMjsSha256,
+    ortWasmSha256: conf?.ortWasmSha256 !== undefined ? conf.ortWasmSha256 : sharedConf.ortWasmSha256,
   };
   const key = JSON.stringify(nextConf);
   if (!sharedManager || key !== sharedKey || conf?.engine) {
@@ -852,6 +900,8 @@ export function getSharedWebGpuManager(
       ...(nextConf.cacheMb !== undefined ? { cacheMb: nextConf.cacheMb } : {}),
       ...(nextConf.idleUnloadMs !== undefined ? { idleUnloadMs: nextConf.idleUnloadMs } : {}),
       ...(nextConf.ortWasmBase ? { ortWasmBase: nextConf.ortWasmBase } : {}),
+      ...(nextConf.ortMjsSha256 ? { ortMjsSha256: nextConf.ortMjsSha256 } : {}),
+      ...(nextConf.ortWasmSha256 ? { ortWasmSha256: nextConf.ortWasmSha256 } : {}),
       ...(conf?.confirmDownload ? { confirmDownload: conf.confirmDownload } : {}),
       ...(conf?.engine ? { engine: conf.engine } : {}),
     });

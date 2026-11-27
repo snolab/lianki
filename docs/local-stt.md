@@ -1868,6 +1868,15 @@ For Windows / desktop browsers with WebGPU (`packages/debug-chat/src/webgpu-stt.
     bundled: `next.config.mjs` aliases `onnxruntime-web/webgpu` to the build
     without the bundled wasm, and `scripts/ci/check-asset-size.ts` fails the
     deploy on any asset over 25 MiB. Bump this with the package.
+  - `stt.webgpuOrtMjsSha256`, `stt.webgpuOrtWasmSha256`: SHA-256 of
+    `ort-wasm-simd-threaded.jsep.mjs` / `.jsep.wasm` for that version. The
+    manager downloads both with the model, in one `downloadModelAssets` batch,
+    so they get the same metered/unknown-network confirmation, cancellation and
+    size estimate (HEAD of all six files). A file whose hash differs is refused
+    (`model-download-digest`). ORT is then handed the verified bytes
+    (`env.wasm.wasmBinary` plus a blob URL for the glue, one thread) and never
+    fetches its runtime itself. `ort.webgpu.min.mjs` is in our own build, not
+    fetched from the CDN. Change the base and both hashes together.
 - **On-demand background download & racing**:
   - Never downloads until `stt.webgpu` is enabled (or an explicit user action); `estimateSize()` queries `HEAD` `Content-Length` first so the size is known before downloading, and uncached downloads route through `downloadModelAssets` (`model-download.ts`) for metered/unknown-network confirmation (`confirmBrowserModelDownload`) and network-change cancellation.
   - While `webgpu:local` is `idle`, `downloading`, or `blocked`, `openWebGpuStt` closes immediately (`4010`) so the active utterance races straight onto server/cloud routes with zero delay (audio sent as usual), then emits `lk-stt-available` when ready.

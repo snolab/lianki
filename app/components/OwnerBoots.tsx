@@ -85,6 +85,8 @@ export function OwnerBoots({
         cacheMb?: number;
         idleUnloadMs?: number;
         ortWasmBase?: string;
+        ortMjsSha256?: string;
+        ortWasmSha256?: string;
       };
   /** The chat's full screen for every chat user (partner.fullscreen on); off, the owner only. */
   chatFull?: boolean;
