@@ -35,6 +35,7 @@ import { reportPageError } from "./page-errors";
 import { type SpeakerTag, cleanSpeaker } from "./wire";
 import { isDesktop, sttMayReopen } from "./voice-bg";
 import { STT_AVAILABLE_EVENT, isPublicRoute } from "./public-stt";
+import { WEBGPU_STT_URL } from "./webgpu-stt";
 
 /** localStorage: the local STT server's WebSocket URL(s) (owner pages only). */
 export const LOCAL_STT_KEY = "lk:debug-local-stt";
@@ -68,7 +69,7 @@ const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 function oneUrl(raw: string, named = false): string | undefined {
   // Lianki's speech servers by name (rtc:lianki, wss:session): the chat mic's list may mix
   // them with his sockets (docs/local-stt.md, "His own Mac over WebRTC"); they are not URLs.
-  if (named && isPublicRoute(raw)) return raw;
+  if (named && (isPublicRoute(raw) || raw === WEBGPU_STT_URL)) return raw;
   let u: URL;
   try {
     u = new URL(raw);

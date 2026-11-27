@@ -183,6 +183,15 @@ export default async function RootLayout({
     dev && flagIn(flags, "voice.cloud-voices")
       ? { on: true, map: await cfg("voice.langVoices") }
       : undefined;
+  const webgpuStt =
+    dev && flagIn(flags, "stt.webgpu")
+      ? {
+          enabled: true,
+          modelUrl: await cfg("stt.webgpuModelUrl"),
+          cacheMb: await cfg("stt.webgpuCacheMb"),
+          idleUnloadMs: await cfg("stt.webgpuIdleUnloadMs"),
+        }
+      : undefined;
   const boots = {
     strings: partner,
     leave,
@@ -191,6 +200,7 @@ export default async function RootLayout({
     dev,
     chatFull,
     etaBar,
+    webgpuStt,
     liHub,
     autoUpdate,
     lexicon,

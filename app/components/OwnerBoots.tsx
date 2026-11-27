@@ -19,6 +19,7 @@ export function OwnerBoots({
   open = false,
   dev = false,
   etaBar = false,
+  webgpuStt,
   chatFull = false,
   liHub = false,
   lexicon,
@@ -68,6 +69,10 @@ export function OwnerBoots({
   dev?: boolean;
   /** Flag chat.eta-bar: the owner's ETA bar in the chat (lib/eta-ping.ts). */
   etaBar?: boolean;
+  /** Flag stt.webgpu + dev: client-side WebGPU local STT race route. */
+  webgpuStt?:
+    | boolean
+    | { enabled: boolean; modelUrl?: string; cacheMb?: number; idleUnloadMs?: number };
   /** The chat's full screen for every chat user (partner.fullscreen on); off, the owner only. */
   chatFull?: boolean;
   /** Flag `voice.li-hub`: Li's sound hub observes the owner's pages (docs/li-sound-hub.md). */
@@ -85,6 +90,7 @@ export function OwnerBoots({
         dev={dev}
         fullScreen={chatFull}
         etaBar={etaBar}
+        webgpuStt={webgpuStt}
         liHub={liHub}
         lexicon={lexicon}
         cloudVoices={cloudVoices}

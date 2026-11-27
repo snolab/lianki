@@ -446,6 +446,13 @@ export const FLAGS = {
     group: "ai",
     audience: "owner",
   },
+  "stt.webgpu": {
+    description:
+      "Windows / 桌面端 WebGPU 本地语音识别：按需在后台下载并缓存客户端模型，与服务器路由竞速（未就绪或不支持时自动回退云端）。",
+    default: false,
+    group: "stt",
+    audience: "owner",
+  },
 } as const satisfies Record<string, FlagDef>;
 
 export type FlagKey = keyof typeof FLAGS;

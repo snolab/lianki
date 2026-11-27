@@ -37,7 +37,12 @@ import { voiceLatency, noteSttVia } from "./latency";
 import { sttTagOf } from "./wire";
 import { postSessionClip } from "./clips-store";
 import { createRecorder, pageRecorder } from "./recorder";
-import { createLocalStt, REQUEST_TIMEOUT_MS } from "./local-stt";
+import { createLocalStt, REQUEST_TIMEOUT_MS, type WsLike } from "./local-stt";
+import {
+  WEBGPU_STT_URL,
+  getSharedWebGpuManager,
+  openWebGpuStt,
+} from "./webgpu-stt";
 import { createPttRecognition } from "./ptt-recognize";
 import {
   PUBLIC_CONNECT_TIMEOUT_MS,
@@ -208,10 +213,18 @@ function localFor(
   log: (event: Record<string, unknown>) => void,
   filter = filterSwitch(),
 ) {
+  const hasWebGpu = url.split(/[\s,]+/).includes(WEBGPU_STT_URL);
+  const wrapOpen = (base?: (u: string, protocols?: string[]) => WsLike) =>
+    hasWebGpu
+      ? (u: string, protocols?: string[]): WsLike =>
+          u === WEBGPU_STT_URL
+            ? openWebGpuStt(getSharedWebGpuManager())
+            : (base ?? ((w, p) => new WebSocket(w, p) as unknown as WsLike))(u, protocols)
+      : base;
   if (isMixedRoutes(url))
     return createLocalStt(url, {
       log,
-      open: mixedOpen({ log }),
+      open: wrapOpen(mixedOpen({ log })),
       connectTimeoutMs: PUBLIC_CONNECT_TIMEOUT_MS,
       device: voiceDevice(),
       thread: "owner",
@@ -220,10 +233,16 @@ function localFor(
   if (isPublicRoutes(url))
     return createLocalStt(url, {
       log,
-      open: publicOpen({ log }),
+      open: wrapOpen(publicOpen({ log })),
       connectTimeoutMs: PUBLIC_CONNECT_TIMEOUT_MS,
     });
-  return createLocalStt(url, { log, device: voiceDevice(), thread: "owner", filter });
+  return createLocalStt(url, {
+    log,
+    ...(hasWebGpu ? { open: wrapOpen() } : {}),
+    device: voiceDevice(),
+    thread: "owner",
+    filter,
+  });
 }
 
 /**
