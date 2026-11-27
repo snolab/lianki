@@ -608,3 +608,63 @@ describe("review fixes: a late upload, bad dates", () => {
     expect(paceVerdict(e, "2026-11-20", TODAY, 7)).toMatchObject({ state: "behind", by: 10 });
   });
 });
+
+describe("checkRoadmapPatch: the target date on the server", () => {
+  const bad = { ok: false, status: 400, error: "invalid-body" } as const;
+  it("a valid day is saved as is", () => {
+    expect(checkRoadmapPatch({ targetDate: "2027-07-05" }, 100)).toEqual({
+      ok: true,
+      patch: { targetDate: "2027-07-05" },
+    });
+    expect(checkRoadmapPatch({ targetDate: "2028-02-29" }, 100).ok).toBe(true); // leap day
+  });
+  it("a wrong format is refused, never thrown", () => {
+    for (const v of [
+      "2027-7-5",
+      "07/05/2027",
+      "tomorrow",
+      "2027-07-05T00:00:00Z",
+      " 2027-07-05",
+      20270705,
+      true,
+      {},
+    ]) {
+      expect(() => checkRoadmapPatch({ targetDate: v }, 100)).not.toThrow();
+      expect(checkRoadmapPatch({ targetDate: v }, 100)).toEqual(bad);
+    }
+  });
+  it("an impossible day is refused (no NaN, no rollover), never thrown", () => {
+    for (const v of [
+      "2026-02-30",
+      "2027-02-29",
+      "2026-13-01",
+      "2026-00-10",
+      "2026-04-31",
+      "0000-00-00",
+      "9999-99-99",
+    ]) {
+      expect(() => checkRoadmapPatch({ targetDate: v }, 100)).not.toThrow();
+      expect(checkRoadmapPatch({ targetDate: v }, 100)).toEqual(bad);
+    }
+  });
+  it("a past day is accepted by the server (the editor refuses new ones)", () => {
+    expect(checkRoadmapPatch({ targetDate: "2020-01-01" }, 100)).toEqual({
+      ok: true,
+      patch: { targetDate: "2020-01-01" },
+    });
+  });
+  it("empty or null clears the date; absent leaves it alone", () => {
+    expect(checkRoadmapPatch({ targetDate: "" }, 100)).toEqual({
+      ok: true,
+      patch: { targetDate: null },
+    });
+    expect(checkRoadmapPatch({ targetDate: null }, 100)).toEqual({
+      ok: true,
+      patch: { targetDate: null },
+    });
+    expect(checkRoadmapPatch({ topic: "Goal" }, 100)).toEqual({
+      ok: true,
+      patch: { topic: "Goal" },
+    });
+  });
+});

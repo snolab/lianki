@@ -8,6 +8,7 @@
  * by the routes (`docsFit`); `DOC_HARD_MAX` only bounds the parse.
  */
 import { z } from "zod";
+import { isDay } from "./eta";
 
 export const DOC_HARD_MAX = 200_000;
 export const DONE_LOG_MAX = 1000;
@@ -55,17 +56,23 @@ export const SaveRoadmapSchema = z.object({
   nodes: z.array(RoadmapNodeSchema).min(1).max(20),
 });
 
-/** YYYY-MM-DD that is a real calendar day. */
-const isoDay = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
-  .refine((d) => new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d, "not a day");
+/**
+ * YYYY-MM-DD that is a finite, real calendar day: "2026-02-30", "2026-13-01"
+ * and the like are refused (never thrown: `isDay` checks the time is finite
+ * before formatting it). A past day is accepted here: a goal saved earlier
+ * may now lie in the past, and "today" depends on the learner's zone; the
+ * editor refuses a NEW past date (lib/roadmap/eta.ts checkTargetDate).
+ */
+const isoDay = z.string().refine(isDay, "not a day");
 
-/** PATCH /api/roadmap/<id>: any of the goal (topic), its target date (null clears), its steps. */
+/** PATCH /api/roadmap/<id>: any of the goal (topic), its target date (null or "" clears), its steps. */
 export const PatchRoadmapSchema = z
   .object({
     topic: z.string().trim().min(1).max(500).optional(),
-    targetDate: isoDay.nullable().optional(),
+    targetDate: z
+      .union([z.literal("").transform(() => null), isoDay])
+      .nullable()
+      .optional(),
     nodes: z.array(RoadmapNodeSchema).min(1).max(20).optional(),
   })
   .refine((p) => p.topic !== undefined || p.targetDate !== undefined || p.nodes !== undefined, {
