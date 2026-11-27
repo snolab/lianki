@@ -76,6 +76,7 @@ import {
 import {
   type Digest,
   type DigestLine,
+  digestFor,
   digestOn,
   digestOpts,
   digestRoute,
@@ -391,13 +392,27 @@ async function main(): Promise<number> {
     Error
   >;
   const allow = (x: DigestLine) => voiceAllowed({ from: "owner", voice: x.voice }, o);
-  const digester = makeDigester(dOpts, async (d: Digest) => {
-    const to = digestRoute(me, d, allow);
-    log({ type: "digest", lane: o.lane, ids: d.ids, reason: d.reason, to, chars: d.text.length });
-    if (!to) {
+  const digester = makeDigester(dOpts, async (whole: Digest) => {
+    // Only what this lane's voice policy allows, line by line: the dropped lines are passed.
+    const { digest: d, passed } = digestFor(whole, allow);
+    if (passed.length) {
+      cursor?.release(passed);
+      save();
+    }
+    const to = d ? digestRoute(me, d) : null;
+    log({
+      type: "digest",
+      lane: o.lane,
+      ids: whole.ids,
+      ...(passed.length ? { filtered: whole.ids.filter((id) => !d?.ids.includes(id)) } : {}),
+      reason: whole.reason,
+      to,
+      chars: d?.text.length ?? 0,
+    });
+    if (!d || !to) {
       // Not this lane's: passed, as a line for another lane always was. A bypassed
       // line is its own hand-off's to release (a lost one stays held for recovery).
-      cursor?.release(d.lines.filter((x) => !x.bypass).map((x) => x.seq));
+      cursor?.release((d?.lines ?? []).filter((x) => !x.bypass).map((x) => x.seq));
       return save();
     }
     const top = Math.max(-1, ...d.seqs.filter((s): s is number => s !== undefined));

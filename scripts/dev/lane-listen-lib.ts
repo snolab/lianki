@@ -368,7 +368,9 @@ export const DIGEST_RAW_BUDGET = 420;
  */
 export function digestBullet(lane: RouteLane, l: Line & { digest: Digest }): string {
   const d = l.digest;
-  const head = `- ${digestMark(lane, d)} [${d.ids.length} 行 · ids ${d.ids.join(",")}] ${l.text}`;
+  // The voiceprint warning stays on the digest even when its raw lines do not fit.
+  const unsure = d.lines.some((x) => x.voice === "unknown") ? UNSURE_MARK : "";
+  const head = `- ${digestMark(lane, d)}${unsure} [${d.ids.length} 行 · ids ${d.ids.join(",")}] ${l.text}`;
   const raw = d.lines.map(
     (x) =>
       `  · ${x.id} ${lineMark(lane, { id: x.id, thread: "owner", from: "owner", text: x.raw, ...(x.voice ? { voice: x.voice } : {}) })}${x.bypass ? "（已直接转）" : ""} ${x.raw}`,

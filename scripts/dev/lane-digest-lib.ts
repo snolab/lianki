@@ -36,6 +36,8 @@ export type DigestLine = {
   voice?: string;
   /** Covered by another line's merged passage or summary: its words are in that line now. */
   covered?: boolean;
+  /** The other lines this line's merged passage or summary holds the words of. */
+  covers?: string[];
   /** Handed to its named lane on its own already (a typed @name line, the bypass). */
   bypass?: boolean;
 };
@@ -260,6 +262,55 @@ export function digestRoute(
   return named ? "named" : null;
 }
 
+/**
+ * The digest one recipient may see, by its own voice policy (`allow`: the same
+ * rule lane-listen applies line by line, voiceAllowed): only the lines it allows,
+ * the text rebuilt from them alone. A passage that merged in a line it may not
+ * hear falls back to its own raw text, and the allowed lines it covered stand on
+ * their own again, so no word of a dropped line reaches it. `passed` are the seqs
+ * of the dropped lines (the caller passes them: never lost, never re-sent).
+ * Null `digest` when nothing is left.
+ */
+export function digestFor(
+  d: Digest,
+  allow: (l: DigestLine) => boolean,
+): { digest: Digest | null; passed: (number | undefined)[] } {
+  const keep = d.lines.filter(allow);
+  const dropped = new Set(d.lines.filter((l) => !keep.includes(l)).map((l) => l.id));
+  const passed = d.lines.filter((l) => dropped.has(l.id)).map((l) => l.seq);
+  if (!dropped.size) return { digest: d, passed };
+  if (!keep.length) return { digest: null, passed };
+  // A passage holding a dropped line's words: back to its raw text; what it covered stands alone.
+  const tainted = new Set(
+    keep.filter((l) => l.covers?.some((id) => dropped.has(id))).map((l) => l.id),
+  );
+  // A covered line stays covered only while the passage holding it is kept intact.
+  const holder = new Map<string, string>();
+  for (const l of d.lines) for (const id of l.covers ?? []) holder.set(id, l.id);
+  const intact = (id: string | undefined) => !!id && !dropped.has(id) && !tainted.has(id);
+  const lines = keep.map((l) => {
+    if (tainted.has(l.id)) {
+      const { covers: _c, ...rest } = l;
+      return { ...rest, text: l.raw };
+    }
+    if (l.covered && !intact(holder.get(l.id))) {
+      const { covered: _c, ...rest } = l;
+      return rest;
+    }
+    return l;
+  });
+  return {
+    digest: {
+      ...d,
+      ids: lines.map((l) => l.id),
+      seqs: lines.map((l) => l.seq),
+      text: digestText(lines),
+      lines,
+    },
+    passed,
+  };
+}
+
 /** The lanes other than `lane` a digest names (for the chat lane's note: those were forwarded). */
 export function namedLanes(d: Pick<Digest, "lines">): RouteLane[] {
   const out = new Set<RouteLane>();
@@ -347,8 +398,9 @@ export function makeDigester(
       const line = buf.find((x) => x.id === e.id);
       if (!line || !e.text.trim()) return false;
       line.text = e.text;
-      for (const id of e.covers ?? []) {
-        if (id === e.id) continue;
+      const covers = (e.covers ?? []).filter((id) => id !== e.id);
+      if (covers.length) line.covers = covers;
+      for (const id of covers) {
         const c = buf.find((x) => x.id === id);
         if (c) c.covered = true;
       }

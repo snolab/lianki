@@ -138,6 +138,16 @@ summarizing layer and answers it once.
   model call). On top, `tidy` drops hesitations (嗯, 呃, um, uh), fillers
   followed by a mark (那个，, 就是，), stutters, and a fragment the next line
   repeats; no model call of its own. Meaning is never changed.
+- **Per recipient, by its voice policy** (`digestFor`): before routing, each
+  listener keeps only the lines its own policy would have let through line by
+  line (`voiceAllowed`: another's voice never; an undecided one only for tier ①
+  unless `LANE_LISTEN_VOICES=me`, for tier ② only with
+  `lanes.forwardUnknownVoice`). The text and the raw lines are rebuilt from those
+  alone; a merged passage that holds a dropped line's words falls back to its own
+  raw text, so none of them leak. The dropped lines are passed on the cursor
+  (never lost, never re-sent), and a name said only in a dropped line routes
+  nothing. A delivered undecided line keeps its `（声纹未定）` mark, and the
+  digest's head carries it too when its raw lines do not fit.
 - **Who gets it** (`digestRoute`):
   - the **chat lane** (`--as claude`, route `chat`): every digest, as one
     hand-off marked `摘要`, with the note "answer once, with the status from

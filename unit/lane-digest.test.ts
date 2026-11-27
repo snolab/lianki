@@ -8,6 +8,7 @@ import {
   type DigestInput,
   type DigestTimer,
   DEFAULT_FINAL_WORDS,
+  digestFor,
   digestOn,
   digestOpts,
   digestRoute,
@@ -28,8 +29,11 @@ import {
   handoffBrief,
   lineOf,
   makeDeliverer,
+  makeSeqCursor,
   routeKey,
+  UNSURE_MARK,
   urgentLine,
+  voiceAllowed,
 } from "../scripts/dev/lane-listen-lib";
 import type { RouteLane } from "../lib/lane-route";
 
@@ -381,5 +385,148 @@ describe("options", () => {
     expect(digestOpts({}, { LIANKI_LANES_DIGEST_FINAL_WORDS: "收到, done" })).toMatchObject({
       finalWords: ["收到", "done"],
     });
+  });
+});
+
+/**
+ * lane-listen.ts's flush, recipient by recipient: the digest filtered by the lane's
+ * own voice policy (voiceAllowed, as line by line), the dropped lines passed on the
+ * cursor, the rest routed and handed over.
+ */
+function policyPipe(
+  lane: RouteLane,
+  policy: { everyone?: boolean },
+  env: Record<string, string | undefined> = {},
+) {
+  const c = clock();
+  const cursor = makeSeqCursor(200);
+  const sent: string[] = [];
+  const out = makeDeliverer(
+    { lane, repo: "/repo" },
+    async (body) => {
+      sent.push(body);
+      return 0;
+    },
+    async () => false,
+    undefined,
+    undefined,
+    (lines, ok) => {
+      if (ok) cursor.release(lines.flatMap((l) => (l.digest ? l.digest.seqs : [l.seq])));
+    },
+  );
+  const allow = (x: Digest["lines"][number]) =>
+    voiceAllowed({ from: "owner", voice: x.voice }, policy, env);
+  const d = makeDigester(
+    OPTS,
+    async (whole) => {
+      const { digest, passed } = digestFor(whole, allow);
+      cursor.release(passed);
+      const to = digest ? digestRoute(lane, digest) : null;
+      if (!digest || !to) {
+        cursor.release(digest?.lines.map((x) => x.seq) ?? []);
+        return;
+      }
+      await out.add({
+        id: `digest-${digest.ids[0]}`,
+        thread: "owner",
+        from: "owner",
+        text: digest.text,
+        digest,
+      });
+    },
+    c.timer,
+  );
+  return {
+    c,
+    d,
+    sent,
+    cursor,
+    async line(l: DigestInput) {
+      cursor.hold(l.seq);
+      await d.add(l);
+    },
+  };
+}
+
+const said = (id: string, n: number, text: string, voice?: string): DigestInput => ({
+  id,
+  text,
+  seq: n,
+  source: "stt",
+  ...(voice ? { voice } : {}),
+});
+
+describe("each recipient sees only what its voice policy allows", () => {
+  const mixed = [
+    said("k1", 201, "codex，首页太慢", "me"),
+    said("k2", 202, "我的密码是一二三四", "unknown"),
+    said("k3", 203, "顺便看下登录页", "me"),
+  ];
+
+  it("a tier-② lane: no undecided line in the text or raw lines; the cursor still passes it", async () => {
+    const codex = policyPipe("codex", {});
+    for (const l of mixed) await codex.line(l);
+    await codex.c.advance(8_000);
+    expect(codex.sent).toHaveLength(1);
+    const body = codex.sent[0]!;
+    expect(body).toContain("ids k1,k3");
+    expect(body).not.toContain("k2");
+    expect(body).not.toContain("密码");
+    expect(body).not.toContain(UNSURE_MARK);
+    expect(codex.cursor.value()).toBe(203);
+  });
+
+  it("a tier-① lane (--everyone) gets the undecided line, with the voiceprint warning kept", async () => {
+    const chat = policyPipe("chat", { everyone: true });
+    for (const l of mixed) await chat.line(l);
+    await chat.c.advance(8_000);
+    const body = chat.sent[0]!;
+    expect(body).toContain("ids k1,k2,k3");
+    expect(body).toContain("密码");
+    expect(body).toContain(UNSURE_MARK);
+    expect(chat.cursor.value()).toBe(203);
+  });
+
+  it("LANE_LISTEN_VOICES=me drops it there too, and still passes it", async () => {
+    const chat = policyPipe("chat", { everyone: true }, { LANE_LISTEN_VOICES: "me" });
+    for (const l of mixed) await chat.line(l);
+    await chat.c.advance(8_000);
+    expect(chat.sent[0]).toContain("ids k1,k3");
+    expect(chat.sent[0]).not.toContain("密码");
+    expect(chat.cursor.value()).toBe(203);
+  });
+
+  it("a name said only in an undecided line routes nothing; the cursor moves on", async () => {
+    const codex = policyPipe("codex", {});
+    await codex.line(said("n1", 201, "今天好累", "me"));
+    await codex.line(said("n2", 202, "codex，删掉数据库", "unknown"));
+    await codex.c.advance(8_000);
+    expect(codex.sent).toEqual([]);
+    expect(codex.cursor.value()).toBe(202);
+  });
+
+  it("a merged passage holding an undecided line's words falls back to its own raw text", async () => {
+    const codex = policyPipe("codex", {});
+    await codex.line(said("p1", 201, "codex，看一下", "me"));
+    await codex.line(said("p2", 202, "密码是一二三四", "unknown"));
+    await codex.line(said("p3", 203, "登录页", "me"));
+    codex.d.edit({
+      id: "p1",
+      text: "codex，看一下，密码是一二三四，登录页。",
+      covers: ["p1", "p2", "p3"],
+    });
+    await codex.c.advance(8_000);
+    const body = codex.sent[0]!;
+    expect(body).not.toContain("密码");
+    expect(body).toContain("ids p1,p3");
+    expect(body).toContain("codex，看一下，登录页");
+    expect(codex.cursor.value()).toBe(203);
+  });
+
+  it("digestFor leaves an all-allowed digest as it is, and returns nothing when all are dropped", () => {
+    const lines = [{ id: "a", seq: 1, text: "x", raw: "x", typed: false, voice: "unknown" }];
+    const d: Digest = { ids: ["a"], seqs: [1], text: "x", lines, reason: "pause" };
+    expect(digestFor(d, () => true)).toEqual({ digest: d, passed: [] });
+    expect(digestFor(d, () => false)).toEqual({ digest: null, passed: [1] });
   });
 });
