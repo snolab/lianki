@@ -13,8 +13,11 @@
 import type { WsLike } from "./local-stt";
 import { STT_AVAILABLE_EVENT } from "./public-stt";
 import {
+  browserModelNetwork,
   downloadModelAssets,
   ModelDownloadBlocked,
+  modelDownloadRisk,
+  watchModelNetwork,
   type ModelDownloadRisk,
   type ModelNetwork,
 } from "./model-download";
@@ -49,6 +52,9 @@ export const DEFAULT_WEBGPU_ORT_MJS_SHA256 =
   "3ee381d20a80f51a788a1c4a5872f6f1d047538dd4342f4af00062de5f9ea4c6";
 export const DEFAULT_WEBGPU_ORT_WASM_SHA256 =
   "78feeeb3d08f6bcee94d938ed322f69073bb8076b5f9d34697a574ffba8deb48";
+/** Exact sizes of the pinned 1.27.0 runtime files: the confirm total needs no request. */
+export const DEFAULT_WEBGPU_ORT_MJS_BYTES = 46_614;
+export const DEFAULT_WEBGPU_ORT_WASM_BYTES = 26_827_543;
 /** Size of the ORT runtime (26,827,543 + 46,614 bytes), for the fallback estimate. */
 export const DEFAULT_WEBGPU_ORT_ESTIMATED_MB = 26;
 
@@ -641,9 +647,20 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
   const baseUrl = deps.modelUrl || DEFAULT_WEBGPU_MODEL_URL;
   const assetUrls = modelAssetUrls(baseUrl);
   const ortBase = (deps.ortWasmBase || DEFAULT_WEBGPU_ORT_WASM_BASE).replace(/\/*$/, "/");
+  const ortMjsSha = deps.ortMjsSha256 || DEFAULT_WEBGPU_ORT_MJS_SHA256;
+  const ortWasmSha = deps.ortWasmSha256 || DEFAULT_WEBGPU_ORT_WASM_SHA256;
+  // The size is known only for the pinned default files.
   const ortAssets = [
-    { url: ortBase + WEBGPU_ORT_MJS_FILE, sha256: deps.ortMjsSha256 || DEFAULT_WEBGPU_ORT_MJS_SHA256 },
-    { url: ortBase + WEBGPU_ORT_WASM_FILE, sha256: deps.ortWasmSha256 || DEFAULT_WEBGPU_ORT_WASM_SHA256 },
+    {
+      url: ortBase + WEBGPU_ORT_MJS_FILE,
+      sha256: ortMjsSha,
+      ...(ortMjsSha === DEFAULT_WEBGPU_ORT_MJS_SHA256 ? { bytes: DEFAULT_WEBGPU_ORT_MJS_BYTES } : {}),
+    },
+    {
+      url: ortBase + WEBGPU_ORT_WASM_FILE,
+      sha256: ortWasmSha,
+      ...(ortWasmSha === DEFAULT_WEBGPU_ORT_WASM_SHA256 ? { bytes: DEFAULT_WEBGPU_ORT_WASM_BYTES } : {}),
+    },
   ];
   // One manifest: the model and the runtime share the confirm, the cancel and the size.
   const allUrls = [...assetUrls, ...ortAssets.map((a) => a.url)];
@@ -699,7 +716,9 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
     if (knownSizeBytes !== undefined) {
       return { bytes: knownSizeBytes, label: formatModelSize(knownSizeBytes), maxMb: cacheMb };
     }
-    if (f) {
+    // HEAD requests are requests too: only on an unmetered network, never before the confirm.
+    const unmetered = modelDownloadRisk((deps.network ?? browserModelNetwork)()) === "unmetered";
+    if (f && unmetered) {
       try {
         const heads = await Promise.all(
           allUrls.map((u) => f(u, { method: "HEAD" }).catch(() => null)),
@@ -790,6 +809,7 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
         };
       }
     } catch (e) {
+      abortCtrl = null;
       if (e instanceof ModelDownloadBlocked) {
         status = "blocked";
         error = "model-download-blocked";
@@ -806,12 +826,28 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
       error = String((e as Error)?.message ?? e).slice(0, 120);
       emit();
       return false;
-    } finally {
-      abortCtrl = null;
     }
 
+    // The cancel stays live through the load: cancelDownload() or a network change ends it.
+    const ctrl = abortCtrl!;
+    const stopWatch = watchModelNetwork({
+      network: deps.network,
+      onCancel: () => ctrl.abort(new ModelDownloadBlocked()),
+    });
     try {
-      await engine.load(modelId, bundle);
+      const loading = engine.load(modelId, bundle);
+      const aborted = new Promise<"aborted">((res) => {
+        if (ctrl.signal.aborted) res("aborted");
+        ctrl.signal.addEventListener("abort", () => res("aborted"), { once: true });
+      });
+      if ((await Promise.race([loading, aborted])) === "aborted") {
+        // Release whatever the load still finishes building.
+        void loading.then(() => engine.unload?.()).catch(() => {});
+        status = ctrl.signal.reason instanceof ModelDownloadBlocked ? "blocked" : "idle";
+        error = status === "blocked" ? "model-download-blocked" : undefined;
+        emit();
+        return false;
+      }
       loaded = true;
       status = "ready";
       emit();
@@ -824,6 +860,9 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
       error = String((e as Error)?.message ?? e).slice(0, 120);
       emit();
       return false;
+    } finally {
+      stopWatch();
+      abortCtrl = null;
     }
   }
 

@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { createLocalStt, localSttRoute, type WsLike } from "../packages/debug-chat/src/local-stt";
+import type { ModelNetwork } from "../packages/debug-chat/src/model-download";
 import {
   DEFAULT_WEBGPU_MODEL_URL,
+  DEFAULT_WEBGPU_ESTIMATED_MB,
+  DEFAULT_WEBGPU_ORT_ESTIMATED_MB,
+  DEFAULT_WEBGPU_ORT_MJS_BYTES,
   DEFAULT_WEBGPU_ORT_MJS_SHA256,
+  DEFAULT_WEBGPU_ORT_WASM_BYTES,
   DEFAULT_WEBGPU_ORT_WASM_BASE,
   DEFAULT_WEBGPU_ORT_WASM_SHA256,
   WEBGPU_ORT_MJS_FILE,
@@ -174,8 +179,8 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
     });
 
     expect(await mgr.ensureReady()).toBe(true);
-    // HEAD of the model and both ORT runtime files: 3 x 3 MiB.
-    expect(confirmed).toEqual([{ estimatedMb: 9, risk: "restricted" }]);
+    // Cellular: no HEAD before the confirm, so the fallback total (capped at cacheMb).
+    expect(confirmed).toEqual([{ estimatedMb: 10, risk: "restricted" }]);
     expect(mgr.snapshot().sizeLabel).toBe(
       formatModelSize(payload.byteLength + ORT_MJS.byteLength + ORT_WASM.byteLength),
     );
@@ -207,20 +212,20 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
       confirmDownload: () => false,
       ...ortDeps,
       fetch: withOrt(async (_url, init) => {
+        gets++;
         if (init?.method === "HEAD") {
           return new Response(null, {
             status: 200,
             headers: { "content-length": String(40 * 1024 * 1024) },
           });
         }
-        gets++;
         return new Response(new Uint8Array([1, 2]), { status: 200 });
       }),
     });
     expect(await mgr.ensureReady()).toBe(false);
     expect(mgr.status()).toBe("blocked");
     expect(gets).toBe(0);
-    expect(mgr.snapshot().sizeLabel).toBe("120.0 MB");
+    expect(mgr.snapshot().sizeLabel).toBeUndefined();
   });
 
   test("rejects downloads exceeding cacheMb limit", async () => {
@@ -229,6 +234,7 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
       cache: memoryCacheApi(),
       engine: fakeEngine(),
       probe: async () => ({ supported: true }),
+      network: () => ({ online: true, connection: { type: "wifi" } }),
       fetch: async () =>
         new Response(new Uint8Array(0), {
           status: 200,
@@ -767,49 +773,105 @@ describe("ORT runtime: pinned, guarded, verified, handed over as bytes", () => {
     fetch: TestFetch;
     engine?: WebGpuEngine;
     confirm?: (d: { estimatedMb: number }) => boolean;
-    network?: string;
+    network?: string | (() => ModelNetwork);
+    cache?: ReturnType<typeof memoryCacheApi>;
+    pinned?: boolean;
   }) =>
     createWebGpuModelManager({
       modelUrl: "https://cdn.example/model.onnx",
       ortWasmBase: "https://cdn.example/ort",
-      ...ortDeps,
+      ...(o.pinned ? {} : ortDeps),
       cacheMb: 256,
-      cache: memoryCacheApi(),
+      cache: o.cache ?? memoryCacheApi(),
       engine: o.engine ?? fakeEngine(),
       probe: async () => ({ supported: true }),
-      network: () => ({ online: true, connection: { type: o.network ?? "wifi" } }),
+      network: ((n) =>
+        typeof n === "function" ? n : () => ({ online: true, connection: { type: n ?? "wifi" } }))(
+        o.network,
+      ),
       ...(o.confirm ? { confirmDownload: o.confirm } : {}),
       fetch: o.fetch,
     });
 
-  test("the size shown for confirmation includes the ORT .mjs and .wasm", async () => {
-    const heads: string[] = [];
+  test("on cellular the confirm total includes the ORT runtime, and nothing is requested first", async () => {
+    let requests = 0;
     const confirmed: number[] = [];
-    const sizes: Record<string, number> = {
-      "https://cdn.example/model.onnx": 40 * 1024 * 1024,
-      [`https://cdn.example/ort/${WEBGPU_ORT_MJS_FILE}`]: 46_614,
-      [`https://cdn.example/ort/${WEBGPU_ORT_WASM_FILE}`]: 26_827_543,
-    };
     const mgr = managerWith({
+      pinned: true,
       network: "cellular",
       confirm: (d) => {
         confirmed.push(d.estimatedMb);
         return false;
       },
-      fetch: async (url, init) => {
-        if (init?.method === "HEAD") {
-          heads.push(url);
-          return new Response(null, { headers: { "content-length": String(sizes[url] ?? 0) } });
-        }
-        throw new Error("nothing may be fetched before the confirm");
+      fetch: async () => {
+        requests++;
+        throw new Error("nothing may be requested before the confirm");
       },
     });
     expect(await mgr.ensureReady()).toBe(false);
     expect(mgr.status()).toBe("blocked");
-    expect(heads.sort()).toEqual(Object.keys(sizes).sort());
-    // 41,943,040 + 46,614 + 26,827,543 bytes = 65.6 MiB, rounded up.
-    expect(confirmed).toEqual([66]);
-    expect(mgr.snapshot().sizeLabel).toBe("65.6 MB");
+    // Model fallback (44 MB) + runtime (26 MB).
+    expect(confirmed).toEqual([DEFAULT_WEBGPU_ESTIMATED_MB + DEFAULT_WEBGPU_ORT_ESTIMATED_MB]);
+    expect(requests).toBe(0);
+  });
+
+  test("model cached, runtime cold, on cellular: zero requests without a confirm, and none after a refusal", async () => {
+    for (const confirm of [undefined, () => false]) {
+      const cache = memoryCacheApi();
+      const store = await cache();
+      await store.put("https://cdn.example/model.onnx", new Response(new Uint8Array([1, 2, 3])));
+      let requests = 0;
+      const confirmed: number[] = [];
+      const mgr = managerWith({
+        pinned: true,
+        cache,
+        network: "cellular",
+        ...(confirm
+          ? {
+              confirm: (d: { estimatedMb: number }) => {
+                confirmed.push(d.estimatedMb);
+                return confirm();
+              },
+            }
+          : {}),
+        fetch: async () => {
+          requests++;
+          return new Response(null, { status: 200 });
+        },
+      });
+      expect(await mgr.ensureReady()).toBe(false);
+      expect(mgr.status()).toBe("blocked");
+      expect(requests).toBe(0);
+      // Only the runtime is missing: its exact pinned size, 26,874,157 bytes.
+      if (confirm) {
+        expect(confirmed).toEqual([
+          Math.ceil((DEFAULT_WEBGPU_ORT_MJS_BYTES + DEFAULT_WEBGPU_ORT_WASM_BYTES) / (1024 * 1024)),
+        ]);
+      }
+    }
+  });
+
+  test("on an unmetered network the HEAD size covers the model and both runtime files", async () => {
+    const heads: string[] = [];
+    const sizes: Record<string, number> = {
+      "https://cdn.example/model.onnx": 40 * 1024 * 1024,
+      [`https://cdn.example/ort/${WEBGPU_ORT_MJS_FILE}`]: DEFAULT_WEBGPU_ORT_MJS_BYTES,
+      [`https://cdn.example/ort/${WEBGPU_ORT_WASM_FILE}`]: DEFAULT_WEBGPU_ORT_WASM_BYTES,
+    };
+    const mgr = managerWith({
+      fetch: async (url, init) => {
+        heads.push(`${init?.method}:${url}`);
+        return new Response(null, { headers: { "content-length": String(sizes[url] ?? 0) } });
+      },
+    });
+    const est = await mgr.estimateSize();
+    expect(heads.sort()).toEqual(
+      Object.keys(sizes)
+        .map((u) => `HEAD:${u}`)
+        .sort(),
+    );
+    // 41,943,040 + 46,614 + 26,827,543 bytes.
+    expect(est.label).toBe("65.6 MB");
   });
 
   test("a runtime file with the wrong SHA-256 is refused and never reaches ORT", async () => {
@@ -871,5 +933,66 @@ describe("ORT runtime: pinned, guarded, verified, handed over as bytes", () => {
     expect(await mgr.ensureReady()).toBe(true);
     expect(seen!.ortMjs).toEqual(ORT_MJS);
     expect(seen!.ortWasm).toEqual(ORT_WASM);
+  });
+
+  const deferredEngine = () => {
+    let finish!: () => void;
+    const eng = fakeEngine();
+    eng.load = () =>
+      new Promise<void>((res) => {
+        eng.loads++;
+        finish = res;
+      });
+    return { eng, finish: () => finish() };
+  };
+
+  test("a network change during engine.load cancels it and releases the engine", async () => {
+    let type = "wifi";
+    let onChange: (() => void) | null = null;
+    const connection = {
+      get type() {
+        return type;
+      },
+      addEventListener: (_t: string, fn: () => void) => {
+        onChange = fn;
+      },
+      removeEventListener: () => {
+        onChange = null;
+      },
+    };
+    const { eng, finish } = deferredEngine();
+    const mgr = managerWith({
+      engine: eng,
+      network: () => ({ online: true, connection }),
+      fetch: withOrt(async () => new Response(new Uint8Array([1]))),
+    });
+    const p = mgr.ensureReady();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(eng.loads).toBe(1);
+    type = "cellular";
+    onChange!();
+    expect(await p).toBe(false);
+    expect(mgr.status()).toBe("blocked");
+    finish();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(eng.unloads).toBe(1);
+    expect(onChange).toBeNull();
+  });
+
+  test("cancelDownload during engine.load ends it too", async () => {
+    const { eng, finish } = deferredEngine();
+    const mgr = managerWith({
+      engine: eng,
+      fetch: withOrt(async () => new Response(new Uint8Array([1]))),
+    });
+    const p = mgr.ensureReady();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(eng.loads).toBe(1);
+    mgr.cancelDownload();
+    expect(await p).toBe(false);
+    expect(mgr.status()).toBe("idle");
+    finish();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(eng.unloads).toBe(1);
   });
 });
