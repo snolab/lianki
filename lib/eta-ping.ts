@@ -98,13 +98,6 @@ export const forLanes = (p: EtaPing) =>
   p.kind === "main" ||
   (p.kind === "blocked" && p.lane !== OWNER_NAME);
 
-/** A title's name ("name: description"), as the owner's bar shows it. */
-const nameOf = (title: string) => {
-  const i = title.search(/[:：]/);
-  const name = (i < 0 ? title : title.slice(0, i)).trim();
-  return name || title.slice(i + 1).trim();
-};
-
 /** "40M", "1.5H", "2D": how long, as the owner reads times. */
 export function compactSpan(ms: number): string {
   const min = Math.max(1, Math.round(ms / 60_000));
@@ -127,7 +120,8 @@ export function etaLineText(
   replyWords: Partial<Record<ReplyState, string>> = {},
   lanes: unknown = [],
 ): string {
-  const name = nameOf(p.title);
+  const name =
+    p.kind === "reply" ? p.title.split(/[:：]/, 1)[0]!.trim() || p.title.trim() : p.title.trim();
   const lane = p.assignee ?? "<lane>";
   // The owning agent as he reads it: "哈基米" for agy, "coco (哈基米)" for an agent in a lane.
   const owner = p.assignee ? whoShown(p.assignee, lanes) : lane;

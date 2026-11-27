@@ -150,6 +150,16 @@ Live progress (lib/progress-tree.ts, workers/push/src/progress.ts)
   answer to an ask card, never an approval. One line per estimate, whatever
   number of pages are open; a done node gets none.
 
+  Completion clears pending receipt/escalation and reminder state (`etaSilent`,
+  `silentN`, `silentAt`, etc.), preserving the estimate history and verification.
+  The alarm also cleans completed records left by older versions. A failed
+  notification must not roll a concurrent completion back to an open task.
+  Reminders include the task description after the colon. Owner-facing reminders
+  from one assignee in a fixed 60-second window update one chat line (at most
+  16 tasks); a newer status replaces that task's wording. Agent-facing receipt
+  prompts and agent replies remain separate, so their IDs and ACK codes keep
+  their meaning. A new window or another assignee gets a separate line.
+
   ETA overrun — a standing rule for every lane (owner, 2026-11-08 20:24 JST).
   A task that reaches its ETA unfinished owes the owner, within 5 minutes
   (ETA_EXPLAIN_MS), the REASON and a new "N minutes from now", in one call:

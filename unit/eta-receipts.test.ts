@@ -61,7 +61,7 @@ type Ping = Record<string, any>;
 
 /** A progress hub; `answer` is the chat hub's reply to each ping. */
 function setup(
-  answer: (p: Ping) => Response = () => Response.json({ ok: true }),
+  answer: (p: Ping) => Response | Promise<Response> = () => Response.json({ ok: true }),
   config?: Record<string, unknown>,
 ) {
   let t = 1_000_000;
@@ -247,7 +247,7 @@ describe("backoff: after 未说明原因, again at 10, 20, 40… min (at most ev
       ["silent", 4],
     ]);
     expect(etaLineText(h.pings.at(-1) as never, h.now())).toMatch(
-      /^Swipe 仍超时，未说明原因（已超 \d/,
+      /^Swipe: drag it 仍超时，未说明原因（已超 \d/,
     );
     // Explained: no more.
     await h.write({ id: "/w/s", eta: "30m", late: "等 CI" });
@@ -264,6 +264,28 @@ describe("backoff: after 未说明原因, again at 10, 20, 40… min (at most ev
     expect(compactSpan(40 * MIN)).toBe("40M");
   });
 
+  it("a failed silent delivery cannot restore doing over a concurrent completion", async () => {
+    const h = setup(async (p) => {
+      if (p.kind === "silent") {
+        await h.write({ id: "/w/s", status: "done", verified: "delivery completed" });
+        return new Response("unavailable", { status: 503 });
+      }
+      return Response.json({ ok: true });
+    });
+    await h.write({ id: "/w/s", eta: "5m" });
+    for (let i = 0; i < 3; i++) {
+      h.tick(5 * MIN);
+      await h.hub.alarm();
+    }
+    expect(h.entry("/w/s")!.status).toBe("done");
+    expect(h.entry("/w/s")!.evidence).toBe("delivery completed");
+    const count = h.pings.length;
+    h.tick(60 * MIN);
+    await h.hub.alarm();
+    expect(h.pings).toHaveLength(count);
+    expect(h.entry("/w/s")!.silentN).toBeUndefined();
+  });
+
   it("done stops the repeats", async () => {
     const h = setup();
     await h.write({ id: "/w/s", eta: "5m" });
@@ -272,9 +294,26 @@ describe("backoff: after 未说明原因, again at 10, 20, 40… min (at most ev
       await h.hub.alarm();
     }
     await h.write({ id: "/w/s", status: "done", verified: "PR #9 merged" });
+    const done = h.entry("/w/s")!;
+    expect(done.doneKind).toBe("verified");
+    expect(done.evidence).toBe("PR #9 merged");
+    expect(done.etaAt).toBeDefined();
+    for (const key of ["etaSent", "etaSilent", "silentN", "silentAt", "etaCode", "etaMain"])
+      expect((done as unknown as Record<string, unknown>)[key]).toBeUndefined();
+    // Old persisted completed records also get cleaned without losing verification.
+    h.storage.store.set("e:/w/s", {
+      ...done,
+      etaSilent: done.etaAt,
+      silentN: 4,
+      silentAt: h.now(),
+    });
     h.tick(60 * MIN);
     await h.hub.alarm();
     expect(h.kinds("/w/s")).toEqual(["due", "main", "silent"]);
+    expect(h.entry("/w/s")!.silentN).toBeUndefined();
+    expect(h.entry("/w/s")!.silentAt).toBeUndefined();
+    expect(h.entry("/w/s")!.etaSilent).toBeUndefined();
+    expect(h.entry("/w/s")!.doneKind).toBe("verified");
   });
 });
 
@@ -292,7 +331,7 @@ describe("blocked (someone can act now) vs paused (an outside event)", () => {
       reason: "批准 DNS",
       n: 1,
     });
-    expect(etaLineText(h.pings.at(-1) as never)).toBe("Swipe 卡住了，等你——批准 DNS");
+    expect(etaLineText(h.pings.at(-1) as never)).toBe("Swipe: drag it 卡住了，等你——批准 DNS");
     h.tick(10 * MIN);
     await h.hub.alarm();
     h.tick(20 * MIN);
