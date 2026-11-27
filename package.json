@@ -25,7 +25,7 @@
     "start": "next start",
     "lint": "oxlint --ignore-pattern 'packages/**' && oxfmt --check '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**' '!.claude/**'",
     "fix": "oxlint --fix --ignore-pattern 'packages/**' && oxfmt '**/*.{ts,tsx,js,jsx,mjs,cjs}' '!packages/**' '!.claude/**'",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsrs --noEmit",
     "prepare": "bunx --bun husky",
     "test": "playwright test",
     "test:prod": "LIANKI_URL=https://lianki.com playwright test",
@@ -104,7 +104,6 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/sql.js": "^1.4.11",
-    "@typescript/native-preview": "^7.0.0-dev.20260308.1",
     "cloudflared": "^0.7.1",
     "dotenv": "^16.6.1",
     "happy-dom": "^21.0.4",
@@ -124,7 +123,8 @@
     "typescript": "^5.9.3",
     "vite": "^8.0.0",
     "vite-plugin-monkey": "^8.1.0",
-    "wrangler": "4.151.0"
+    "wrangler": "4.151.0",
+    "tsrs": "0.25.0-ts7.1.0-beta"
   },
   "overrides": {
     "kysely": "0.28.17"
