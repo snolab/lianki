@@ -1,12 +1,17 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useIntlayer } from "next-intlayer";
 import { Icon } from "@/app/components/icons";
 import dynamic from "next/dynamic";
 import type { RoadmapGoalDTO as RoadmapGoal, RoadmapNode } from "@/types/roadmap";
 import type { RoadmapProgress } from "@/types/roadmap";
 import { countLabel, fill } from "@/lib/roadmap/labels";
+import { deckHref, matchExamDecks, type ExamDeckMeta } from "@/lib/roadmap/exam-match";
+import { loadCatalog } from "@/lib/words/catalog-cache";
+
+/** Why making a roadmap failed, as the page words it. */
+type GenerateError = "failed" | "limited";
 
 const RoadmapD3 = dynamic(() => import("./RoadmapD3"), { ssr: false });
 
@@ -27,7 +32,16 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
   const [progress, setProgress] = useState<RoadmapProgress | null>(null);
   const [loadingProgress, setLoadingProgress] = useState(false);
   const [progressFailed, setProgressFailed] = useState(false);
-  const [generateFailed, setGenerateFailed] = useState(false);
+  const [generateError, setGenerateError] = useState<GenerateError | null>(null);
+  // The wish that failed, for Try again (the input may have changed since).
+  const failedWish = useRef("");
+  // The word-list catalogue, for "this wish names an exam deck" (lib/roadmap/exam-match.ts).
+  const [decks, setDecks] = useState<ExamDeckMeta[]>([]);
+  useEffect(() => {
+    loadCatalog<{ lists?: ExamDeckMeta[] }>("/words/index.json")
+      .then((c) => setDecks((c.lists ?? []).filter((d) => d.exam)))
+      .catch(() => {});
+  }, []);
   // Only the latest click may fill the pane: a slow answer for a roadmap the
   // learner has already left must not overwrite the one now shown.
   const requestRef = useRef(0);
@@ -58,39 +72,48 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
     }
   }, []);
 
-  const generateRoadmap = useCallback(async () => {
-    const wish = topic.trim();
-    if (!wish) return;
-    setGenerating(true);
-    setGenerateFailed(false);
-    try {
-      const genRes = await fetch("/api/roadmap/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: wish }),
-      });
-      if (!genRes.ok) throw new Error(await genRes.text());
-      const { nodes } = await genRes.json();
+  const generateRoadmap = useCallback(
+    async (given?: string) => {
+      const wish = (given ?? topic).trim();
+      if (!wish) return;
+      setGenerating(true);
+      setGenerateError(null);
+      failedWish.current = wish;
+      try {
+        const genRes = await fetch("/api/roadmap/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ topic: wish }),
+        });
+        // 402 (no credits) and 503 (paused) are worded by the page-wide credits notice.
+        if (genRes.status === 429) {
+          setGenerateError("limited");
+          return;
+        }
+        if (!genRes.ok) throw new Error(`generate ${genRes.status}`);
+        const { nodes } = await genRes.json();
 
-      const saveRes = await fetch("/api/roadmap", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: wish, nodes }),
-      });
-      if (!saveRes.ok) throw new Error(await saveRes.text());
-      const saved: RoadmapGoal = await saveRes.json();
+        const saveRes = await fetch("/api/roadmap", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ topic: wish, nodes }),
+        });
+        if (!saveRes.ok) throw new Error(`save ${saveRes.status}`);
+        const saved: RoadmapGoal = await saveRes.json();
 
-      // Saving the same wish again replaces that roadmap (one per topic).
-      setGoals((prev) => [saved, ...prev.filter((g) => String(g._id) !== String(saved._id))]);
-      setTopic("");
-      await loadProgress(saved);
-    } catch (e: unknown) {
-      console.error("roadmap generate", e);
-      setGenerateFailed(true);
-    } finally {
-      setGenerating(false);
-    }
-  }, [topic, loadProgress]);
+        // Saving the same wish again replaces that roadmap (one per topic).
+        setGoals((prev) => [saved, ...prev.filter((g) => String(g._id) !== String(saved._id))]);
+        setTopic("");
+        await loadProgress(saved);
+      } catch (e: unknown) {
+        console.error("roadmap generate", e);
+        setGenerateError("failed");
+      } finally {
+        setGenerating(false);
+      }
+    },
+    [topic, loadProgress],
+  );
 
   const deleteGoal = useCallback(
     async (goal: RoadmapGoal) => {
@@ -111,6 +134,10 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
     .slice()
     .sort((a, b) => a.order - b.order);
   const pct = (rate: number) => Math.round(rate * 100);
+  const examDecks = useMemo(
+    () => (selectedGoal ? matchExamDecks(selectedGoal.topic, decks) : []),
+    [selectedGoal, decks],
+  );
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
@@ -144,12 +171,25 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
         </button>
       </form>
 
-      {generateFailed && (
+      {generateError && (
         <div
           role="alert"
-          className="mb-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg text-red-700 dark:text-red-300 text-sm"
+          data-generate-error={generateError}
+          className="flex items-center gap-3 mb-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg text-red-700 dark:text-red-300 text-sm"
         >
-          {text.generateFailed}
+          <span className="flex-1">
+            {generateError === "limited" ? text.generateLimited : text.generateFailed}
+          </span>
+          {generateError === "failed" && (
+            <button
+              type="button"
+              disabled={generating}
+              onClick={() => void generateRoadmap(failedWish.current)}
+              className="shrink-0 rounded-md border border-current px-2 py-1 text-xs font-medium disabled:opacity-50"
+            >
+              {text.generateRetry}
+            </button>
+          )}
         </div>
       )}
 
@@ -218,6 +258,21 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
                   </span>
                 )}
               </div>
+
+              {examDecks.length > 0 && (
+                <div data-exam-decks className="flex flex-wrap gap-2 mb-4">
+                  {examDecks.map((d) => (
+                    <a
+                      key={d.id}
+                      href={deckHref(d.id)}
+                      data-exam-deck={d.id}
+                      className="inline-flex items-center rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 text-sm text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                    >
+                      {fill(text.examDeckLink.value, { deck: d.name })}
+                    </a>
+                  ))}
+                </div>
+              )}
 
               {loadingProgress && (
                 <div

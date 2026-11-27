@@ -5,10 +5,11 @@ import { textHoldUsd, textUsd } from "@/lib/payments/prices";
 import { walletDb, walletUserId } from "@/lib/payments/wallet-db";
 import { textModel, workersAiProvider } from "@/lib/workers-ai";
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { authEmailOrToken } from "@/lib/authEmailOrToken";
 import { cappedJsonError, readJsonCapped, tooMany } from "@/lib/security/route-guard";
 import { accountKey } from "@/lib/security/throttle";
+import { LooseRoadmapSchema } from "@/lib/roadmap/generate-schema";
+import { ATTEMPTS, generateFailedResponse, generateWithRetry } from "@/lib/roadmap/generate";
 
 /** Model calls per account (D1): each one is a paid generation. */
 const GENERATE_LIMIT = { max: 10, windowMs: 60 * 60_000 };
@@ -17,21 +18,6 @@ export const maxDuration = 60;
 
 /** The schema's share of the prompt, in characters (held, never shrunk). */
 const SCHEMA_CHARS = 2000;
-
-const RoadmapSchema = z.object({
-  nodes: z
-    .array(
-      z.object({
-        id: z.string(),
-        title: z.string(),
-        description: z.string().max(200),
-        keywords: z.array(z.string()).min(2).max(8),
-        order: z.number(),
-      }),
-    )
-    .min(3)
-    .max(12),
-});
 
 export async function POST(request: NextRequest) {
   const email = await authEmailOrToken(request);
@@ -64,28 +50,33 @@ Progress from fundamentals to advanced. Keywords should be specific enough to ma
   const model = textModel();
   const maxOut = MAX_OUT["roadmap.generate"];
   // The JSON schema the SDK adds to the prompt: held as SCHEMA_CHARS more characters.
-  const holdUsd = textHoldUsd(model, prompt.length + SCHEMA_CHARS, maxOut);
-  const paid = await metered(
-    { d1: db },
-    { userId: payer.id, email },
-    { what: "roadmap.generate", holdUsd },
-    async () => {
-      const r = await generateObject({
-        model: workersAiProvider()(model),
-        schema: RoadmapSchema,
-        maxOutputTokens: maxOut,
-        prompt,
-      });
-      const u = r.usage;
-      const usd =
-        u?.inputTokens || u?.outputTokens
-          ? textUsd(model, u.inputTokens ?? 0, u.outputTokens ?? 0)
-          : holdUsd;
-      return { value: r.object, usd };
-    },
-  );
-  if (!paid.ok) return refusal(paid);
-  const object = paid.value;
-
-  return NextResponse.json(object);
+  const oneHoldUsd = textHoldUsd(model, prompt.length + SCHEMA_CHARS, maxOut);
+  try {
+    // One hold for the first try and its retry (lib/roadmap/generate.ts): never a second charge.
+    const paid = await metered(
+      { d1: db },
+      { userId: payer.id, email },
+      { what: "roadmap.generate", holdUsd: oneHoldUsd * ATTEMPTS },
+      () =>
+        generateWithRetry(
+          async () => {
+            const r = await generateObject({
+              model: workersAiProvider()(model),
+              schema: LooseRoadmapSchema,
+              maxOutputTokens: maxOut,
+              prompt,
+            });
+            return { object: r.object, usage: r.usage };
+          },
+          {
+            usd: (u) => textUsd(model, u.inputTokens ?? 0, u.outputTokens ?? 0),
+            fallbackUsd: oneHoldUsd,
+          },
+        ),
+    );
+    if (!paid.ok) return refusal(paid);
+    return NextResponse.json(paid.value);
+  } catch (err) {
+    return generateFailedResponse(err);
+  }
 }

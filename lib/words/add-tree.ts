@@ -184,6 +184,20 @@ export function defaultOpen(
   );
 }
 
+/**
+ * The keys of the branches above a node, outermost first, so unfolding them
+ * shows it (a link to one deck, /words?deck=<id>). Not in the tree: null.
+ */
+export function ancestorKeys(tree: AddNode[], key: string): string[] | null {
+  for (const n of tree) {
+    if (n.key === key) return [];
+    if (n.kind === "list" || n.kind === "external") continue;
+    const below = ancestorKeys(n.children, key);
+    if (below) return [n.key, ...below];
+  }
+  return null;
+}
+
 /** The ticked lists in tree order (the order they are added in). */
 export function tickedInOrder<M extends AddMeta>(tree: AddNode<M>[], ticked: ReadonlySet<string>) {
   return tree.flatMap(leavesOf).filter((m) => ticked.has(m.id));
