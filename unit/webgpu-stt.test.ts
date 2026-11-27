@@ -938,15 +938,17 @@ describe("ORT runtime: pinned, guarded, verified, handed over as bytes", () => {
   const deferredEngine = () => {
     let finish!: () => void;
     const eng = fakeEngine();
-    eng.load = () =>
+    const signals: (AbortSignal | undefined)[] = [];
+    eng.load = (_m, _b, o) =>
       new Promise<void>((res) => {
         eng.loads++;
+        signals.push(o?.signal);
         finish = res;
       });
-    return { eng, finish: () => finish() };
+    return { eng, signals, finish: () => finish() };
   };
 
-  test("a network change during engine.load cancels it and releases the engine", async () => {
+  test("a network change during engine.load cancels that load (its signal) and unloads nothing", async () => {
     let type = "wifi";
     let onChange: (() => void) | null = null;
     const connection = {
@@ -960,7 +962,7 @@ describe("ORT runtime: pinned, guarded, verified, handed over as bytes", () => {
         onChange = null;
       },
     };
-    const { eng, finish } = deferredEngine();
+    const { eng, signals, finish } = deferredEngine();
     const mgr = managerWith({
       engine: eng,
       network: () => ({ online: true, connection }),
@@ -973,14 +975,15 @@ describe("ORT runtime: pinned, guarded, verified, handed over as bytes", () => {
     onChange!();
     expect(await p).toBe(false);
     expect(mgr.status()).toBe("blocked");
+    expect(signals[0]?.aborted).toBe(true);
     finish();
     await new Promise((r) => setTimeout(r, 0));
-    expect(eng.unloads).toBe(1);
+    expect(eng.unloads).toBe(0);
     expect(onChange).toBeNull();
   });
 
   test("cancelDownload during engine.load ends it too", async () => {
-    const { eng, finish } = deferredEngine();
+    const { eng, signals, finish } = deferredEngine();
     const mgr = managerWith({
       engine: eng,
       fetch: withOrt(async () => new Response(new Uint8Array([1]))),
@@ -991,9 +994,10 @@ describe("ORT runtime: pinned, guarded, verified, handed over as bytes", () => {
     mgr.cancelDownload();
     expect(await p).toBe(false);
     expect(mgr.status()).toBe("idle");
+    expect(signals[0]?.aborted).toBe(true);
     finish();
     await new Promise((r) => setTimeout(r, 0));
-    expect(eng.unloads).toBe(1);
+    expect(eng.unloads).toBe(0);
   });
 
   test("cancel, retry, retry ready, then the old load ends: the ready engine is untouched", async () => {
@@ -1012,7 +1016,7 @@ describe("ORT runtime: pinned, guarded, verified, handed over as bytes", () => {
     await new Promise((r) => setTimeout(r, 10));
     mgr.cancelDownload();
     expect(await first).toBe(false);
-    expect(eng.unloads).toBe(1);
+    expect(eng.unloads).toBe(0);
 
     const retry = mgr.ensureReady();
     await new Promise((r) => setTimeout(r, 10));
@@ -1024,7 +1028,7 @@ describe("ORT runtime: pinned, guarded, verified, handed over as bytes", () => {
     // The cancelled first load ends only now: nothing unloads the retry's engine.
     finishers[0]!();
     await new Promise((r) => setTimeout(r, 10));
-    expect(eng.unloads).toBe(1);
+    expect(eng.unloads).toBe(0);
     expect(mgr.status()).toBe("ready");
   });
 
@@ -1128,5 +1132,83 @@ describe("ORT runtime: pinned, guarded, verified, handed over as bytes", () => {
     const byTag = Object.fromEntries(c.sessions.map((s) => [s.tag, s.released]));
     expect(byTag).toEqual({ a0: false, a1: false, b2: true });
     await expect(engine.final(1, new Float32Array(160))).resolves.toBeDefined();
+  });
+
+  // codex's repro for #1157: an engine with no generation logic of its own.
+  test("a cancelled old load cannot unload a newer ready engine (manager never unloads on cancel)", async () => {
+    let release!: () => void;
+    let started!: () => void;
+    const start = new Promise<void>((r) => (started = r));
+    let calls = 0;
+    let usable = false;
+    let unloads = 0;
+    const engine: WebGpuEngine = {
+      async load() {
+        calls++;
+        if (calls === 1) {
+          started();
+          await new Promise<void>((r) => (release = r));
+        }
+        usable = true;
+      },
+      async final() {
+        if (!usable) throw new Error("unloaded");
+        return { text: "ok" };
+      },
+      unload() {
+        usable = false;
+        unloads++;
+      },
+    };
+    const m = managerWith({
+      engine,
+      fetch: withOrt(async () => new Response(new Uint8Array([1]))),
+    });
+    const first = m.ensureReady();
+    await start;
+    m.cancelDownload();
+    expect(await first).toBe(false);
+    expect(await m.ensureReady()).toBe(true);
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(m.status()).toBe("ready");
+    expect(unloads).toBe(0);
+    expect((await engine.final(1, new Float32Array())).text).toBe("ok");
+  });
+
+  test("the real engine: an aborted load drops its own sessions, the retry's stay live", async () => {
+    const c = controlledOrt();
+    const engine = createDefaultWebGpuEngine({ importOrt: async () => c.ort });
+    const ctrl = new AbortController();
+    const old = engine.load("m", bundleOf("o"), { signal: ctrl.signal });
+    await tick();
+    c.pending[0]!.resolve(); // old encoder
+    await tick();
+    ctrl.abort(); // cancelled while its decoder is being built
+    const retry = engine.load("m", bundleOf("n"));
+    await tick();
+    c.pending[2]!.resolve();
+    await tick();
+    c.pending[3]!.resolve();
+    await retry;
+    c.pending[1]!.resolve(); // the old decoder lands last
+    await expect(old).rejects.toThrow("webgpu-load-superseded");
+    const byTag = Object.fromEntries(c.sessions.map((s) => [s.tag, s.released]));
+    expect(byTag).toEqual({ o0: true, o1: true, n2: false, n3: false });
+    await expect(engine.final(1, new Float32Array(160))).resolves.toBeDefined();
+  });
+
+  test("the real engine: aborting a load after a newer one started changes nothing", async () => {
+    const c = controlledOrt();
+    const engine = createDefaultWebGpuEngine({ importOrt: async () => c.ort });
+    const ctrl = new AbortController();
+    ctrl.abort();
+    const old = engine.load("m", bundleOf("o"), { signal: ctrl.signal });
+    await tick();
+    c.pending[0]!.resolve();
+    await tick();
+    c.pending[1]!.resolve();
+    await expect(old).rejects.toThrow("webgpu-load-superseded");
+    expect(c.sessions.every((s) => s.released)).toBe(true);
   });
 });

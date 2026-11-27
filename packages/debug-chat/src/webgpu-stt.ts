@@ -104,7 +104,15 @@ export type WhisperModelBundle = {
 };
 
 export type WebGpuEngine = {
-  load(modelId: string, bundle: WhisperModelBundle | Uint8Array): Promise<void>;
+  /**
+   * `signal` aborts this load only: the engine then drops what this load builds
+   * and never touches what another (newer) load made ready.
+   */
+  load(
+    modelId: string,
+    bundle: WhisperModelBundle | Uint8Array,
+    opts?: { signal?: AbortSignal },
+  ): Promise<void>;
   partial?(utteranceId: number, pcm: Float32Array): Promise<string | null> | string | null;
   final(
     utteranceId: number,
@@ -448,8 +456,14 @@ export function createDefaultWebGpuEngine(opts: {
   };
 
   return {
-    async load(_modelId, input) {
+    async load(_modelId, input, opts) {
       const gen = ++generation;
+      // Aborting this load supersedes it only while it is still the latest one.
+      const supersede = () => {
+        if (generation === gen) generation++;
+      };
+      if (opts?.signal?.aborted) supersede();
+      opts?.signal?.addEventListener("abort", supersede, { once: true });
       ort ??= await importOrt();
       const bundle: WhisperModelBundle =
         input instanceof Uint8Array ? { encoder: input, decoder: input } : input;
@@ -868,16 +882,15 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
       onCancel: () => ctrl.abort(new ModelDownloadBlocked()),
     });
     try {
-      const loading = engine.load(modelId, bundle);
+      const loading = engine.load(modelId, bundle, { signal: ctrl.signal });
       const aborted = new Promise<"aborted">((res) => {
         if (ctrl.signal.aborted) res("aborted");
         ctrl.signal.addEventListener("abort", () => res("aborted"), { once: true });
       });
       if ((await Promise.race([loading, aborted])) === "aborted") {
-        // Unload now, never later: a late unload would hit the engine a retry made
-        // ready. The superseded load releases what it still builds itself.
+        // No unload here, now or later: it could hit the engine a retry made ready.
+        // The aborted signal tells the engine to drop only what this load builds.
         loading.catch(() => {});
-        void Promise.resolve(engine.unload?.()).catch(() => {});
         status = ctrl.signal.reason instanceof ModelDownloadBlocked ? "blocked" : "idle";
         error = status === "blocked" ? "model-download-blocked" : undefined;
         emit();
