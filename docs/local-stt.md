@@ -1855,7 +1855,7 @@ For Windows / desktop browsers with WebGPU (`packages/debug-chat/src/webgpu-stt.
 
 - **Gate & privacy**: Behind default-off `stt.webgpu` (`audience: "owner"`). Audio stays on the device **only** on the `webgpu:local` route; when falling back to server or cloud routes, audio is sent to those routes as usual.
 - **Pinned model & license**:
-  - Model: `onnx-community/whisper-tiny` pinned at revision **`v1.0.0`** (`https://huggingface.co/onnx-community/whisper-tiny/resolve/v1.0.0/onnx/encoder_model.onnx`).
+  - Model: `onnx-community/whisper-tiny` pinned at commit **`ff4177021cc41f7db950912b73ea4fdf7d01d8e7`** (`https://huggingface.co/onnx-community/whisper-tiny/resolve/ff4177021cc41f7db950912b73ea4fdf7d01d8e7`: `onnx/encoder_model_quantized.onnx`, `onnx/decoder_model_merged_quantized.onnx`, `tokenizer.json`, `config.json`).
   - License: **Apache-2.0**.
 - **Config (`lib/config.ts`)**:
   - `stt.webgpuModelUrl`: pinned model download URL.

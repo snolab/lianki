@@ -1550,11 +1550,11 @@ export const CONFIG = {
   }),
   "stt.webgpuModelUrl": {
     default:
-      "https://huggingface.co/onnx-community/whisper-tiny/resolve/v1.0.0/onnx/encoder_model.onnx",
+      "https://huggingface.co/onnx-community/whisper-tiny/resolve/ff4177021cc41f7db950912b73ea4fdf7d01d8e7",
     schema: z.string().url().max(500),
     group: "stt",
     audience: "public",
-    description: "客户端 WebGPU 本地语音识别模型的固定版本下载地址（pinned revision URL）。",
+    description: "客户端 WebGPU 本地语音识别模型的固定版本基础地址（pinned commit SHA）。",
   },
   "stt.webgpuCacheMb": int({
     default: 256,

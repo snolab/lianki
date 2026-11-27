@@ -1,13 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { createLocalStt, localSttRoute, type WsLike } from "../packages/debug-chat/src/local-stt";
 import {
+  DEFAULT_WEBGPU_MODEL_URL,
   WEBGPU_STT_URL,
   createDefaultWebGpuEngine,
   createWebGpuModelManager,
+  decodeWhisperTokens,
   defaultProbeWebGpu,
+  extractWhisperFeatures,
   formatModelSize,
   getSharedWebGpuManager,
+  modelAssetUrls,
   openWebGpuStt,
+  parseWhisperTokenizer,
   type OrtLike,
   type WebGpuEngine,
 } from "../packages/debug-chat/src/webgpu-stt";
@@ -110,6 +115,7 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
 
     const mgr = createWebGpuModelManager({
       modelId: "test/whisper-tiny",
+      modelUrl: "https://cdn.example/model.onnx",
       cacheMb: 10,
       idleUnloadMs: 5000,
       cache,
@@ -164,6 +170,7 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
   test("declining metered/unknown-network confirm blocks download without fetching model", async () => {
     let gets = 0;
     const mgr = createWebGpuModelManager({
+      modelUrl: "https://cdn.example/model.onnx",
       cacheMb: 256,
       cache: memoryCacheApi(),
       engine: fakeEngine(),
@@ -214,28 +221,74 @@ describe("real lazy WebGPU engine factory & race integration", () => {
     });
   });
 
-  test("real createDefaultWebGpuEngine lazy-loads ORT, transcribes via createLocalStt, and releases on unload", async () => {
+  test("real createDefaultWebGpuEngine runs full Whisper pipeline (mel -> encoder -> autoregressive decoder -> BPE decode) and releases both sessions", async () => {
     let ortImports = 0;
     let released = 0;
-    let seenProviders: string[] | undefined;
+    const createdProviders: (string[] | undefined)[] = [];
+    const encoderBuf = new Uint8Array([1, 2]);
+    const decoderBuf = new Uint8Array([3, 4]);
+    const tokenizerBytes = new TextEncoder().encode(
+      JSON.stringify({
+        model: { vocab: { hello: 10, Ġworld: 11 } },
+        added_tokens: [
+          { id: 50257, content: "<|endoftext|>", special: true },
+          { id: 50258, content: "<|startoftranscript|>", special: true },
+          { id: 50359, content: "<|transcribe|>", special: true },
+          { id: 50363, content: "<|notimestamps|>", special: true },
+        ],
+      }),
+    );
+    const configBytes = new TextEncoder().encode(
+      JSON.stringify({ decoder_start_token_id: 50258, eos_token_id: 50257 }),
+    );
 
+    // Verify pure feature extraction & tokenizer directly.
+    const pcmSample = new Float32Array(320).map((_, i) => Math.sin(i * 0.1));
+    const mel = extractWhisperFeatures(pcmSample, 8);
+    expect(mel.dims).toEqual([1, 80, 8]);
+    expect(mel.data.length).toBe(640);
+    expect(mel.data.every((v) => Number.isFinite(v))).toBe(true);
+    const tok = parseWhisperTokenizer(tokenizerBytes, configBytes);
+    expect(decodeWhisperTokens([50258, 10, 11, 50257], tok)).toBe("hello world");
+
+    let step = 0;
     const fakeOrt: OrtLike = {
       Tensor: class {
         constructor(
           public type: string,
-          public data: Float32Array,
+          public data: Float32Array | BigInt64Array,
           public dims: number[],
         ) {}
       },
       InferenceSession: {
-        async create(_buf, opts) {
-          seenProviders = opts?.executionProviders;
+        async create(buf, opts) {
+          createdProviders.push(opts?.executionProviders);
+          if (buf[0] === 1) {
+            return {
+              inputNames: ["input_features"],
+              outputNames: ["last_hidden_state"],
+              async run(feeds) {
+                const t = feeds.input_features as { dims: number[] };
+                expect(t.dims).toEqual([1, 80, 8]);
+                return {
+                  last_hidden_state: { data: new Float32Array([0.5, 0.25]), dims: [1, 2, 1] },
+                };
+              },
+              async release() {
+                released++;
+              },
+            };
+          }
           return {
-            inputNames: ["input_features"],
-            outputNames: ["text"],
-            async run(feeds) {
-              const t = feeds.input_features as { data: Float32Array };
-              return { text: { data: `ort:${t.data.length}` } };
+            inputNames: ["input_ids", "encoder_hidden_states"],
+            outputNames: ["logits"],
+            async run() {
+              const vocabSize = 50259;
+              const logits = new Float32Array(vocabSize).fill(-10);
+              const next = step === 0 ? 10 : step === 1 ? 11 : 50257;
+              step++;
+              logits[next] = 10;
+              return { logits: { data: logits, dims: [1, 1, vocabSize] } };
             },
             async release() {
               released++;
@@ -246,31 +299,36 @@ describe("real lazy WebGPU engine factory & race integration", () => {
     };
 
     const realEngine = createDefaultWebGpuEngine({
+      melFrames: 8,
       importOrt: async () => {
         ortImports++;
         return fakeOrt;
       },
-      decodeOutput: (out) => String((out.text as { data?: unknown })?.data ?? ""),
     });
 
     const mgr = createWebGpuModelManager({
+      modelUrl: DEFAULT_WEBGPU_MODEL_URL,
       cacheMb: 10,
       cache: memoryCacheApi(),
       engine: realEngine,
       probe: async () => ({ supported: true }),
       network: () => ({ online: true, connection: { type: "wifi" } }),
-      fetch: async (_url, init) => {
+      fetch: async (url, init) => {
         if (init?.method === "HEAD") {
-          return new Response(null, { status: 200, headers: { "content-length": "4" } });
+          return new Response(null, { status: 200, headers: { "content-length": "1024" } });
         }
-        return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
+        if (url.endsWith("encoder_model_quantized.onnx")) return new Response(encoderBuf);
+        if (url.endsWith("decoder_model_merged_quantized.onnx")) return new Response(decoderBuf);
+        if (url.endsWith("tokenizer.json")) return new Response(tokenizerBytes);
+        return new Response(configBytes);
       },
     });
 
+    expect(modelAssetUrls(DEFAULT_WEBGPU_MODEL_URL)).toHaveLength(4);
     expect(ortImports).toBe(0);
     expect(await mgr.ensureReady()).toBe(true);
     expect(ortImports).toBe(1);
-    expect(seenProviders).toEqual(["webgpu"]);
+    expect(createdProviders).toEqual([["webgpu"], ["webgpu"]]);
 
     const stt = createLocalStt([WEBGPU_STT_URL], {
       open: () => openWebGpuStt(mgr),
@@ -278,15 +336,14 @@ describe("real lazy WebGPU engine factory & race integration", () => {
     stt.warm();
     await new Promise((r) => setTimeout(r, 10));
     const utt = stt.begin(() => {})!;
-    const frame = new Float32Array([0.1, -0.1, 0.2, -0.2]);
-    utt.frame(frame);
-    const fin = await utt.end(frame);
-    expect(fin.text).toBe("ort:4");
+    utt.frame(pcmSample);
+    const fin = await utt.end(pcmSample);
+    expect(fin.text).toBe("hello world");
     expect(fin.signals?.decoder).toBe("whisper");
     stt.close();
 
     await realEngine.unload?.();
-    expect(released).toBe(1);
+    expect(released).toBe(2);
   });
 
   test("falls through to server route while downloading in background, then wins once ready", async () => {
@@ -294,6 +351,7 @@ describe("real lazy WebGPU engine factory & race integration", () => {
     const eng = fakeEngine();
     let resolveFetch!: (r: Response) => void;
     const mgr = createWebGpuModelManager({
+      modelUrl: "https://cdn.example/model.onnx",
       cacheMb: 10,
       cache,
       engine: eng,

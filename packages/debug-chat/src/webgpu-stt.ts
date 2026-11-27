@@ -1,9 +1,12 @@
 /**
  * Client-side WebGPU local speech-to-text (docs/local-stt.md, /stt/windows-webgpu):
  * - Probes WebGPU (`navigator.gpu.requestAdapter`) and storage quota.
- * - Estimates model size first (`HEAD`), then routes uncached downloads through
- *   `downloadModelAssets` (`model-download.ts`) for metered/unknown-network
- *   confirmation and network-change cancellation.
+ * - Estimates total model manifest size first (`HEAD`), then routes uncached
+ *   downloads through `downloadModelAssets` (`model-download.ts`) for
+ *   metered/unknown-network confirmation and network-change cancellation.
+ * - Runs the full Whisper pipeline locally on WebGPU: 80-bin log-Mel feature
+ *   extraction -> ONNX encoder -> greedy autoregressive ONNX decoder -> BPE token
+ *   decoding.
  * - Audio stays on the device ONLY on the `webgpu:local` route; when falling
  *   back to server or cloud routes, audio is sent to those routes as usual.
  */
@@ -19,12 +22,26 @@ import {
 export const WEBGPU_STT_URL = "webgpu:local";
 export const WEBGPU_CACHE = "lianki-webgpu-stt-v1";
 export const WEBGPU_READY_EVENT = STT_AVAILABLE_EVENT;
-export const DEFAULT_WEBGPU_MODEL_ID = "onnx-community/whisper-tiny@v1.0.0";
+export const DEFAULT_WEBGPU_MODEL_ID =
+  "onnx-community/whisper-tiny@ff4177021cc41f7db950912b73ea4fdf7d01d8e7";
 export const DEFAULT_WEBGPU_MODEL_URL =
-  "https://huggingface.co/onnx-community/whisper-tiny/resolve/v1.0.0/onnx/encoder_model.onnx";
-export const DEFAULT_WEBGPU_ESTIMATED_MB = 40;
+  "https://huggingface.co/onnx-community/whisper-tiny/resolve/ff4177021cc41f7db950912b73ea4fdf7d01d8e7";
+export const DEFAULT_WEBGPU_ESTIMATED_MB = 44;
 export const DEFAULT_WEBGPU_CACHE_MB = 256;
 export const DEFAULT_WEBGPU_IDLE_UNLOAD_MS = 300_000;
+
+export const WHISPER_ASSET_PATHS = [
+  "onnx/encoder_model_quantized.onnx",
+  "onnx/decoder_model_merged_quantized.onnx",
+  "tokenizer.json",
+  "config.json",
+] as const;
+
+export const WHISPER_N_FFT = 400;
+export const WHISPER_HOP = 160;
+export const WHISPER_N_MELS = 80;
+export const WHISPER_MAX_FRAMES = 3000;
+export const WHISPER_SAMPLE_RATE = 16_000;
 
 export type WebGpuStatus =
   | "idle"
@@ -47,8 +64,15 @@ export type WebGpuProbe = {
   quotaMb?: number;
 };
 
+export type WhisperModelBundle = {
+  encoder: Uint8Array;
+  decoder: Uint8Array;
+  tokenizerJson?: Uint8Array;
+  configJson?: Uint8Array;
+};
+
 export type WebGpuEngine = {
-  load(modelId: string, weights: Uint8Array): Promise<void>;
+  load(modelId: string, bundle: WhisperModelBundle | Uint8Array): Promise<void>;
   partial?(utteranceId: number, pcm: Float32Array): Promise<string | null> | string | null;
   final(
     utteranceId: number,
@@ -60,12 +84,16 @@ export type WebGpuEngine = {
 export type OrtSessionLike = {
   inputNames?: readonly string[];
   outputNames?: readonly string[];
-  run(feeds: Record<string, unknown>): Promise<Record<string, { data?: unknown }>>;
+  run(feeds: Record<string, unknown>): Promise<Record<string, { data?: unknown; dims?: readonly number[] }>>;
   release?(): Promise<void> | void;
 };
 
 export type OrtLike = {
-  Tensor: new (type: string, data: Float32Array, dims: number[]) => unknown;
+  Tensor: new (
+    type: string,
+    data: Float32Array | BigInt64Array,
+    dims: number[],
+  ) => unknown;
   InferenceSession: {
     create(
       buffer: Uint8Array,
@@ -74,42 +102,300 @@ export type OrtLike = {
   };
 };
 
+// ── Whisper Feature Extraction (80-bin log-Mel) ──────────────────────────────
+
+function hzToMel(hz: number): number {
+  return 2595 * Math.log10(1 + hz / 700);
+}
+
+function melToHz(mel: number): number {
+  return 700 * (10 ** (mel / 2595) - 1);
+}
+
+let cachedMelBank: Float32Array[] | null = null;
+function getMelFilterBank(): Float32Array[] {
+  if (cachedMelBank) return cachedMelBank;
+  const nFreqs = Math.floor(WHISPER_N_FFT / 2) + 1;
+  const melMin = hzToMel(0);
+  const melMax = hzToMel(WHISPER_SAMPLE_RATE / 2);
+  const melPoints = new Float64Array(WHISPER_N_MELS + 2);
+  for (let i = 0; i < melPoints.length; i++) {
+    melPoints[i] = melToHz(melMin + ((melMax - melMin) * i) / (WHISPER_N_MELS + 1));
+  }
+  const bank: Float32Array[] = [];
+  for (let m = 0; m < WHISPER_N_MELS; m++) {
+    const fLeft = melPoints[m]!;
+    const fCenter = melPoints[m + 1]!;
+    const fRight = melPoints[m + 2]!;
+    const row = new Float32Array(nFreqs);
+    for (let k = 0; k < nFreqs; k++) {
+      const freq = (k * WHISPER_SAMPLE_RATE) / WHISPER_N_FFT;
+      if (freq >= fLeft && freq <= fCenter && fCenter > fLeft) {
+        row[k] = (freq - fLeft) / (fCenter - fLeft);
+      } else if (freq > fCenter && freq <= fRight && fRight > fCenter) {
+        row[k] = (fRight - freq) / (fRight - fCenter);
+      }
+    }
+    bank.push(row);
+  }
+  cachedMelBank = bank;
+  return bank;
+}
+
+let cachedHann: Float32Array | null = null;
+function getHannWindow(): Float32Array {
+  if (cachedHann) return cachedHann;
+  const w = new Float32Array(WHISPER_N_FFT);
+  for (let i = 0; i < WHISPER_N_FFT; i++) {
+    w[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / WHISPER_N_FFT));
+  }
+  cachedHann = w;
+  return w;
+}
+
 /**
- * Real lazy-loaded WebGPU ONNX engine factory: imports `onnxruntime-web` only
- * when `load()` is first called, creates a WebGPU `InferenceSession` from the
- * cached model weights, and releases it on `unload()`.
+ * Compute Whisper-compatible 80-bin log-Mel spectrogram `[1, 80, frames]`.
+ * Uses `frames = WHISPER_MAX_FRAMES` (3000) by default (30 s window).
+ */
+export function extractWhisperFeatures(
+  pcm: Float32Array,
+  frames = WHISPER_MAX_FRAMES,
+): { data: Float32Array; dims: [number, number, number] } {
+  const win = getHannWindow();
+  const bank = getMelFilterBank();
+  const nFreqs = Math.floor(WHISPER_N_FFT / 2) + 1;
+  const out = new Float32Array(WHISPER_N_MELS * frames);
+  const spec = new Float32Array(nFreqs);
+  const activeFrames = Math.min(frames, Math.max(1, Math.floor(pcm.length / WHISPER_HOP) + 1));
+
+  let maxVal = -Infinity;
+  for (let f = 0; f < activeFrames; f++) {
+    const start = f * WHISPER_HOP;
+    for (let k = 0; k < nFreqs; k++) {
+      let re = 0;
+      let im = 0;
+      const angleStep = (-2 * Math.PI * k) / WHISPER_N_FFT;
+      for (let n = 0; n < WHISPER_N_FFT; n++) {
+        const s = start + n < pcm.length ? pcm[start + n]! : 0;
+        const w = s * win[n]!;
+        const a = angleStep * n;
+        re += w * Math.cos(a);
+        im += w * Math.sin(a);
+      }
+      spec[k] = re * re + im * im;
+    }
+    for (let m = 0; m < WHISPER_N_MELS; m++) {
+      const filt = bank[m]!;
+      let energy = 0;
+      for (let k = 0; k < nFreqs; k++) energy += spec[k]! * filt[k]!;
+      const logE = Math.log10(Math.max(energy, 1e-10));
+      out[m * frames + f] = logE;
+      if (logE > maxVal) maxVal = logE;
+    }
+  }
+  const floor = maxVal > -Infinity ? maxVal - 8.0 : -10.0;
+  for (let i = 0; i < out.length; i++) {
+    const clamped = out[i]! < floor ? floor : out[i]!;
+    out[i] = (clamped + 4.0) / 4.0;
+  }
+  return { data: out, dims: [1, WHISPER_N_MELS, frames] };
+}
+
+// ── Whisper Tokenizer & Decoding ─────────────────────────────────────────────
+
+export type WhisperTokenizer = {
+  idToToken: Map<number, string>;
+  specialIds: Set<number>;
+  sotId: number;
+  eosId: number;
+  transcribeId: number;
+  noTimestampsId: number;
+};
+
+function buildGpt2ByteDecoder(): Map<string, number> {
+  const bs: number[] = [];
+  for (let b = 33; b <= 126; b++) bs.push(b);
+  for (let b = 161; b <= 172; b++) bs.push(b);
+  for (let b = 174; b <= 255; b++) bs.push(b);
+  const cs = [...bs];
+  let n = 0;
+  for (let b = 0; b < 256; b++) {
+    if (!bs.includes(b)) {
+      bs.push(b);
+      cs.push(256 + n);
+      n++;
+    }
+  }
+  const map = new Map<string, number>();
+  for (let i = 0; i < bs.length; i++) {
+    map.set(String.fromCharCode(cs[i]!), bs[i]!);
+  }
+  return map;
+}
+
+const GPT2_BYTE_DECODER = buildGpt2ByteDecoder();
+
+export function parseWhisperTokenizer(
+  tokenizerBytes?: Uint8Array,
+  configBytes?: Uint8Array,
+): WhisperTokenizer {
+  const idToToken = new Map<number, string>();
+  const specialIds = new Set<number>();
+  let sotId = 50258;
+  let eosId = 50257;
+  let transcribeId = 50359;
+  let noTimestampsId = 50363;
+
+  if (configBytes?.byteLength) {
+    try {
+      const cfg = JSON.parse(new TextDecoder().decode(configBytes)) as Record<string, unknown>;
+      if (typeof cfg.decoder_start_token_id === "number") sotId = cfg.decoder_start_token_id;
+      if (typeof cfg.eos_token_id === "number") eosId = cfg.eos_token_id;
+    } catch {}
+  }
+
+  if (tokenizerBytes?.byteLength) {
+    try {
+      const tok = JSON.parse(new TextDecoder().decode(tokenizerBytes)) as {
+        model?: { vocab?: Record<string, number> };
+        added_tokens?: { id: number; content: string; special?: boolean }[];
+      };
+      for (const [piece, id] of Object.entries(tok.model?.vocab ?? {})) {
+        idToToken.set(id, piece);
+      }
+      for (const added of tok.added_tokens ?? []) {
+        idToToken.set(added.id, added.content);
+        if (added.special || added.content.startsWith("<|")) specialIds.add(added.id);
+        if (added.content === "<|startoftranscript|>") sotId = added.id;
+        if (added.content === "<|endoftext|>") eosId = added.id;
+        if (added.content === "<|transcribe|>") transcribeId = added.id;
+        if (added.content === "<|notimestamps|>") noTimestampsId = added.id;
+      }
+    } catch {}
+  }
+
+  specialIds.add(sotId);
+  specialIds.add(eosId);
+  specialIds.add(transcribeId);
+  specialIds.add(noTimestampsId);
+
+  return { idToToken, specialIds, sotId, eosId, transcribeId, noTimestampsId };
+}
+
+export function decodeWhisperTokens(ids: readonly number[], tok: WhisperTokenizer): string {
+  const bytes: number[] = [];
+  for (const id of ids) {
+    if (tok.specialIds.has(id)) continue;
+    const piece = tok.idToToken.get(id);
+    if (!piece || (piece.startsWith("<|") && piece.endsWith("|>"))) continue;
+    for (const ch of piece) {
+      const b = GPT2_BYTE_DECODER.get(ch);
+      if (b !== undefined) bytes.push(b);
+      else for (const utf8Byte of new TextEncoder().encode(ch)) bytes.push(utf8Byte);
+    }
+  }
+  return new TextDecoder().decode(new Uint8Array(bytes)).trim();
+}
+
+function argmaxLastStep(
+  logitsData: ArrayLike<number>,
+  dims: readonly number[] | undefined,
+  stepLen: number,
+): number {
+  const vocabSize =
+    dims && dims.length >= 2 ? dims[dims.length - 1]! : Math.floor(logitsData.length / Math.max(1, stepLen));
+  const offset = Math.max(0, logitsData.length - vocabSize);
+  let bestId = 0;
+  let bestScore = -Infinity;
+  for (let i = 0; i < vocabSize; i++) {
+    const score = Number(logitsData[offset + i]);
+    if (score > bestScore) {
+      bestScore = score;
+      bestId = i;
+    }
+  }
+  return bestId;
+}
+
+/**
+ * Real lazy-loaded Whisper WebGPU ONNX engine factory: imports `onnxruntime-web`
+ * only when `load()` is first called, creates WebGPU `InferenceSession`s for
+ * both the Whisper encoder and decoder, runs feature extraction + encoder +
+ * greedy autoregressive decoder + BPE token decoding, and releases sessions on
+ * `unload()`.
  */
 export function createDefaultWebGpuEngine(opts: {
   importOrt?: () => Promise<OrtLike>;
-  decodeOutput?: (outputs: Record<string, { data?: unknown }>) => string;
+  maxTokens?: number;
+  melFrames?: number;
 } = {}): WebGpuEngine {
   const importOrt =
     opts.importOrt ?? (() => import("onnxruntime-web") as unknown as Promise<OrtLike>);
+  const maxTokens = opts.maxTokens ?? 128;
+  const melFrames = opts.melFrames ?? WHISPER_MAX_FRAMES;
+
   let ort: OrtLike | null = null;
-  let session: OrtSessionLike | null = null;
+  let encoderSession: OrtSessionLike | null = null;
+  let decoderSession: OrtSessionLike | null = null;
+  let tokenizer: WhisperTokenizer | null = null;
 
   return {
-    async load(_modelId, weights) {
+    async load(_modelId, input) {
       ort ??= await importOrt();
-      session = await ort.InferenceSession.create(weights, {
+      const bundle: WhisperModelBundle =
+        input instanceof Uint8Array ? { encoder: input, decoder: input } : input;
+      tokenizer = parseWhisperTokenizer(bundle.tokenizerJson, bundle.configJson);
+      encoderSession = await ort.InferenceSession.create(bundle.encoder, {
+        executionProviders: ["webgpu"],
+      });
+      decoderSession = await ort.InferenceSession.create(bundle.decoder, {
         executionProviders: ["webgpu"],
       });
     },
     async final(_utteranceId, pcm) {
-      if (!ort || !session) throw new Error("webgpu-engine-not-loaded");
-      const inputName = session.inputNames?.[0] ?? "input_features";
-      const tensor = new ort.Tensor("float32", pcm, [1, pcm.length]);
-      const outputs = await session.run({ [inputName]: tensor });
-      if (opts.decodeOutput) return { text: opts.decodeOutput(outputs) };
-      const firstKey = session.outputNames?.[0] ?? Object.keys(outputs)[0];
-      const raw = firstKey ? outputs[firstKey]?.data : undefined;
-      const text = typeof raw === "string" ? raw : "";
-      return { text };
+      if (!ort || !encoderSession || !decoderSession || !tokenizer) {
+        throw new Error("webgpu-engine-not-loaded");
+      }
+      const mel = extractWhisperFeatures(pcm, melFrames);
+      const melInput = encoderSession.inputNames?.[0] ?? "input_features";
+      const melTensor = new ort.Tensor("float32", mel.data, mel.dims);
+      const encOut = await encoderSession.run({ [melInput]: melTensor });
+      const encKey = encoderSession.outputNames?.[0] ?? Object.keys(encOut)[0] ?? "last_hidden_state";
+      const encoderHiddenStates = encOut[encKey];
+      const hiddenDims = encoderHiddenStates?.dims ? [...encoderHiddenStates.dims] : [1, melFrames / 2, 384];
+      const hiddenTensor = new ort.Tensor(
+        "float32",
+        (encoderHiddenStates?.data as Float32Array) ?? new Float32Array(0),
+        hiddenDims,
+      );
+
+      const ids = [tokenizer.sotId, tokenizer.transcribeId, tokenizer.noTimestampsId];
+      for (let step = 0; step < maxTokens; step++) {
+        const idsTensor = new ort.Tensor(
+          "int64",
+          BigInt64Array.from(ids.map((id) => BigInt(id))),
+          [1, ids.length],
+        );
+        const decOut = await decoderSession.run({
+          input_ids: idsTensor,
+          encoder_hidden_states: hiddenTensor,
+        });
+        const logitsKey = decoderSession.outputNames?.[0] ?? Object.keys(decOut)[0] ?? "logits";
+        const logits = decOut[logitsKey];
+        const nextId = logits?.data
+          ? argmaxLastStep(logits.data as ArrayLike<number>, logits.dims, ids.length)
+          : tokenizer.eosId;
+        if (nextId === tokenizer.eosId) break;
+        ids.push(nextId);
+      }
+      return { text: decodeWhisperTokens(ids, tokenizer) };
     },
     async unload() {
-      const s = session;
-      session = null;
-      await s?.release?.();
+      const enc = encoderSession;
+      const dec = decoderSession;
+      encoderSession = null;
+      decoderSession = null;
+      await Promise.all([enc?.release?.(), dec?.release?.()]);
     },
   };
 }
@@ -184,14 +470,16 @@ export async function defaultProbeWebGpu(minCacheMb = DEFAULT_WEBGPU_CACHE_MB): 
   return { supported: true };
 }
 
-function modelDownloadUrl(modelId: string, customUrl?: string): string {
-  if (customUrl) return customUrl;
-  if (modelId === DEFAULT_WEBGPU_MODEL_ID) return DEFAULT_WEBGPU_MODEL_URL;
-  return `https://huggingface.co/${modelId}/resolve/main/onnx/encoder_model.onnx`;
+export function modelAssetUrls(baseUrl: string): string[] {
+  const base = baseUrl.replace(/\/+$/, "");
+  if (base.endsWith(".onnx")) return [base];
+  return WHISPER_ASSET_PATHS.map((p) => `${base}/${p}`);
 }
 
 export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
   const modelId = deps.modelId || DEFAULT_WEBGPU_MODEL_ID;
+  const baseUrl = deps.modelUrl || DEFAULT_WEBGPU_MODEL_URL;
+  const assetUrls = modelAssetUrls(baseUrl);
   const cacheMb = deps.cacheMb ?? DEFAULT_WEBGPU_CACHE_MB;
   const idleUnloadMs = deps.idleUnloadMs ?? DEFAULT_WEBGPU_IDLE_UNLOAD_MS;
   const engine = deps.engine ?? createDefaultWebGpuEngine();
@@ -245,12 +533,22 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
     }
     if (f) {
       try {
-        const head = await f(modelDownloadUrl(modelId, deps.modelUrl), { method: "HEAD" });
-        const len = Number(head.headers.get("content-length") || "0");
-        if (head.ok && Number.isFinite(len) && len > 0) {
-          knownSizeBytes = len;
+        const heads = await Promise.all(
+          assetUrls.map((u) => f(u, { method: "HEAD" }).catch(() => null)),
+        );
+        let sum = 0;
+        let sawAny = false;
+        for (const h of heads) {
+          const len = h?.ok ? Number(h.headers.get("content-length") || "0") : 0;
+          if (Number.isFinite(len) && len > 0) {
+            sum += len;
+            sawAny = true;
+          }
+        }
+        if (sawAny) {
+          knownSizeBytes = sum;
           emit();
-          return { bytes: len, label: formatModelSize(len), maxMb: cacheMb };
+          return { bytes: sum, label: formatModelSize(sum), maxMb: cacheMb };
         }
       } catch {}
     }
@@ -274,7 +572,6 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
       return false;
     }
 
-    // Show size before first download via HEAD when available.
     const est = await estimateSize();
     const maxBytes = cacheMb * 1024 * 1024;
     if (est.bytes !== null && est.bytes > maxBytes) {
@@ -293,11 +590,10 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
     emit();
 
     abortCtrl = new AbortController();
-    let weights: Uint8Array;
+    let bundle: WhisperModelBundle;
     try {
-      const url = modelDownloadUrl(modelId, deps.modelUrl);
       const assets = await downloadModelAssets({
-        assets: [{ url }],
+        assets: assetUrls.map((url) => ({ url })),
         cacheName: WEBGPU_CACHE,
         estimatedMb,
         confirm: deps.confirmDownload,
@@ -306,14 +602,22 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
         fetch: f as typeof fetch,
         signal: abortCtrl.signal,
       });
-      weights = new Uint8Array(assets[0]!.bytes);
-      if (weights.byteLength > maxBytes) throw new Error("model-exceeds-cache-limit");
-      knownSizeBytes = weights.byteLength;
-      progress = {
-        loadedBytes: weights.byteLength,
-        totalBytes: weights.byteLength,
-        pct: 100,
-      };
+      const totalBytes = assets.reduce((sum, a) => sum + a.bytes.byteLength, 0);
+      if (totalBytes > maxBytes) throw new Error("model-exceeds-cache-limit");
+      knownSizeBytes = totalBytes;
+      progress = { loadedBytes: totalBytes, totalBytes, pct: 100 };
+      const byUrl = new Map(assets.map((a) => [a.url, new Uint8Array(a.bytes)]));
+      if (assetUrls.length === 1) {
+        const single = byUrl.get(assetUrls[0]!)!;
+        bundle = { encoder: single, decoder: single };
+      } else {
+        bundle = {
+          encoder: byUrl.get(assetUrls[0]!)!,
+          decoder: byUrl.get(assetUrls[1]!)!,
+          tokenizerJson: byUrl.get(assetUrls[2]!),
+          configJson: byUrl.get(assetUrls[3]!),
+        };
+      }
     } catch (e) {
       if (e instanceof ModelDownloadBlocked) {
         status = "blocked";
@@ -336,7 +640,7 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
     }
 
     try {
-      await engine.load(modelId, weights);
+      await engine.load(modelId, bundle);
       loaded = true;
       status = "ready";
       emit();
