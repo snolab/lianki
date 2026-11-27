@@ -2038,6 +2038,34 @@ export const CONFIG = {
     description:
       "谁在忙：agent 的实时输出停了这么多秒，就算它闲下来了，头像上的转圈停下。输出一来就又算忙。Mac 上的值是环境变量 LIANKI_LANES_BUSY_IDLE_SEC。",
   }),
+  "lanes.digest": {
+    default: LANES_CONFIG_DEFAULTS["lanes.digest"],
+    schema: z.boolean(),
+    group: "lanes",
+    audience: "server",
+    description:
+      "摘要模式：你连着说的几句先攒起来，停顿一会儿（或打字发一句、说「完毕」、到最长时间）再合成一条摘要（润色后的文字 + 原消息 id），只发给小克和摘要里点了名的 agent；没点名的话不发给别的 agent。关掉 = 回到一句一句转。Mac 上的值是环境变量 LIANKI_LANES_DIGEST（true/false），或 lane-listen --no-digest。",
+  },
+  "lanes.digestPauseSec": int({
+    default: LANES_CONFIG_DEFAULTS["lanes.digestPauseSec"],
+    min: 1,
+    max: 120,
+    unit: "s",
+    group: "lanes",
+    audience: "server",
+    description:
+      "摘要模式：你停下多少秒没再说话，就把攒着的几句合成一条摘要发出去。Mac 上的值是环境变量 LIANKI_LANES_DIGEST_PAUSE_SEC，或 lane-listen --digest-pause <秒>。",
+  }),
+  "lanes.digestMaxSec": int({
+    default: LANES_CONFIG_DEFAULTS["lanes.digestMaxSec"],
+    min: 5,
+    max: 600,
+    unit: "s",
+    group: "lanes",
+    audience: "server",
+    description:
+      "摘要模式：一直在说也最多攒这么多秒（从第一句算起），到时间就先发一条摘要。Mac 上的值是环境变量 LIANKI_LANES_DIGEST_MAX_SEC，或 lane-listen --digest-max <秒>。",
+  }),
   "lanes.modeGraceSec": int({
     default: 30,
     min: 0,

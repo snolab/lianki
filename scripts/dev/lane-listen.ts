@@ -20,7 +20,14 @@
  * shows "all messages + system notices". --skip-owner: not
  * his lines (小克 has its own feed of them). --answer-unnamed (lanes.agents
  * answerUnnamed: coco, 杰咪): his lines that name nobody may be answered briefly,
- * when the lane has something to say; the hand-off notes say so.
+ * when the lane has something to say; the hand-off notes say so (not in digest mode).
+ *
+ * Digest mode (on by default; --no-digest or LIANKI_LISTEN_DIGEST=0 turns it off;
+ * docs/lane-listen.md "Digest mode"): his consecutive lines are buffered and flushed
+ * after a pause (--digest-pause, 8 s), at a max window (--digest-max, 60 s), at once
+ * on a typed line or one ending in a final word, as ONE digest (polished text + the
+ * original ids): to the chat lane always, to this lane only when it names it. His
+ * unnamed lines never reach another lane. A typed "@name …" still goes at once.
  *
  * The token: LIANKI_TOKEN, else ~/.config/lianki/lanes/<lane>.token (0600),
  * made by the owner (lianki.com/my/preferences → API tokens; name = the lane,
@@ -61,7 +68,20 @@ import {
   pickTarget,
   sendCodes,
   unknownCode,
+  bypassLine,
+  digestible,
+  editOf,
+  type Line,
 } from "./lane-listen-lib";
+import {
+  type Digest,
+  type DigestLine,
+  digestFor,
+  digestOn,
+  digestOpts,
+  digestRoute,
+  makeDigester,
+} from "./lane-digest-lib";
 
 type Opts = {
   lane: RouteLane;
@@ -80,8 +100,13 @@ type Opts = {
   system: boolean;
   /** No owner lines (the lane has its own feed of them). */
   skipOwner: boolean;
-  /** It may answer his lines that name nobody, briefly (lanes.agents answerUnnamed). */
+  /** It may answer his lines that name nobody, briefly (lanes.agents answerUnnamed). Ignored for his lines in digest mode. */
   answerUnnamed: boolean;
+  /** --digest / --no-digest; absent: LIANKI_LISTEN_DIGEST, else lanes.digest (on). */
+  digest?: boolean;
+  /** --digest-pause / --digest-max, in seconds. */
+  digestPause?: string;
+  digestMax?: string;
 };
 
 function parse(argv: string[]): Opts | Error {
@@ -117,8 +142,14 @@ function parse(argv: string[]): Opts | Error {
     else if (a === "--system") o.system = o.everyone = o.all = true;
     else if (a === "--skip-owner") o.skipOwner = true;
     else if (a === "--answer-unnamed") o.answerUnnamed = true;
+    else if (a === "--digest") o.digest = true;
+    else if (a === "--no-digest") o.digest = false;
+    else if (a === "--digest-pause") o.digestPause = v() ?? "";
+    else if (a === "--digest-max") o.digestMax = v() ?? "";
     else return new Error(`lane-listen: unknown argument ${a}`);
   }
+  const d = digestOpts({ pauseSec: o.digestPause, maxSec: o.digestMax });
+  if (d instanceof Error) return d;
   o.lane ??= (process.env.LIANKI_LANE || undefined) as RouteLane | undefined;
   // The joined lanes (the lanes manager hands them over, docs/lane-listen.md "Every agent
   // joins"): a lane beyond codex and agy listens under its own name, and the router knows it.
@@ -320,18 +351,22 @@ async function main(): Promise<number> {
   };
   const acker = makeAcker((seq) => postSeen(o, t.token!, seq));
   const seen = new Set<string>();
+  const me = routeKey(o.lane);
+  const digestHere = digestOn(o.digest) && (!o.skipOwner || me === "chat");
   const out = makeDeliverer(
-    o,
+    // In digest mode no unnamed line of his reaches the lane: its rule line says the plain rule.
+    { ...o, answerUnnamed: o.answerUnnamed && !digestHere },
     (body, interrupt) => deliver(o, body, interrupt),
     () => targetBusy(o),
     log,
     undefined,
     (lines, ok) => {
       if (!cursor) return;
-      const seqs = lines.map((l) => l.seq);
+      // A digest stands for every line it holds.
+      const seqs = lines.flatMap((l) => (l.digest ? l.digest.seqs : [l.seq]));
       if (!ok) {
         // Still held: the next connect's recovery reads it again and hands it over.
-        for (const l of lines) seen.delete(l.id);
+        for (const l of lines) for (const id of l.digest?.ids ?? [l.id]) seen.delete(id);
         return;
       }
       cursor.release(seqs);
@@ -348,8 +383,61 @@ async function main(): Promise<number> {
   const recoverMs = recoverMaxMs();
   /** The newest seq `ay send` took this run (for the receipt when the barrier lifts). */
   let lastDelivered = -1;
+  // Digest mode (docs/lane-listen.md "Digest mode"): his lines are buffered and go
+  // as one digest, to the chat lane always and to a lane only when it is named.
+  // A lane with --skip-owner hears none of his lines, digests neither; the chat
+  // lane's --skip-owner only drops his raw lines (its digest is the 小克 feed).
+  const dOpts = digestOpts({ pauseSec: o.digestPause, maxSec: o.digestMax }) as Exclude<
+    ReturnType<typeof digestOpts>,
+    Error
+  >;
+  const allow = (x: DigestLine) => voiceAllowed({ from: "owner", voice: x.voice }, o);
+  const digester = makeDigester(dOpts, async (whole: Digest) => {
+    // Only what this lane's voice policy allows, line by line: the dropped lines are passed.
+    const { digest: d, passed } = digestFor(whole, allow);
+    if (passed.length) {
+      cursor?.release(passed);
+      save();
+    }
+    const to = d ? digestRoute(me, d) : null;
+    log({
+      type: "digest",
+      lane: o.lane,
+      ids: whole.ids,
+      ...(passed.length ? { filtered: whole.ids.filter((id) => !d?.ids.includes(id)) } : {}),
+      reason: whole.reason,
+      to,
+      chars: d?.text.length ?? 0,
+    });
+    if (!d || !to) {
+      // Not this lane's: passed, as a line for another lane always was. A bypassed
+      // line is its own hand-off's to release (a lost one stays held for recovery).
+      cursor?.release((d?.lines ?? []).filter((x) => !x.bypass).map((x) => x.seq));
+      return save();
+    }
+    const top = Math.max(-1, ...d.seqs.filter((s): s is number => s !== undefined));
+    const line: Line = {
+      id: `digest-${d.ids[0]}`,
+      thread: "owner",
+      from: "owner",
+      text: d.text,
+      ...(d.at ? { at: d.at } : {}),
+      ...(top >= 0 ? { seq: top } : {}),
+      digest: d,
+    };
+    await out.add(line);
+  });
+  if (digestHere)
+    log({ type: "digest-mode", lane: o.lane, pauseMs: dOpts.pauseMs, maxMs: dOpts.maxMs });
   /** One listener JSON line, live or recovered; held lines go to the deliverer. */
   const handle = async (raw: string, recovered: boolean) => {
+    // The hub's polish or merge of a line still in the digest buffer: its new text.
+    const e = digestHere ? editOf(raw) : null;
+    if (e) {
+      if (e.thread === "owner" && digester.edit(e) && process.env.LANE_LISTEN_DEBUG)
+        log({ type: "digest-edit", lane: o.lane, id: e.id, covers: e.covers });
+      return;
+    }
     const l = lineOf(raw);
     if (process.env.LANE_LISTEN_DEBUG)
       log({
@@ -369,6 +457,26 @@ async function main(): Promise<number> {
     }
     seen.add(l.id);
     const stale = recovered && l.at !== undefined && Date.now() - Date.parse(l.at) > recoverMs;
+    if (digestHere && digestible(l)) {
+      // Someone else's voice never goes anywhere, digests included.
+      if (stale || l.voice === "other") {
+        if (l.voice === "other") log({ type: "other-voice", lane: o.lane, id: l.id });
+        cursor?.pass(l.seq);
+        return save();
+      }
+      if (recovered) log({ type: "recovered", lane: o.lane, id: l.id, seq: l.seq });
+      backoff = 1_000;
+      cursor?.hold(l.seq);
+      // The bypass: a typed "@name …" for this lane goes to it now, on its own (never to
+      // the chat lane, whose digest of it flushes at once anyway, typed lines do).
+      const bypass = me !== "chat" && bypassLine(o.lane, l) && voiceAllowed(l, o);
+      if (bypass) {
+        log({ type: "bypass", lane: o.lane, id: l.id });
+        await out.add(l);
+      }
+      await digester.add(l, { bypass });
+      return;
+    }
     if (!listenerTakes(o, l) || stale) {
       cursor?.pass(l.seq);
       return save();
