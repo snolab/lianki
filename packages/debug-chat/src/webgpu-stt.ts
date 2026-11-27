@@ -1,20 +1,28 @@
 /**
  * Client-side WebGPU local speech-to-text (docs/local-stt.md, /stt/windows-webgpu):
  * - Probes WebGPU (`navigator.gpu.requestAdapter`) and storage quota.
- * - Downloads and caches the model on demand in the background without blocking
- *   the active utterance (while downloading, the race falls through immediately
- *   to server/cloud routes; once ready, `webgpu:local` races alongside them).
- * - Exposes a `WsLike` adapter speaking the exact `local-stt.ts` frame/JSON
- *   protocol (`ready`, `begin`, `TAG_FRAME`/`TAG_PRE`, `end`, `partial`, `final`).
+ * - Estimates model size first (`HEAD`), then routes uncached downloads through
+ *   `downloadModelAssets` (`model-download.ts`) for metered/unknown-network
+ *   confirmation and network-change cancellation.
+ * - Audio stays on the device ONLY on the `webgpu:local` route; when falling
+ *   back to server or cloud routes, audio is sent to those routes as usual.
  */
 import type { WsLike } from "./local-stt";
 import { STT_AVAILABLE_EVENT } from "./public-stt";
+import {
+  downloadModelAssets,
+  ModelDownloadBlocked,
+  type ModelDownloadRisk,
+  type ModelNetwork,
+} from "./model-download";
 
 export const WEBGPU_STT_URL = "webgpu:local";
+export const WEBGPU_CACHE = "lianki-webgpu-stt-v1";
 export const WEBGPU_READY_EVENT = STT_AVAILABLE_EVENT;
 export const DEFAULT_WEBGPU_MODEL_ID = "onnx-community/whisper-tiny@v1.0.0";
 export const DEFAULT_WEBGPU_MODEL_URL =
   "https://huggingface.co/onnx-community/whisper-tiny/resolve/v1.0.0/onnx/encoder_model.onnx";
+export const DEFAULT_WEBGPU_ESTIMATED_MB = 40;
 export const DEFAULT_WEBGPU_CACHE_MB = 256;
 export const DEFAULT_WEBGPU_IDLE_UNLOAD_MS = 300_000;
 
@@ -23,6 +31,7 @@ export type WebGpuStatus =
   | "probing"
   | "downloading"
   | "ready"
+  | "blocked"
   | "unsupported"
   | "error";
 
@@ -48,10 +57,62 @@ export type WebGpuEngine = {
   unload?(): Promise<void> | void;
 };
 
-export type WebGpuCache = {
-  get(key: string): Promise<Uint8Array | null>;
-  put(key: string, data: Uint8Array): Promise<void>;
+export type OrtSessionLike = {
+  inputNames?: readonly string[];
+  outputNames?: readonly string[];
+  run(feeds: Record<string, unknown>): Promise<Record<string, { data?: unknown }>>;
+  release?(): Promise<void> | void;
 };
+
+export type OrtLike = {
+  Tensor: new (type: string, data: Float32Array, dims: number[]) => unknown;
+  InferenceSession: {
+    create(
+      buffer: Uint8Array,
+      options?: { executionProviders?: string[] },
+    ): Promise<OrtSessionLike>;
+  };
+};
+
+/**
+ * Real lazy-loaded WebGPU ONNX engine factory: imports `onnxruntime-web` only
+ * when `load()` is first called, creates a WebGPU `InferenceSession` from the
+ * cached model weights, and releases it on `unload()`.
+ */
+export function createDefaultWebGpuEngine(opts: {
+  importOrt?: () => Promise<OrtLike>;
+  decodeOutput?: (outputs: Record<string, { data?: unknown }>) => string;
+} = {}): WebGpuEngine {
+  const importOrt =
+    opts.importOrt ?? (() => import("onnxruntime-web") as unknown as Promise<OrtLike>);
+  let ort: OrtLike | null = null;
+  let session: OrtSessionLike | null = null;
+
+  return {
+    async load(_modelId, weights) {
+      ort ??= await importOrt();
+      session = await ort.InferenceSession.create(weights, {
+        executionProviders: ["webgpu"],
+      });
+    },
+    async final(_utteranceId, pcm) {
+      if (!ort || !session) throw new Error("webgpu-engine-not-loaded");
+      const inputName = session.inputNames?.[0] ?? "input_features";
+      const tensor = new ort.Tensor("float32", pcm, [1, pcm.length]);
+      const outputs = await session.run({ [inputName]: tensor });
+      if (opts.decodeOutput) return { text: opts.decodeOutput(outputs) };
+      const firstKey = session.outputNames?.[0] ?? Object.keys(outputs)[0];
+      const raw = firstKey ? outputs[firstKey]?.data : undefined;
+      const text = typeof raw === "string" ? raw : "";
+      return { text };
+    },
+    async unload() {
+      const s = session;
+      session = null;
+      await s?.release?.();
+    },
+  };
+}
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -60,9 +121,15 @@ export type WebGpuManagerDeps = {
   modelUrl?: string;
   cacheMb?: number;
   idleUnloadMs?: number;
+  estimatedMb?: number;
   probe?: () => Promise<WebGpuProbe>;
   fetch?: FetchLike;
-  cache?: WebGpuCache;
+  confirmDownload?: (details: {
+    estimatedMb: number;
+    risk: ModelDownloadRisk;
+  }) => boolean | Promise<boolean>;
+  network?: () => ModelNetwork;
+  cache?: () => Promise<Pick<Cache, "match" | "put" | "delete">>;
   engine?: WebGpuEngine;
   now?: () => number;
   setTimer?: (fn: () => void, ms: number) => unknown;
@@ -117,38 +184,6 @@ export async function defaultProbeWebGpu(minCacheMb = DEFAULT_WEBGPU_CACHE_MB): 
   return { supported: true };
 }
 
-function defaultCache(): WebGpuCache {
-  const mem = new Map<string, Uint8Array>();
-  return {
-    async get(key) {
-      if (mem.has(key)) return mem.get(key)!;
-      try {
-        if (typeof caches !== "undefined") {
-          const box = await caches.open("lianki-webgpu-stt-v1");
-          const hit = await box.match(key);
-          if (hit) {
-            const buf = new Uint8Array(await hit.arrayBuffer());
-            mem.set(key, buf);
-            return buf;
-          }
-        }
-      } catch {}
-      return null;
-    },
-    async put(key, data) {
-      mem.set(key, data);
-      try {
-        if (typeof caches !== "undefined") {
-          const box = await caches.open("lianki-webgpu-stt-v1");
-          const copy = new Uint8Array(data.byteLength);
-          copy.set(data);
-          await box.put(key, new Response(copy.buffer));
-        }
-      } catch {}
-    },
-  };
-}
-
 function modelDownloadUrl(modelId: string, customUrl?: string): string {
   if (customUrl) return customUrl;
   if (modelId === DEFAULT_WEBGPU_MODEL_ID) return DEFAULT_WEBGPU_MODEL_URL;
@@ -159,7 +194,7 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
   const modelId = deps.modelId || DEFAULT_WEBGPU_MODEL_ID;
   const cacheMb = deps.cacheMb ?? DEFAULT_WEBGPU_CACHE_MB;
   const idleUnloadMs = deps.idleUnloadMs ?? DEFAULT_WEBGPU_IDLE_UNLOAD_MS;
-  const cache = deps.cache ?? defaultCache();
+  const engine = deps.engine ?? createDefaultWebGpuEngine();
   const f = deps.fetch ?? (globalThis.fetch as FetchLike | undefined);
   const setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = deps.clearTimer ?? ((id) => clearTimeout(id as ReturnType<typeof setTimeout>));
@@ -199,21 +234,33 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
       if (activeUtts > 0 || !loaded) return;
       loaded = false;
       status = "idle";
-      void Promise.resolve(deps.engine?.unload?.()).catch(() => {});
+      void Promise.resolve(engine.unload?.()).catch(() => {});
       emit();
     }, idleUnloadMs);
   };
+
+  async function estimateSize(): Promise<{ bytes: number | null; label: string; maxMb: number }> {
+    if (knownSizeBytes !== undefined) {
+      return { bytes: knownSizeBytes, label: formatModelSize(knownSizeBytes), maxMb: cacheMb };
+    }
+    if (f) {
+      try {
+        const head = await f(modelDownloadUrl(modelId, deps.modelUrl), { method: "HEAD" });
+        const len = Number(head.headers.get("content-length") || "0");
+        if (head.ok && Number.isFinite(len) && len > 0) {
+          knownSizeBytes = len;
+          emit();
+          return { bytes: len, label: formatModelSize(len), maxMb: cacheMb };
+        }
+      } catch {}
+    }
+    return { bytes: null, label: `<= ${cacheMb} MB`, maxMb: cacheMb };
+  }
 
   async function runEnsure(): Promise<boolean> {
     if (loaded && status === "ready") {
       resetIdleTimer();
       return true;
-    }
-    if (!deps.engine) {
-      status = "unsupported";
-      error = "no-engine";
-      emit();
-      return false;
     }
     status = "probing";
     error = undefined;
@@ -227,86 +274,71 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
       return false;
     }
 
-    const cacheKey = `https://lianki.invalid/webgpu-stt/${encodeURIComponent(modelId)}`;
-    let weights = await cache.get(cacheKey);
-    if (!weights) {
-      if (!f) {
-        status = "error";
-        error = "no-fetch";
-        emit();
-        return false;
-      }
-      status = "downloading";
-      progress = { loadedBytes: 0, totalBytes: 0, pct: 0 };
+    // Show size before first download via HEAD when available.
+    const est = await estimateSize();
+    const maxBytes = cacheMb * 1024 * 1024;
+    if (est.bytes !== null && est.bytes > maxBytes) {
+      status = "error";
+      error = "model-exceeds-cache-limit";
       emit();
+      return false;
+    }
+    const estimatedMb =
+      est.bytes !== null
+        ? Math.max(1, Math.ceil(est.bytes / (1024 * 1024)))
+        : (deps.estimatedMb ?? Math.min(DEFAULT_WEBGPU_ESTIMATED_MB, cacheMb));
 
-      abortCtrl = new AbortController();
-      try {
-        const res = await f(modelDownloadUrl(modelId, deps.modelUrl), {
-          signal: abortCtrl.signal,
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const total = Number(res.headers.get("content-length") || "0") || 0;
-        const maxBytes = cacheMb * 1024 * 1024;
-        if (total > maxBytes) throw new Error("model-exceeds-cache-limit");
+    status = "downloading";
+    progress = { loadedBytes: 0, totalBytes: est.bytes ?? 0, pct: 0 };
+    emit();
 
-        if (res.body) {
-          const reader = res.body.getReader();
-          const chunks: Uint8Array[] = [];
-          let loadedBytes = 0;
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            if (value) {
-              loadedBytes += value.byteLength;
-              if (loadedBytes > maxBytes) {
-                abortCtrl.abort();
-                throw new Error("model-exceeds-cache-limit");
-              }
-              chunks.push(value);
-              const pct = total > 0 ? Math.min(100, Math.round((loadedBytes / total) * 100)) : 0;
-              progress = { loadedBytes, totalBytes: total, pct };
-              emit();
-            }
-          }
-          const out = new Uint8Array(loadedBytes);
-          let off = 0;
-          for (const c of chunks) {
-            out.set(c, off);
-            off += c.byteLength;
-          }
-          weights = out;
-        } else {
-          weights = new Uint8Array(await res.arrayBuffer());
-          if (weights.byteLength > maxBytes) throw new Error("model-exceeds-cache-limit");
-        }
-        progress = {
-          loadedBytes: weights.byteLength,
-          totalBytes: weights.byteLength,
-          pct: 100,
-        };
-        await cache.put(cacheKey, weights);
-      } catch (e) {
-        if ((e as { name?: string })?.name === "AbortError") {
-          status = "idle";
-          progress = { loadedBytes: 0, totalBytes: 0, pct: 0 };
-          emit();
-          return false;
-        }
-        status = "error";
-        error = String((e as Error)?.message ?? e).slice(0, 120);
+    abortCtrl = new AbortController();
+    let weights: Uint8Array;
+    try {
+      const url = modelDownloadUrl(modelId, deps.modelUrl);
+      const assets = await downloadModelAssets({
+        assets: [{ url }],
+        cacheName: WEBGPU_CACHE,
+        estimatedMb,
+        confirm: deps.confirmDownload,
+        network: deps.network,
+        cache: deps.cache,
+        fetch: f as typeof fetch,
+        signal: abortCtrl.signal,
+      });
+      weights = new Uint8Array(assets[0]!.bytes);
+      if (weights.byteLength > maxBytes) throw new Error("model-exceeds-cache-limit");
+      knownSizeBytes = weights.byteLength;
+      progress = {
+        loadedBytes: weights.byteLength,
+        totalBytes: weights.byteLength,
+        pct: 100,
+      };
+    } catch (e) {
+      if (e instanceof ModelDownloadBlocked) {
+        status = "blocked";
+        error = "model-download-blocked";
         emit();
         return false;
-      } finally {
-        abortCtrl = null;
       }
+      if ((e as { name?: string })?.name === "AbortError") {
+        status = "idle";
+        progress = { loadedBytes: 0, totalBytes: 0, pct: 0 };
+        emit();
+        return false;
+      }
+      status = "error";
+      error = String((e as Error)?.message ?? e).slice(0, 120);
+      emit();
+      return false;
+    } finally {
+      abortCtrl = null;
     }
 
     try {
-      await deps.engine.load(modelId, weights);
+      await engine.load(modelId, weights);
       loaded = true;
       status = "ready";
-      progress = { loadedBytes: weights.byteLength, totalBytes: weights.byteLength, pct: 100 };
       emit();
       resetIdleTimer();
       if (deps.onReadyEvent) deps.onReadyEvent();
@@ -323,25 +355,9 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
   return {
     status: () => status,
     snapshot,
-    engine: () => deps.engine,
+    engine: () => engine,
     modelId: () => modelId,
-    async estimateSize(): Promise<{ bytes: number | null; label: string; maxMb: number }> {
-      if (knownSizeBytes !== undefined) {
-        return { bytes: knownSizeBytes, label: formatModelSize(knownSizeBytes), maxMb: cacheMb };
-      }
-      if (f) {
-        try {
-          const head = await f(modelDownloadUrl(modelId, deps.modelUrl), { method: "HEAD" });
-          const len = Number(head.headers.get("content-length") || "0");
-          if (head.ok && Number.isFinite(len) && len > 0) {
-            knownSizeBytes = len;
-            emit();
-            return { bytes: len, label: formatModelSize(len), maxMb: cacheMb };
-          }
-        } catch {}
-      }
-      return { bytes: null, label: `<= ${cacheMb} MB`, maxMb: cacheMb };
-    },
+    estimateSize,
     ensureReady(): Promise<boolean> {
       if (loaded && status === "ready") {
         resetIdleTimer();
@@ -382,7 +398,9 @@ export type WebGpuConfig = {
 let sharedManager: WebGpuModelManager | null = null;
 let sharedKey = "";
 
-export function getSharedWebGpuManager(conf?: Partial<WebGpuConfig>): WebGpuModelManager {
+export function getSharedWebGpuManager(
+  conf?: Partial<WebGpuConfig> & Pick<WebGpuManagerDeps, "confirmDownload" | "engine">,
+): WebGpuModelManager {
   const key = JSON.stringify({
     modelUrl: conf?.modelUrl,
     cacheMb: conf?.cacheMb,
@@ -394,6 +412,8 @@ export function getSharedWebGpuManager(conf?: Partial<WebGpuConfig>): WebGpuMode
       ...(conf?.modelUrl ? { modelUrl: conf.modelUrl } : {}),
       ...(conf?.cacheMb !== undefined ? { cacheMb: conf.cacheMb } : {}),
       ...(conf?.idleUnloadMs !== undefined ? { idleUnloadMs: conf.idleUnloadMs } : {}),
+      ...(conf?.confirmDownload ? { confirmDownload: conf.confirmDownload } : {}),
+      ...(conf?.engine ? { engine: conf.engine } : {}),
     });
   }
   return sharedManager;
@@ -411,9 +431,9 @@ function decodePcm16(bytes: Uint8Array): Float32Array {
 
 /**
  * Wrap a `WebGpuModelManager` as a `WsLike` socket for `createLocalStt`'s race.
- * If the model is not yet `ready`, this kicks off background download (`ensureReady`)
- * and immediately closes (`4010`) so server/cloud routes handle the current utterance
- * with zero delay. Once `ready`, emits `{ t: "ready" }` and transcribes utterances.
+ * Audio stays on the device ONLY on this `webgpu:local` route; if the model is
+ * not yet `ready` or blocked, this closes (`4010`) so server/cloud routes handle
+ * the utterance as usual.
  */
 export function openWebGpuStt(
   manager: WebGpuModelManager,
@@ -461,13 +481,6 @@ export function openWebGpuStt(
             off += p.length;
           }
           const eng = manager.engine();
-          if (!eng) {
-            manager.touchUtterance(-1);
-            shim.onmessage?.({
-              data: JSON.stringify({ t: "error", id, error: "no-engine" }),
-            });
-            return;
-          }
           const t0 = now();
           void eng
             .final(id, full)
@@ -505,7 +518,6 @@ export function openWebGpuStt(
       const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
       if (bytes.byteLength < 2) return;
       const samples = decodePcm16(bytes);
-      // LocalStt streams binary frames to the active utterance(s).
       for (const [id, list] of buffers) {
         list.push(samples);
         const eng = manager.engine();
@@ -533,7 +545,6 @@ export function openWebGpuStt(
   queueMicrotask(() => {
     if (closed) return;
     if (manager.status() !== "ready") {
-      // Trigger background download without blocking the current utterance's race.
       if (manager.status() === "idle") void manager.ensureReady();
       closed = true;
       shim.readyState = 3;

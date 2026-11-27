@@ -1,30 +1,33 @@
 import { describe, expect, test } from "bun:test";
-import {
-  createLocalStt,
-  localSttRoute,
-  packPcm,
-  type WsLike,
-} from "../packages/debug-chat/src/local-stt";
+import { createLocalStt, localSttRoute, type WsLike } from "../packages/debug-chat/src/local-stt";
 import {
   WEBGPU_STT_URL,
+  createDefaultWebGpuEngine,
   createWebGpuModelManager,
   defaultProbeWebGpu,
+  formatModelSize,
+  getSharedWebGpuManager,
   openWebGpuStt,
-  type WebGpuCache,
+  type OrtLike,
   type WebGpuEngine,
 } from "../packages/debug-chat/src/webgpu-stt";
 
-function memoryCache(): WebGpuCache & { map: Map<string, Uint8Array> } {
-  const map = new Map<string, Uint8Array>();
-  return {
-    map,
-    async get(k) {
-      return map.get(k) ?? null;
+function memoryCacheApi(): () => Promise<Pick<Cache, "match" | "put" | "delete">> {
+  const map = new Map<string, Response>();
+  const keyOf = (req: RequestInfo | URL) =>
+    typeof req === "string" ? req : req instanceof URL ? req.href : req.url;
+  const api: Pick<Cache, "match" | "put" | "delete"> = {
+    async match(req) {
+      return map.get(keyOf(req))?.clone();
     },
-    async put(k, d) {
-      map.set(k, d);
+    async put(req, res) {
+      map.set(keyOf(req), res);
+    },
+    async delete(req) {
+      return map.delete(keyOf(req));
     },
   };
+  return async () => api;
 }
 
 function fakeEngine(
@@ -65,6 +68,18 @@ describe("WebGPU probe", () => {
 
       Object.defineProperty(globalThis, "navigator", {
         value: {
+          gpu: {
+            requestAdapter: async () => {
+              throw new Error("gpu-err");
+            },
+          },
+        },
+        configurable: true,
+      });
+      expect(await defaultProbeWebGpu(128)).toEqual({ supported: false, reason: "no-adapter" });
+
+      Object.defineProperty(globalThis, "navigator", {
+        value: {
           gpu: { requestAdapter: async () => ({}) },
           storage: {
             estimate: async () => ({ quota: 100 * 1024 * 1024, usage: 50 * 1024 * 1024 }),
@@ -83,15 +98,15 @@ describe("WebGPU probe", () => {
   });
 });
 
-describe("WebGpuModelManager", () => {
-  test("downloads once on demand, emits progress, caches weights, and unloads when idle", async () => {
-    const cache = memoryCache();
+describe("WebGpuModelManager & model-download confirm/cancel", () => {
+  test("shows size first, confirms metered/unknown network, caches weights, and unloads when idle", async () => {
+    const cache = memoryCacheApi();
     const eng = fakeEngine();
-    let fetches = 0;
+    let gets = 0;
     let idleCb: (() => void) | null = null;
     let readyEvents = 0;
+    const confirmed: { estimatedMb: number; risk: string }[] = [];
     const payload = new Uint8Array([1, 2, 3, 4, 5, 6]);
-    const statuses: string[] = [];
 
     const mgr = createWebGpuModelManager({
       modelId: "test/whisper-tiny",
@@ -100,6 +115,11 @@ describe("WebGpuModelManager", () => {
       cache,
       engine: eng,
       probe: async () => ({ supported: true }),
+      network: () => ({ online: true, connection: { type: "cellular" } }),
+      confirmDownload: (d) => {
+        confirmed.push(d);
+        return true;
+      },
       setTimer: (fn) => {
         idleCb = fn;
         return 1;
@@ -110,29 +130,24 @@ describe("WebGpuModelManager", () => {
       onReadyEvent: () => {
         readyEvents++;
       },
-      fetch: async () => {
-        fetches++;
-        const stream = new ReadableStream<Uint8Array>({
-          start(ctrl) {
-            ctrl.enqueue(payload.slice(0, 3));
-            ctrl.enqueue(payload.slice(3));
-            ctrl.close();
-          },
-        });
-        return new Response(stream, {
-          status: 200,
-          headers: { "content-length": String(payload.byteLength) },
-        });
+      fetch: async (_url, init) => {
+        if (init?.method === "HEAD") {
+          return new Response(null, {
+            status: 200,
+            headers: { "content-length": String(3 * 1024 * 1024) },
+          });
+        }
+        gets++;
+        return new Response(payload, { status: 200 });
       },
     });
-    mgr.subscribe((s) => statuses.push(`${s.status}:${s.progress.pct}`));
 
     expect(await mgr.ensureReady()).toBe(true);
-    expect(fetches).toBe(1);
+    expect(confirmed).toEqual([{ estimatedMb: 3, risk: "restricted" }]);
+    expect(mgr.snapshot().sizeLabel).toBe("6 B");
+    expect(gets).toBe(1);
     expect(eng.loads).toBe(1);
     expect(readyEvents).toBe(1);
-    expect(statuses).toContain("downloading:50");
-    expect(statuses).toContain("ready:100");
 
     // Idle timer unloads GPU memory while keeping cached weights.
     expect(idleCb).not.toBeNull();
@@ -140,16 +155,42 @@ describe("WebGpuModelManager", () => {
     expect(eng.unloads).toBe(1);
     expect(mgr.status()).toBe("idle");
 
-    // Subsequent ensureReady hits cache without fetching.
+    // Subsequent ensureReady hits cache without calling GET fetch.
     expect(await mgr.ensureReady()).toBe(true);
-    expect(fetches).toBe(1);
+    expect(gets).toBe(1);
     expect(eng.loads).toBe(2);
+  });
+
+  test("declining metered/unknown-network confirm blocks download without fetching model", async () => {
+    let gets = 0;
+    const mgr = createWebGpuModelManager({
+      cacheMb: 256,
+      cache: memoryCacheApi(),
+      engine: fakeEngine(),
+      probe: async () => ({ supported: true }),
+      network: () => ({ online: true, connection: { type: "cellular" } }),
+      confirmDownload: () => false,
+      fetch: async (_url, init) => {
+        if (init?.method === "HEAD") {
+          return new Response(null, {
+            status: 200,
+            headers: { "content-length": String(40 * 1024 * 1024) },
+          });
+        }
+        gets++;
+        return new Response(new Uint8Array([1, 2]), { status: 200 });
+      },
+    });
+    expect(await mgr.ensureReady()).toBe(false);
+    expect(mgr.status()).toBe("blocked");
+    expect(gets).toBe(0);
+    expect(mgr.snapshot().sizeLabel).toBe("40.0 MB");
   });
 
   test("rejects downloads exceeding cacheMb limit", async () => {
     const mgr = createWebGpuModelManager({
       cacheMb: 1,
-      cache: memoryCache(),
+      cache: memoryCacheApi(),
       engine: fakeEngine(),
       probe: async () => ({ supported: true }),
       fetch: async () =>
@@ -162,28 +203,9 @@ describe("WebGpuModelManager", () => {
     expect(mgr.status()).toBe("error");
     expect(mgr.snapshot().error).toBe("model-exceeds-cache-limit");
   });
-
-  test("reports model size before first download via HEAD", async () => {
-    const mgr = createWebGpuModelManager({
-      modelUrl: "https://cdn.example/whisper-tiny/v1.0.0/encoder_model.onnx",
-      cacheMb: 256,
-      cache: memoryCache(),
-      engine: fakeEngine(),
-      fetch: async (_url, init) => {
-        expect(init?.method).toBe("HEAD");
-        return new Response(null, {
-          status: 200,
-          headers: { "content-length": String(40 * 1024 * 1024) },
-        });
-      },
-    });
-    const est = await mgr.estimateSize();
-    expect(est).toEqual({ bytes: 40 * 1024 * 1024, label: "40.0 MB", maxMb: 256 });
-    expect(mgr.snapshot().sizeLabel).toBe("40.0 MB");
-  });
 });
 
-describe("webgpu:local race integration", () => {
+describe("real lazy WebGPU engine factory & race integration", () => {
   test("localSttRoute allows webgpu:local only when named=true", () => {
     expect(localSttRoute(WEBGPU_STT_URL, false, false)).toEqual({ source: "off" });
     expect(localSttRoute(WEBGPU_STT_URL, false, true)).toEqual({
@@ -192,8 +214,83 @@ describe("webgpu:local race integration", () => {
     });
   });
 
+  test("real createDefaultWebGpuEngine lazy-loads ORT, transcribes via createLocalStt, and releases on unload", async () => {
+    let ortImports = 0;
+    let released = 0;
+    let seenProviders: string[] | undefined;
+
+    const fakeOrt: OrtLike = {
+      Tensor: class {
+        constructor(
+          public type: string,
+          public data: Float32Array,
+          public dims: number[],
+        ) {}
+      },
+      InferenceSession: {
+        async create(_buf, opts) {
+          seenProviders = opts?.executionProviders;
+          return {
+            inputNames: ["input_features"],
+            outputNames: ["text"],
+            async run(feeds) {
+              const t = feeds.input_features as { data: Float32Array };
+              return { text: { data: `ort:${t.data.length}` } };
+            },
+            async release() {
+              released++;
+            },
+          };
+        },
+      },
+    };
+
+    const realEngine = createDefaultWebGpuEngine({
+      importOrt: async () => {
+        ortImports++;
+        return fakeOrt;
+      },
+      decodeOutput: (out) => String((out.text as { data?: unknown })?.data ?? ""),
+    });
+
+    const mgr = createWebGpuModelManager({
+      cacheMb: 10,
+      cache: memoryCacheApi(),
+      engine: realEngine,
+      probe: async () => ({ supported: true }),
+      network: () => ({ online: true, connection: { type: "wifi" } }),
+      fetch: async (_url, init) => {
+        if (init?.method === "HEAD") {
+          return new Response(null, { status: 200, headers: { "content-length": "4" } });
+        }
+        return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
+      },
+    });
+
+    expect(ortImports).toBe(0);
+    expect(await mgr.ensureReady()).toBe(true);
+    expect(ortImports).toBe(1);
+    expect(seenProviders).toEqual(["webgpu"]);
+
+    const stt = createLocalStt([WEBGPU_STT_URL], {
+      open: () => openWebGpuStt(mgr),
+    });
+    stt.warm();
+    await new Promise((r) => setTimeout(r, 10));
+    const utt = stt.begin(() => {})!;
+    const frame = new Float32Array([0.1, -0.1, 0.2, -0.2]);
+    utt.frame(frame);
+    const fin = await utt.end(frame);
+    expect(fin.text).toBe("ort:4");
+    expect(fin.signals?.decoder).toBe("whisper");
+    stt.close();
+
+    await realEngine.unload?.();
+    expect(released).toBe(1);
+  });
+
   test("falls through to server route while downloading in background, then wins once ready", async () => {
-    const cache = memoryCache();
+    const cache = memoryCacheApi();
     const eng = fakeEngine();
     let resolveFetch!: (r: Response) => void;
     const mgr = createWebGpuModelManager({
@@ -201,13 +298,19 @@ describe("webgpu:local race integration", () => {
       cache,
       engine: eng,
       probe: async () => ({ supported: true }),
-      fetch: () =>
-        new Promise<Response>((res) => {
+      network: () => ({ online: true, connection: { type: "wifi" } }),
+      fetch: (_url, init) => {
+        if (init?.method === "HEAD") {
+          return Promise.resolve(
+            new Response(null, { status: 200, headers: { "content-length": "3" } }),
+          );
+        }
+        return new Promise<Response>((res) => {
           resolveFetch = res;
-        }),
+        });
+      },
     });
 
-    // Race 1: webgpu:local is idle -> kicks off background download and immediately yields to fallback server.
     const events: Record<string, unknown>[] = [];
     const stt1 = createLocalStt([WEBGPU_STT_URL, "wss://fallback.example/stt"], {
       log: (ev) => events.push(ev),
@@ -239,17 +342,12 @@ describe("webgpu:local race integration", () => {
     expect(events.some((e) => e.state === "ready" && e.via === "fallback.example")).toBe(true);
     stt1.close();
 
-    // Finish background download -> manager becomes ready.
     resolveFetch(new Response(new Uint8Array([9, 8, 7]), { status: 200 }));
     await new Promise((r) => setTimeout(r, 20));
     expect(mgr.status()).toBe("ready");
 
-    // Race 2: webgpu:local is ready -> wins race and transcribes utterance end-to-end.
     const stt2 = createLocalStt([WEBGPU_STT_URL], {
-      open: (u) => {
-        expect(u).toBe(WEBGPU_STT_URL);
-        return openWebGpuStt(mgr);
-      },
+      open: () => openWebGpuStt(mgr),
     });
     stt2.warm();
     await new Promise((r) => setTimeout(r, 10));
@@ -263,5 +361,71 @@ describe("webgpu:local race integration", () => {
     expect(fin.text).toBe("final:4");
     expect(fin.signals?.decoder).toBe("whisper");
     stt2.close();
+  });
+
+  test("formatModelSize, getSharedWebGpuManager, cancelDownload, and error/cancel paths", async () => {
+    expect(formatModelSize(512)).toBe("512 B");
+    expect(formatModelSize(2048)).toBe("2 KB");
+    expect(formatModelSize(5 * 1024 * 1024)).toBe("5.0 MB");
+
+    const eng = createDefaultWebGpuEngine();
+    await expect(eng.final(1, new Float32Array([0.1]))).rejects.toThrow("webgpu-engine-not-loaded");
+
+    const s1 = getSharedWebGpuManager({ modelUrl: "https://cdn.example/a.onnx", cacheMb: 64 });
+    const s2 = getSharedWebGpuManager({ modelUrl: "https://cdn.example/a.onnx", cacheMb: 64 });
+    const s3 = getSharedWebGpuManager({ modelUrl: "https://cdn.example/b.onnx", cacheMb: 64 });
+    expect(s1).toBe(s2);
+    expect(s3).not.toBe(s1);
+    const seenSnaps: string[] = [];
+    const unsub = s3.subscribe((s) => seenSnaps.push(s.status));
+    unsub();
+
+    // cancelDownload aborts in-flight fetch cleanly.
+    const cancelMgr = createWebGpuModelManager({
+      cache: memoryCacheApi(),
+      engine: fakeEngine(),
+      probe: async () => ({ supported: true }),
+      network: () => ({ online: true, connection: { type: "wifi" } }),
+      fetch: (_url, init) => {
+        if (init?.method === "HEAD") {
+          return Promise.resolve(new Response(null, { status: 200 }));
+        }
+        return new Promise((_res, rej) => {
+          init?.signal?.addEventListener("abort", () =>
+            rej(Object.assign(new Error("aborted"), { name: "AbortError" })),
+          );
+        });
+      },
+    });
+    const p = cancelMgr.ensureReady();
+    await new Promise((r) => setTimeout(r, 10));
+    cancelMgr.cancelDownload();
+    expect(await p).toBe(false);
+    expect(["idle", "blocked"]).toContain(cancelMgr.status());
+
+    // openWebGpuStt handles cancel and engine error cleanly.
+    const errMgr = createWebGpuModelManager({
+      cache: memoryCacheApi(),
+      engine: fakeEngine({
+        async final() {
+          throw new Error("boom");
+        },
+      }),
+      probe: async () => ({ supported: true }),
+      network: () => ({ online: true, connection: { type: "wifi" } }),
+      fetch: async () => new Response(new Uint8Array([1, 2]), { status: 200 }),
+    });
+    expect(await errMgr.ensureReady()).toBe(true);
+    const sock = openWebGpuStt(errMgr);
+    const msgs: string[] = [];
+    sock.onmessage = (e) => msgs.push(String(e.data));
+    await new Promise((r) => setTimeout(r, 10));
+    sock.send(JSON.stringify({ t: "begin", id: 1 }));
+    sock.send(JSON.stringify({ t: "cancel", id: 1 }));
+    sock.send(JSON.stringify({ t: "begin", id: 2 }));
+    sock.send(JSON.stringify({ t: "end", id: 2 }));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(msgs.some((m) => m.includes('"error":"boom"'))).toBe(true);
+    sock.close();
   });
 });

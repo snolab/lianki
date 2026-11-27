@@ -551,7 +551,7 @@ export const FLAGS = {
   },
   "stt.webgpu": {
     description:
-      "Windows / 桌面端 WebGPU 本地语音识别：按需在后台下载并缓存客户端模型，与服务器路由竞速（未就绪或不支持时自动回退云端）。",
+      "Windows / 桌面端 WebGPU 本地语音识别：仅在 webgpu:local 路由上音频不离开设备；按需在后台下载并缓存客户端模型，与服务器路由竞速（未就绪、拒绝下载或不支持时自动静默回退到服务器/云端路由，此时音频会按常规方式发送）。",
     default: false,
     group: "stt",
     audience: "owner",

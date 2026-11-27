@@ -1853,7 +1853,7 @@ of guests, enrolment, cancelled and incomplete utterances.
 
 For Windows / desktop browsers with WebGPU (`packages/debug-chat/src/webgpu-stt.ts`, `/stt/windows-webgpu`):
 
-- **Gate & privacy**: Behind default-off `stt.webgpu` (`audience: "owner"`). On the `webgpu:local` route, audio **never leaves the device**.
+- **Gate & privacy**: Behind default-off `stt.webgpu` (`audience: "owner"`). Audio stays on the device **only** on the `webgpu:local` route; when falling back to server or cloud routes, audio is sent to those routes as usual.
 - **Pinned model & license**:
   - Model: `onnx-community/whisper-tiny` pinned at revision **`v1.0.0`** (`https://huggingface.co/onnx-community/whisper-tiny/resolve/v1.0.0/onnx/encoder_model.onnx`).
   - License: **Apache-2.0**.
@@ -1862,6 +1862,6 @@ For Windows / desktop browsers with WebGPU (`packages/debug-chat/src/webgpu-stt.
   - `stt.webgpuCacheMb`: maximum browser cache / OPFS quota in MB (default `256`).
   - `stt.webgpuIdleUnloadMs`: idle GPU unload timeout in ms (default `300000`).
 - **On-demand background download & racing**:
-  - Never downloads until `stt.webgpu` is enabled (or an explicit user action); `estimateSize()` queries `HEAD` `Content-Length` so the UI can show the size before the first download.
-  - While `webgpu:local` is `idle` or `downloading`, `openWebGpuStt` closes immediately (`4010`) so the active utterance races straight onto server/cloud routes with zero delay, then emits `lk-stt-available` when ready.
-  - If WebGPU is unavailable (`no-webgpu`, `no-adapter`, `quota-exceeded`) or the download fails, it falls back silently to the existing server/cloud routes.
+  - Never downloads until `stt.webgpu` is enabled (or an explicit user action); `estimateSize()` queries `HEAD` `Content-Length` first so the size is known before downloading, and uncached downloads route through `downloadModelAssets` (`model-download.ts`) for metered/unknown-network confirmation (`confirmBrowserModelDownload`) and network-change cancellation.
+  - While `webgpu:local` is `idle`, `downloading`, or `blocked`, `openWebGpuStt` closes immediately (`4010`) so the active utterance races straight onto server/cloud routes with zero delay (audio sent as usual), then emits `lk-stt-available` when ready.
+  - If WebGPU is unavailable (`no-webgpu`, `no-adapter`, `quota-exceeded`), download is declined/cancelled, or inference fails, it falls back silently to the existing server/cloud routes.

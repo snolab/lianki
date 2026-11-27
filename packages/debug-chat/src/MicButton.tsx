@@ -224,7 +224,7 @@ function localFor(
     hasWebGpu
       ? (u: string, protocols?: string[]): WsLike =>
           u === WEBGPU_STT_URL
-            ? openWebGpuStt(getSharedWebGpuManager())
+            ? openWebGpuStt(getSharedWebGpuManager({ confirmDownload: confirmBrowserModelDownload }))
             : (base ?? ((w, p) => new WebSocket(w, p) as unknown as WsLike))(u, protocols)
       : base;
   if (isMixedRoutes(url))
