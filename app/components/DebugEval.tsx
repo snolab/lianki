@@ -222,6 +222,7 @@ export function DebugEval({
   partnerOpen = false,
   dev = false,
   etaBar = false,
+  webgpuStt,
   fullScreen = false,
   liHub = false,
   echoReports = false,
@@ -294,6 +295,9 @@ export function DebugEval({
   dev?: boolean;
   /** Flag chat.eta-bar (lib/eta-ping.ts): the ETA bar on the owner's chat, and its pings. */
   etaBar?: boolean;
+  webgpuStt?:
+    | boolean
+    | { enabled: boolean; modelUrl?: string; cacheMb?: number; idleUnloadMs?: number };
   /** `partner.fullscreen` on: the chat's full screen for every chat user (off: the owner only). */
   fullScreen?: boolean;
   /** Flag `voice.li-hub`: on the owner's pages, Li's sound hub observes (docs/li-sound-hub.md). */
@@ -1800,6 +1804,7 @@ export function DebugEval({
             strings={friendStrings}
             treeSource={treeOn ? ownerTree : undefined}
             etaBar={etaOn && treeOn && !!ownerTree}
+            webgpuStt={owner && !isFriend ? webgpuStt : false}
             // This page's ETA timer went off: the hub pings the agent at most once per estimate.
             onEtaDue={(id) => ownerTree?.send({ type: "eta", id })}
             treeRepo="snolab/lianki"

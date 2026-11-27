@@ -1548,6 +1548,32 @@ export const CONFIG = {
     description:
       "语音服务器：每个账号同时最多几个识别会话（一个会话 = 一个开着麦克风的页面）。0 = 谁都开不了（不影响你自己的麦克风）。",
   }),
+  "stt.webgpuModelUrl": {
+    default:
+      "https://huggingface.co/onnx-community/whisper-tiny/resolve/ff4177021cc41f7db950912b73ea4fdf7d01d8e7",
+    schema: z.string().url().max(500),
+    group: "stt",
+    audience: "public",
+    description: "客户端 WebGPU 本地语音识别模型的固定版本基础地址（pinned commit SHA）。",
+  },
+  "stt.webgpuCacheMb": int({
+    default: 256,
+    min: 32,
+    max: 2048,
+    unit: "MB",
+    group: "stt",
+    audience: "public",
+    description: "客户端 WebGPU 本地模型在浏览器缓存 / OPFS 中允许占用的最大空间（MB）。",
+  }),
+  "stt.webgpuIdleUnloadMs": int({
+    default: 300000,
+    min: 10000,
+    max: 3600000,
+    unit: "ms",
+    group: "stt",
+    audience: "public",
+    description: "WebGPU 本地语音模型空闲多久后自动释放显存（毫秒）。",
+  }),
   "stt.worker.ticketsPerMin": int({
     default: 6,
     min: 1,

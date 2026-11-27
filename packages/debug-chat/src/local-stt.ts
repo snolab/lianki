@@ -44,6 +44,7 @@ import {
   isPublicRoutes,
 } from "./public-stt";
 import { ownerRoutesOverride } from "./owner-routes";
+import { WEBGPU_STT_URL } from "./webgpu-stt";
 
 /** The selfVoice frame for the Mac: "on" with the lines when given, else off. */
 export function selfVoiceFrame(c: SelfVoiceConf | undefined | null): string {
@@ -90,7 +91,7 @@ const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
 function oneUrl(raw: string, named = false): string | undefined {
   // Lianki's speech servers by name (rtc:lianki, wss:session): the chat mic's list may mix
   // them with his sockets (docs/local-stt.md, "His own Mac over WebRTC"); they are not URLs.
-  if (named && isPublicRoute(raw)) return raw;
+  if (named && (isPublicRoute(raw) || raw === WEBGPU_STT_URL)) return raw;
   let u: URL;
   try {
     u = new URL(raw);

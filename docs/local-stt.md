@@ -1848,3 +1848,20 @@ restart and idle cleanup, failure recovery, bounded admission, and exclusion
 of guests, enrolment, cancelled and incomplete utterances.
 
 - **The "me" lines are live-adjustable (2026-11-14).** `LIANKI_STT_ME_ACCEPT` (3 s and more, default 0.30) and `LIANKI_STT_ME_ACCEPT_SHORT` (under 3 s, default 0.28) override the CAM++ bands; the code keeps #394's measured defaults. The owner set the live values to 0.50 / 0.48 that evening after another voice in the room scored 0.33-0.47 and was taken for him; a softer or farther sentence of his own may now land in "unknown" (his clear ones score 0.59-0.64). They are set on the `lianki-stt` oxmgr registration (`--env`).
+
+## Client-side WebGPU STT (`stt.webgpu`)
+
+For Windows / desktop browsers with WebGPU (`packages/debug-chat/src/webgpu-stt.ts`, `/stt/windows-webgpu`):
+
+- **Gate & privacy**: Behind default-off `stt.webgpu` (`audience: "owner"`). Audio stays on the device **only** on the `webgpu:local` route; when falling back to server or cloud routes, audio is sent to those routes as usual.
+- **Pinned model & license**:
+  - Model: `onnx-community/whisper-tiny` pinned at commit **`ff4177021cc41f7db950912b73ea4fdf7d01d8e7`** (`https://huggingface.co/onnx-community/whisper-tiny/resolve/ff4177021cc41f7db950912b73ea4fdf7d01d8e7`: `onnx/encoder_model_quantized.onnx`, `onnx/decoder_model_merged_quantized.onnx`, `tokenizer.json`, `config.json`).
+  - License: **Apache-2.0**.
+- **Config (`lib/config.ts`)**:
+  - `stt.webgpuModelUrl`: pinned model download URL.
+  - `stt.webgpuCacheMb`: maximum browser cache / OPFS quota in MB (default `256`).
+  - `stt.webgpuIdleUnloadMs`: idle GPU unload timeout in ms (default `300000`).
+- **On-demand background download & racing**:
+  - Never downloads until `stt.webgpu` is enabled (or an explicit user action); `estimateSize()` queries `HEAD` `Content-Length` first so the size is known before downloading, and uncached downloads route through `downloadModelAssets` (`model-download.ts`) for metered/unknown-network confirmation (`confirmBrowserModelDownload`) and network-change cancellation.
+  - While `webgpu:local` is `idle`, `downloading`, or `blocked`, `openWebGpuStt` closes immediately (`4010`) so the active utterance races straight onto server/cloud routes with zero delay (audio sent as usual), then emits `lk-stt-available` when ready.
+  - If WebGPU is unavailable (`no-webgpu`, `no-adapter`, `quota-exceeded`), download is declined/cancelled, or inference fails, it falls back silently to the existing server/cloud routes.

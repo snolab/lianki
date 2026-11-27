@@ -81,6 +81,7 @@ import { CLIPS_AUTOSTOP_MIN, activeSink } from "./clips";
 import { clipsAction, clipsDevice, clipsLive } from "./clips-store";
 import { ClipsBadge } from "./ClipsBadge";
 import { LOCAL_STT_KEY, localSttRoute } from "./local-stt";
+import { WEBGPU_STT_URL, getSharedWebGpuManager, type WebGpuConfig } from "./webgpu-stt";
 import { learnSttHint } from "./stt-hint";
 import { DevMenuGroup } from "./DevMenuGroup";
 import { AttachButton, AttachMenu, QuoteBlock, useAddItems, usePageSelection } from "./AttachMenu";
@@ -914,6 +915,8 @@ export type DebugChatProps = {
   readReceiptThrottleMs?: number;
   /** Touch/pen long press on the grip opens its menu; mouse movement starts immediately. */
   gripHoldMs?: number;
+  /** Enable client-side WebGPU local STT race route (`stt.webgpu` flag). */
+  webgpuStt?: boolean | WebGpuConfig;
   /** The ETA bar's change ticker (eta-ticker.ts): config chat.etaTickerSec / chat.etaTickerKeep. */
   etaTicker?: TickerConfig;
   /** Accepted locally, awaiting the hub acknowledgement. */
@@ -1230,6 +1233,7 @@ export function DebugChat({
   onReadSeq,
   readReceiptThrottleMs = 2000,
   gripHoldMs = 500,
+  webgpuStt = false,
   etaTicker,
   outgoing,
   onSend,
@@ -3138,7 +3142,15 @@ export function DebugChat({
       live = false;
     };
   }, [owner, micActive, publicStt, sttRoute.source]);
-  const micRoute = sttRoute.source === "none" && !owner && publicStt === "on" ? PUBLIC_ROUTE_LIST : sttRoute.urls;
+  const webgpuOn = typeof webgpuStt === "boolean" ? webgpuStt : !!webgpuStt?.enabled;
+  useEffect(() => {
+    if (webgpuOn && typeof webgpuStt === "object") getSharedWebGpuManager(webgpuStt);
+  }, [webgpuOn, webgpuStt]);
+  const baseMicRoute =
+    sttRoute.source === "none" && !owner && publicStt === "on" ? PUBLIC_ROUTE_LIST : sttRoute.urls;
+  const micRoute = webgpuOn
+    ? [baseMicRoute, WEBGPU_STT_URL].filter(Boolean).join(" ")
+    : baseMicRoute;
   /** The history takes the pointer: wheel and drag scroll it, its lines select (log-engage.ts). */
   /**
    * The bar steps aside while the log spans the screen (fullLogBox hideBar),

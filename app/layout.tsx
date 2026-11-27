@@ -200,6 +200,15 @@ export default async function RootLayout({
   const messageWidgets = flagIn(flags, "chat.message-widgets");
   // His own spoken lines replay their recording (docs/recordings.md): the /my/recordings gate plus its own flag.
   const lineReplay = dev && flagIn(flags, "voice.recordings") && flagIn(flags, "chat.line-replay");
+  const webgpuStt =
+    dev && flagIn(flags, "stt.webgpu")
+      ? {
+          enabled: true,
+          modelUrl: await cfg("stt.webgpuModelUrl"),
+          cacheMb: await cfg("stt.webgpuCacheMb"),
+          idleUnloadMs: await cfg("stt.webgpuIdleUnloadMs"),
+        }
+      : undefined;
   const boots = {
     strings: partner,
     leave,
@@ -208,6 +217,7 @@ export default async function RootLayout({
     dev,
     chatFull,
     etaBar,
+    webgpuStt,
     liHub,
     echoReports,
     audioSync,
