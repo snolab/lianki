@@ -77,6 +77,7 @@ import { usePreferredLangs } from "@/lib/use-preferred-langs";
 import { planArrange } from "@/lib/words/arrange";
 import {
   buildAddTree,
+  ancestorKeys,
   loadAddOpen,
   saveAddOpen,
   toggleOpenKey,
@@ -2060,7 +2061,9 @@ function useListParam(base: string): [string | null, (id: string | null) => void
     const kept = ui.getState().listId;
     // The Word lists card on /home comes for the "Add a list" tree, not this
     // tab's list.
-    const forAdding = location.hash === `#${WORDS_ADD_HASH}`;
+    // So does a link to one deck (?deck=<catalogue id>, from /roadmap).
+    const forAdding =
+      location.hash === `#${WORDS_ADD_HASH}` || new URLSearchParams(location.search).has("deck");
     if (first === null && kept && !forAdding) {
       const url = new URL(location.href);
       url.searchParams.set("list", kept);
@@ -2956,6 +2959,27 @@ function ListPicker({
       saveAddOpen(config.base, n);
       return n;
     });
+  // A link to one catalogue deck (/words?deck=<id>, e.g. from /roadmap): a
+  // deck he has opens; one he has not is ticked, its branch unfolded and the
+  // tree scrolled to, so one tap on "Add selected" adds it. Once per link.
+  useEffect(() => {
+    const url = new URL(location.href);
+    const deck = url.searchParams.get("deck");
+    if (!deck) return;
+    url.searchParams.delete("deck");
+    history.replaceState(history.state, "", url);
+    const have = lists.find((l) => l.source === deck && !isGroup(l));
+    if (have) return onOpen(have.id);
+    const above = ancestorKeys(addTree, deck);
+    if (!above) return;
+    setTicked(new Set([deck]));
+    setOpenKeys((s) => new Set([...s, ...above]));
+    requestAnimationFrame(() =>
+      document.getElementById(WORDS_ADD_HASH)?.scrollIntoView({ block: "start" }),
+    );
+    // Once, on arrival: later changes to the lists must not reopen it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [addedNow, setAddedNow] = useState<AddedNow | null>(null);
   const fresh = useMemo(() => new Set(addedNow?.ids ?? []), [addedNow]);
   /** A built-in list's name in the toast: a phrase deck by its scenario. */

@@ -1,24 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { ObjectId } from "mongodb";
 import { authEmailOrToken } from "@/lib/authEmailOrToken";
 import { getRoadmapGoalsCollection } from "@/app/getRoadmapGoalsCollection";
 import type { RoadmapGoal } from "@/types/roadmap";
 import { dbBackend, getD1 } from "@/lib/d1";
 import { RoadmapGoalsD1Repo } from "@/lib/repos/d1Repos";
-
-const RoadmapNodeSchema = z.object({
-  id: z.string(),
-  title: z.string().max(100),
-  description: z.string().max(200),
-  keywords: z.array(z.string().max(50)).min(1).max(8),
-  order: z.number().int().min(0),
-});
-
-const SaveRoadmapSchema = z.object({
-  topic: z.string().min(1).max(500),
-  nodes: z.array(RoadmapNodeSchema).min(1).max(20),
-});
+import { SaveRoadmapSchema, docsFit } from "@/lib/roadmap/save-schema";
+import { normalizeSteps } from "@/lib/roadmap/notation";
+import { cfg } from "@/lib/config-store";
 
 export async function GET(request: NextRequest) {
   const email = await authEmailOrToken(request);
@@ -50,7 +39,11 @@ export async function POST(request: NextRequest) {
     console.warn("[roadmap] invalid body at", parsed.error.issues[0]?.path.join("."));
     return NextResponse.json({ error: "invalid-body" }, { status: 400 });
   }
-  const { topic, nodes } = parsed.data;
+  const { topic } = parsed.data;
+  if (!docsFit(parsed.data.nodes, await cfg("roadmap.docMaxChars")))
+    return NextResponse.json({ error: "doc-too-long" }, { status: 413 });
+  // Saved in notation order: 1, 2A, 2B, 3 (lib/roadmap/notation.ts).
+  const nodes = normalizeSteps(parsed.data.nodes);
   const now = new Date();
   const goal: RoadmapGoal = { topic, nodes, createdAt: now, updatedAt: now };
 

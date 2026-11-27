@@ -22,6 +22,7 @@ import {
   partnerCoordination,
   coordinationNote,
 } from "../../packages/lianki-cli/chat-coordination.mjs";
+import { type Digest, type DigestEdit, lineNames, namedLanes } from "./lane-digest-lib";
 
 /** Where a lane's token is kept on this Mac. */
 export const laneTokenDir = (env: Record<string, string | undefined> = process.env) =>
@@ -91,6 +92,10 @@ export type Line = {
   eventLane?: string;
   /** The hub's sequence number for the line in its thread (absent on an old hub). */
   seq?: number;
+  /** How an owner line was made: "stt" spoken from the widget's mic; absent = typed. */
+  source?: string;
+  /** A digest of his lines (digest mode, lane-digest-lib.ts): `text` is its polished text. */
+  digest?: Digest;
 };
 /**
  * Whether a lane may hear this owner line (owner, 2026-11-14 23:2x: "只有我自己的
@@ -143,8 +148,49 @@ export function lineOf(raw: string): (Line & { history: boolean }) | null {
       : {}),
     ...(m.from === "agent" ? agentFields(m) : {}),
     ...(validSeq(m.seq) ? { seq: m.seq } : {}),
+    ...(m.from === "owner" && typeof m.source === "string" ? { source: m.source } : {}),
     history: v.history === true,
   };
+}
+
+/**
+ * An `edited` event (the hub's automatic polish, a lane's polish, a merged passage
+ * or summary: workers/push/src/debug.ts tellEdit) as the digest takes it: the line's
+ * new text, and the lines a passage or summary now covers. Null for anything else.
+ */
+export function editOf(raw: string): (DigestEdit & { thread: string }) | null {
+  let v: Record<string, unknown>;
+  try {
+    v = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  if (!v || v.type !== "edited" || typeof v.id !== "string" || typeof v.text !== "string")
+    return null;
+  const ids = (x: unknown) =>
+    x && typeof x === "object" && Array.isArray((x as { ids?: unknown }).ids)
+      ? ((x as { ids: unknown[] }).ids.filter((i) => typeof i === "string") as string[])
+      : [];
+  const covers = [...ids(v.passage), ...ids(v.summary)];
+  return {
+    id: v.id,
+    text: v.text,
+    thread: typeof v.thread === "string" ? v.thread : "owner",
+    ...(covers.length ? { covers } : {}),
+  };
+}
+
+/** His own line in his own thread (not a test, not a state-tree nudge, not an agent's): what digest mode buffers. */
+export const digestible = (l: Line): boolean =>
+  l.from === "owner" && (l.thread ?? "owner") === "owner" && !l.kind && !l.etaLane;
+
+/**
+ * The bypass in digest mode: a TYPED line that names this lane with an explicit
+ * "@name" in front ("@codex 停一下") goes to it at once, on its own, as before.
+ */
+export function bypassLine(lane: RouteLane, l: Line): boolean {
+  if (l.source === "stt" || !/^\s*[@＠]/u.test(l.text)) return false;
+  return addressee(lane, l.text).to === "mine";
 }
 
 /**
@@ -291,8 +337,58 @@ export const SYSTEM_MARK = "【系统】";
 /** Once per batch that holds a state-tree line for this lane: where to answer it. */
 export const STATE_TREE_NOTE = "状态树：在节点上用 scripts/dev/progress.ts 报告。";
 
+/** A digest's mark (digest mode): what it is to this lane. */
+export const DIGEST_MARK = "摘要";
+/** Once per batch with a digest for the chat lane: answer once, with the status; named lanes have theirs. */
+export const DIGEST_CHAT_NOTE =
+  "摘要：他连着说的几句合成一条；回一次，结合状态树和计划说现状。点名别的车道的已转给它们，不代答。";
+/** Once per batch with a digest for a named lane: only the part that names you. */
+export const DIGEST_NAMED_NOTE = "摘要：只答点名你（或全体）的部分，一次；其余是上下文。";
+/** Once per batch with a digest: where the raw lines are. */
+export const digestRawNote = (lane: string) => `原话按 id：lianki-dev read --as ${lane} --limit 30`;
+
+/** The names of the lanes a digest names, as shown (小克, coco, 杰咪…). */
+const shownNames = (lanes: readonly RouteLane[]) =>
+  lanes.map((x) => laneSpec(laneOfRoute(x)).name || x);
+
+/** The mark of a digest as `lane` sees it: 摘要·点名你 / 摘要·全体 / 摘要（点名coco，已转） / 摘要·未点名. */
+export function digestMark(lane: RouteLane, d: Digest): string {
+  const me = routeKey(lane);
+  const named = d.lines.filter((l) => !l.bypass).map(lineNames);
+  if (named.some((n) => n.all)) return `${DIGEST_MARK}·${ALL_MARK}`;
+  if (named.some((n) => n.lanes.includes(me))) return `${DIGEST_MARK}·${MINE_MARK}`;
+  const others = namedLanes(d).filter((x) => x !== me && x !== "chat");
+  return others.length
+    ? `${DIGEST_MARK}（${otherMark(shownNames(others))}，已转）`
+    : `${DIGEST_MARK}·${NONE_MARK}`;
+}
+
+/** Room a digest's raw lines may take in a hand-off; beyond it the ids alone stand for them. */
+export const DIGEST_RAW_BUDGET = 420;
+
+/**
+ * A digest as hand-off bullets: `- 摘要… [n 行 · ids a,b,c] <polished text>`, then
+ * its raw lines `  · <id> <mark> <text>` when they fit in DIGEST_RAW_BUDGET (the
+ * ids stand for them otherwise: `lianki-dev read` reads them).
+ */
+export function digestBullet(lane: RouteLane, l: Line & { digest: Digest }): string {
+  const d = l.digest;
+  // The voiceprint warning stays on the digest even when its raw lines do not fit.
+  const unsure = d.lines.some((x) => x.voice === "unknown") ? UNSURE_MARK : "";
+  const head = `- ${digestMark(lane, d)}${unsure} [${d.ids.length} 行 · ids ${d.ids.join(",")}] ${l.text}`;
+  const raw = d.lines.map(
+    (x) =>
+      `  · ${x.id} ${lineMark(lane, { id: x.id, thread: "owner", from: "owner", text: x.raw, ...(x.voice ? { voice: x.voice } : {}) })}${x.bypass ? "（已直接转）" : ""} ${x.raw}`,
+  );
+  const rawLen = raw.reduce((n, x) => n + x.length + 1, 0);
+  // The raw lines only while the hand-off stays well inside ay's limit (the notes and header need room too).
+  const fits = rawLen <= DIGEST_RAW_BUDGET && head.length + rawLen <= SEND_MAX_CHARS - 240;
+  return d.lines.length > 1 && fits ? [head, ...raw].join("\n") : head;
+}
+
 /** The one mark of a line, as `lane` sees it. */
 export function lineMark(lane: RouteLane, l: Line): string {
+  if (l.digest) return digestMark(lane, l.digest);
   if (l.etaLane === lane) return STATE_TREE_MARK;
   if (l.kind === "agent") return agentMark(l.sender);
   if (l.kind === "system") return SYSTEM_MARK;
@@ -314,12 +410,20 @@ export const HANDOFF_SKILL = ".agents/skills/lane-listen/SKILL.md";
 
 /** One line as a bullet of a hand-off: `- <id> <mark> <text>`. */
 export function briefBullet(lane: RouteLane, l: Line): string {
+  if (l.digest) return digestBullet(lane, l as Line & { digest: Digest });
   return `- ${l.id} ${lineMark(lane, l)} ${testText(l) ?? l.text}`;
 }
 
-/** The notes a batch carries once each: only STATE_TREE_NOTE, when it holds a state-tree line for this lane. */
+/**
+ * The notes a batch carries once each: STATE_TREE_NOTE when it holds a state-tree
+ * line for this lane; with a digest, what to do with it (the chat lane's note or a
+ * named lane's) and where the raw lines are.
+ */
 export function batchNotes(lane: RouteLane, lines: readonly Line[]): string[] {
-  return lines.some((l) => l.etaLane === lane) ? [STATE_TREE_NOTE] : [];
+  const out = lines.some((l) => l.etaLane === lane) ? [STATE_TREE_NOTE] : [];
+  if (lines.some((l) => l.digest))
+    out.push(routeKey(lane) === "chat" ? DIGEST_CHAT_NOTE : DIGEST_NAMED_NOTE, digestRawNote(lane));
+  return out;
 }
 
 /**
@@ -377,6 +481,8 @@ export const BUSY_RECHECK_MS = 5_000;
  */
 export const urgentLine = (lane: RouteLane, l: Line) => {
   if (l.etaLane === lane) return true;
+  // A digest has waited its pause already, and goes only where it is meant to be answered.
+  if (l.digest) return true;
   // An agent's or a system line never breaks in: FYI, whatever names it holds.
   if (l.kind) return false;
   return addressee(lane, l.text).to === "mine";

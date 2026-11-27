@@ -11,6 +11,8 @@ type GoalRow = {
   email: string;
   topic: string;
   nodes: string;
+  /** 0088_roadmap_target_date.sql; absent before that migration. */
+  target_date?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -23,6 +25,7 @@ function rowToGoal(row: GoalRow): RoadmapGoalWithId {
     topic: row.topic,
     // row.email is the partition key, not part of the RoadmapGoal shape
     nodes: JSON.parse(row.nodes || "[]"),
+    targetDate: row.target_date ?? null,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -75,6 +78,39 @@ export class RoadmapGoalsD1Repo {
       )
       .run();
     return id;
+  }
+
+  /**
+   * Change the goal (topic), its target date (null clears) and/or its steps.
+   * False when there is no such goal of this user; throws on a topic that
+   * another goal of theirs already has (the unique index).
+   */
+  async update(
+    id: string,
+    patch: { topic?: string; targetDate?: string | null; nodes?: RoadmapGoal["nodes"] },
+    now = new Date(),
+  ): Promise<boolean> {
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    if (patch.topic !== undefined) {
+      sets.push("topic = ?");
+      vals.push(patch.topic);
+    }
+    if (patch.targetDate !== undefined) {
+      sets.push("target_date = ?");
+      vals.push(patch.targetDate);
+    }
+    if (patch.nodes !== undefined) {
+      sets.push("nodes = ?");
+      vals.push(JSON.stringify(patch.nodes));
+    }
+    sets.push("updated_at = ?");
+    vals.push(now.toISOString());
+    const r = await this.db
+      .prepare(`UPDATE roadmap_goals SET ${sets.join(", ")} WHERE email = ? AND id = ?`)
+      .bind(...vals, this.email, id)
+      .run();
+    return ((r as { meta?: { changes?: number } }).meta?.changes ?? 1) > 0;
   }
 
   async delete(id: string): Promise<void> {

@@ -99,6 +99,16 @@ export const LANES_CONFIG_DEFAULTS = {
   "lanes.wakeLiveMin": 5,
   /** An agent whose live output has been quiet this many seconds is shown idle again (the busy ring stops). */
   "lanes.busyIdleSec": 8,
+  /**
+   * Digest mode (docs/lane-listen.md, "Digest mode"; owner 2026-11-28 "go with 1"): his
+   * consecutive lines go to the lanes as ONE digest after a pause, not one by one; only
+   * the chat lane and the lanes named in it get it.
+   */
+  "lanes.digest": true as boolean,
+  /** A digest closes after this many seconds with no new line from him. */
+  "lanes.digestPauseSec": 8,
+  /** A digest closes at the latest this many seconds after its first line. */
+  "lanes.digestMaxSec": 60,
   "lanes.greeting":
     "大家好，我是 {name}（{repo} · {cli}），{mode}入群。只回答点名我或「全体」的话。",
   /** The greeting of a lane that may answer unnamed lines (lanes.agents answerUnnamed). */
@@ -114,6 +124,9 @@ export const LANES_ENV = {
   "lanes.forwardUnknownVoice": "LIANKI_LANES_FORWARD_UNKNOWN_VOICE",
   "lanes.wakeLiveMin": "LIANKI_LANES_WAKE_LIVE_MIN",
   "lanes.busyIdleSec": "LIANKI_LANES_BUSY_IDLE_SEC",
+  "lanes.digest": "LIANKI_LANES_DIGEST",
+  "lanes.digestPauseSec": "LIANKI_LANES_DIGEST_PAUSE_SEC",
+  "lanes.digestMaxSec": "LIANKI_LANES_DIGEST_MAX_SEC",
   "lanes.greeting": "LIANKI_LANES_GREETING",
   "lanes.greetingAnswerUnnamed": "LIANKI_LANES_GREETING_ANSWER_UNNAMED",
 } as const;

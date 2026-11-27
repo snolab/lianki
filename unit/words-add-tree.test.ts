@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  ancestorKeys,
   buildAddTree,
   COVERAGE_TARGETS,
   coverageBands,
@@ -215,5 +216,14 @@ describe("the shipped bands (data-driven: public/words/index.json)", () => {
           .slice(0, 6)
           .map((l) => l.id),
       ).toEqual([1, 2, 3, 4, 5, 6].map((n) => `${lang}-freq-${n}`));
+  });
+});
+
+describe("ancestorKeys: the branches to unfold for one deck (/words?deck=)", () => {
+  test("a deck's branches, outermost first; not in the tree, null", () => {
+    const above = ancestorKeys(tree, "ja-jlpt-n4")!;
+    expect(above[0]).toBe("lang:ja");
+    expect(shownKeys(tree, new Set(above))).toContain("ja-jlpt-n4");
+    expect(ancestorKeys(tree, "nope")).toBeNull();
   });
 });

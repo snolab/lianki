@@ -2042,6 +2042,34 @@ export const CONFIG = {
     description:
       "谁在忙：agent 的实时输出停了这么多秒，就算它闲下来了，头像上的转圈停下。输出一来就又算忙。Mac 上的值是环境变量 LIANKI_LANES_BUSY_IDLE_SEC。",
   }),
+  "lanes.digest": {
+    default: LANES_CONFIG_DEFAULTS["lanes.digest"],
+    schema: z.boolean(),
+    group: "lanes",
+    audience: "server",
+    description:
+      "摘要模式：你连着说的几句先攒起来，停顿一会儿（或打字发一句、说「完毕」、到最长时间）再合成一条摘要（润色后的文字 + 原消息 id），只发给小克和摘要里点了名的 agent；没点名的话不发给别的 agent。关掉 = 回到一句一句转。Mac 上的值是环境变量 LIANKI_LANES_DIGEST（true/false），或 lane-listen --no-digest。",
+  },
+  "lanes.digestPauseSec": int({
+    default: LANES_CONFIG_DEFAULTS["lanes.digestPauseSec"],
+    min: 1,
+    max: 120,
+    unit: "s",
+    group: "lanes",
+    audience: "server",
+    description:
+      "摘要模式：你停下多少秒没再说话，就把攒着的几句合成一条摘要发出去。Mac 上的值是环境变量 LIANKI_LANES_DIGEST_PAUSE_SEC，或 lane-listen --digest-pause <秒>。",
+  }),
+  "lanes.digestMaxSec": int({
+    default: LANES_CONFIG_DEFAULTS["lanes.digestMaxSec"],
+    min: 5,
+    max: 600,
+    unit: "s",
+    group: "lanes",
+    audience: "server",
+    description:
+      "摘要模式：一直在说也最多攒这么多秒（从第一句算起），到时间就先发一条摘要。Mac 上的值是环境变量 LIANKI_LANES_DIGEST_MAX_SEC，或 lane-listen --digest-max <秒>。",
+  }),
   "lanes.modeGraceSec": int({
     default: 30,
     min: 0,
@@ -2180,6 +2208,46 @@ export const CONFIG = {
     group: "inbox",
     audience: "server",
     description: "每个账号滚动24小时上传的安全字节上限。",
+  }),
+  // /roadmap pace and estimates (lib/roadmap/eta.ts, docs/roadmap-next.md "2a").
+  "roadmap.paceWindowDays": int({
+    default: 14,
+    min: 3,
+    max: 90,
+    unit: "days",
+    group: "roadmap",
+    audience: "server",
+    description:
+      "/roadmap 预计完成时间看最近多少天的学习记录：单词步骤看每天新学的词，文档步骤看每天勾掉的清单项。越近的日子权重越大。",
+  }),
+  "roadmap.paceMinActiveDays": int({
+    default: 3,
+    min: 1,
+    max: 30,
+    unit: "days",
+    group: "roadmap",
+    audience: "server",
+    description:
+      "/roadmap 一个步骤在上面的窗口里至少有几天有学习记录才给出预计时间；不够就显示「记录还太少，暂不估计」。",
+  }),
+  "roadmap.aheadDays": int({
+    default: 7,
+    min: 1,
+    max: 90,
+    unit: "days",
+    group: "roadmap",
+    audience: "public",
+    description:
+      "/roadmap 预计完成比目标日期早至少多少天才算「提前」；早于目标但不到这个天数算「按计划」，晚于目标算「落后」。",
+  }),
+  "roadmap.docMaxChars": int({
+    default: 20000,
+    min: 1000,
+    max: 200000,
+    unit: "chars",
+    group: "roadmap",
+    audience: "public",
+    description: "/roadmap 一个文档步骤的 Markdown 最长多少字符（图片只占它的链接）。",
   }),
   // inbox.maxStoredBytes (2 GB safety cap) was removed 2026-11-26: files.quotaBytes replaces it.
   "files.quotaBytes": int({
