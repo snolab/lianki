@@ -523,6 +523,75 @@ describe("each recipient sees only what its voice policy allows", () => {
     expect(codex.cursor.value()).toBe(203);
   });
 
+  it("chained merges: a passage covering a passage that covered a dropped line falls back too", async () => {
+    const codex = policyPipe("codex", {});
+    await codex.line(said("c1", 201, "codex，看一下", "me"));
+    await codex.line(said("cx", 202, "密码是一二三四", "unknown"));
+    await codex.line(said("c2", 203, "首页", "me"));
+    await codex.line(said("c3", 204, "登录页", "me"));
+    // Three merges, each covering the previous passage; the dropped line is at the bottom.
+    codex.d.edit({ id: "c1", text: "codex，看一下，密码是一二三四", covers: ["c1", "cx"] });
+    codex.d.edit({ id: "c2", text: "codex，看一下，密码是一二三四，首页", covers: ["c2", "c1"] });
+    codex.d.edit({
+      id: "c3",
+      text: "codex，看一下，密码是一二三四，首页，登录页。",
+      covers: ["c3", "c2"],
+    });
+    await codex.c.advance(8_000);
+    expect(codex.sent).toHaveLength(1);
+    const body = codex.sent[0]!;
+    expect(body).not.toContain("密码");
+    expect(body).not.toContain("cx");
+    expect(body).toContain("ids c1,c2,c3");
+    expect(body).toContain("codex，看一下，首页，登录页");
+    expect(codex.cursor.value()).toBe(204);
+    // A lane that may hear it keeps the chain's merged passage as it is.
+    const chat = policyPipe("chat", { everyone: true });
+    for (const l of [
+      said("c1", 201, "codex，看一下", "me"),
+      said("cx", 202, "密码是一二三四", "unknown"),
+      said("c2", 203, "首页", "me"),
+    ])
+      await chat.line(l);
+    chat.d.edit({ id: "c1", text: "codex，看一下，密码是一二三四", covers: ["c1", "cx"] });
+    chat.d.edit({ id: "c2", text: "codex，看一下，密码是一二三四，首页。", covers: ["c2", "c1"] });
+    await chat.c.advance(8_000);
+    expect(chat.sent[0]).toContain("codex，看一下，密码是一二三四，首页。");
+    expect(chat.cursor.value()).toBe(203);
+  });
+
+  it("digestFor restores the allowed lines' raw text with their own seqs, in seq order", () => {
+    const L = (id: string, seq: number, raw: string, extra: object = {}) => ({
+      id,
+      seq,
+      text: raw,
+      raw,
+      typed: false,
+      ...extra,
+    });
+    // Buffer order differs from seq order; the top passage (b3) holds everything.
+    const lines = [
+      L("b3", 304, "登录页", { text: "看一下，秘密，首页，登录页", covers: ["b2"] }),
+      L("b1", 301, "看一下", { text: "看一下，秘密", covers: ["bx"], covered: true }),
+      L("bx", 302, "秘密", { voice: "unknown", covered: true }),
+      L("b2", 303, "首页", { text: "看一下，秘密，首页", covers: ["b1"], covered: true }),
+    ];
+    const d: Digest = {
+      ids: lines.map((l) => l.id),
+      seqs: lines.map((l) => l.seq),
+      text: "看一下，秘密，首页，登录页",
+      lines,
+      reason: "pause",
+    };
+    const { digest, passed } = digestFor(d, (l) => l.voice !== "unknown");
+    expect(passed).toEqual([302]);
+    expect(digest!.ids).toEqual(["b1", "b2", "b3"]);
+    expect(digest!.seqs).toEqual([301, 303, 304]);
+    expect(digest!.lines.map((l) => l.text)).toEqual(["看一下", "首页", "登录页"]);
+    expect(digest!.lines.some((l) => l.covered || l.covers)).toBe(false);
+    expect(digest!.text).toBe("看一下，首页，登录页");
+  });
+
   it("digestFor leaves an all-allowed digest as it is, and returns nothing when all are dropped", () => {
     const lines = [{ id: "a", seq: 1, text: "x", raw: "x", typed: false, voice: "unknown" }];
     const d: Digest = { ids: ["a"], seqs: [1], text: "x", lines, reason: "pause" };

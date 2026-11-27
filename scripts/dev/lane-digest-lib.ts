@@ -280,25 +280,44 @@ export function digestFor(
   const passed = d.lines.filter((l) => dropped.has(l.id)).map((l) => l.seq);
   if (!dropped.size) return { digest: d, passed };
   if (!keep.length) return { digest: null, passed };
-  // A passage holding a dropped line's words: back to its raw text; what it covered stands alone.
-  const tainted = new Set(
-    keep.filter((l) => l.covers?.some((id) => dropped.has(id))).map((l) => l.id),
-  );
-  // A covered line stays covered only while the passage holding it is kept intact.
-  const holder = new Map<string, string>();
-  for (const l of d.lines) for (const id of l.covers ?? []) holder.set(id, l.id);
-  const intact = (id: string | undefined) => !!id && !dropped.has(id) && !tainted.has(id);
-  const lines = keep.map((l) => {
-    if (tainted.has(l.id)) {
-      const { covers: _c, ...rest } = l;
-      return { ...rest, text: l.raw };
-    }
-    if (l.covered && !intact(holder.get(l.id))) {
-      const { covered: _c, ...rest } = l;
-      return rest;
-    }
-    return l;
-  });
+  // Merges chain (a passage may cover another passage), so covers is a graph and
+  // the taint goes up it transitively: a passage that holds a dropped line's words,
+  // directly or through another passage, falls back to its own raw text.
+  const tainted = new Set<string>(dropped);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const l of d.lines)
+      if (!tainted.has(l.id) && l.covers?.some((id) => tainted.has(id))) {
+        tainted.add(l.id);
+        grew = true;
+      }
+  }
+  // A covered line stays covered only while some passage holding it is kept untainted.
+  const holders = new Map<string, string[]>();
+  for (const l of d.lines)
+    for (const id of l.covers ?? []) holders.set(id, [...(holders.get(id) ?? []), l.id]);
+  const held = (id: string) => (holders.get(id) ?? []).some((h) => !tainted.has(h));
+  const order = new Map(d.lines.map((l, i) => [l.id, i]));
+  const lines = keep
+    .map((l): DigestLine => {
+      const { covers, covered, ...rest } = l;
+      const fallback = tainted.has(l.id);
+      const stays = covered && held(l.id);
+      // Fallen back or freed from a fallen passage: its own words as heard, its own seq.
+      if (fallback || (covered && !stays)) return { ...rest, text: l.raw };
+      return {
+        ...rest,
+        text: l.text,
+        ...(covers ? { covers } : {}),
+        ...(stays ? { covered } : {}),
+      };
+    })
+    // In seq order (arrival order where a seq is missing).
+    .sort(
+      (a, b) =>
+        (a.seq ?? Infinity) - (b.seq ?? Infinity) ||
+        (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0),
+    );
   return {
     digest: {
       ...d,

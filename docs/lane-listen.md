@@ -143,8 +143,11 @@ summarizing layer and answers it once.
   line (`voiceAllowed`: another's voice never; an undecided one only for tier ①
   unless `LANE_LISTEN_VOICES=me`, for tier ② only with
   `lanes.forwardUnknownVoice`). The text and the raw lines are rebuilt from those
-  alone; a merged passage that holds a dropped line's words falls back to its own
-  raw text, so none of them leak. The dropped lines are passed on the cursor
+  alone. Merges chain (a passage may cover another passage), so `covers` is a
+  graph and the taint goes up it transitively: every passage that holds a
+  dropped line's words, directly or through another passage, falls back, and
+  the allowed lines under it come back with their own raw text and seq, in seq
+  order. None of a dropped line's words leak. The dropped lines are passed on the cursor
   (never lost, never re-sent), and a name said only in a dropped line routes
   nothing. A delivered undecided line keeps its `（声纹未定）` mark, and the
   digest's head carries it too when its raw lines do not fit.
