@@ -10,7 +10,14 @@
 import { useRef, useState } from "react";
 import { Icon } from "@/app/components/icons";
 import type { RoadmapDoc } from "@/types/roadmap";
-import { FILES_PAGE, addDocImage, isImageFile, readerIdOf } from "@/lib/roadmap/doc-image";
+import {
+  FILES_PAGE,
+  finishImage,
+  isImageFile,
+  readerIdOf,
+  startImage,
+} from "@/lib/roadmap/doc-image";
+import { uploadFile } from "@/lib/import/uploads-client";
 
 export type DocEditorStrings = {
   docPlaceholder: string;
@@ -54,23 +61,24 @@ export default function DocEditor({
   const [notice, setNotice] = useState<Notice>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
-  // The latest text, for uploads that finish after more typing.
-  const mdRef = useRef(md);
-  mdRef.current = md;
+  // Each upload's placeholder token.
+  const seq = useRef(0);
 
+  // A placeholder goes in at the caret when the upload starts; when it ends,
+  // the placeholder in the draft as it is THEN is swapped (lib/roadmap/doc-image.ts),
+  // so text typed meanwhile is kept.
   const addImages = async (files: File[]) => {
     for (const f of files.filter(isImageFile)) {
+      const token = `${Date.now().toString(36)}-${++seq.current}`;
+      const at = area.current?.selectionStart ?? Number.MAX_SAFE_INTEGER;
+      setMd((cur) => startImage(cur, at, token).md);
       setUploading((n) => n + 1);
-      const at = area.current?.selectionStart ?? mdRef.current.length;
-      const out = await addDocImage(f, mdRef.current, at);
+      const result = await uploadFile(f, "roadmap", () => {}).done;
       setUploading((n) => n - 1);
-      if (out.ok) {
-        setMd(out.md);
-        setNotice(null);
-      } else
-        setNotice(
-          out.reason === "full" ? "full" : out.reason === "too-large" ? "too-large" : "failed",
-        );
+      setMd((cur) => finishImage(cur, token, f.name || "image", result).md);
+      const r = result.ok ? null : result.error;
+      if (!r) setNotice(null);
+      else setNotice(r === "full" ? "full" : r === "too-large" ? "too-large" : "failed");
     }
   };
 

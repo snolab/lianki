@@ -80,3 +80,47 @@ export function readerIdOf(v: string): string {
   if (m) return m[1];
   return /^[A-Za-z0-9_-]{1,100}$/.test(s) ? s : "";
 }
+
+/**
+ * Uploads that finish after more typing. At the start a placeholder
+ * `![…](upload:<token>)` goes in at the caret; the learner keeps typing
+ * around it; when the upload ends, the placeholder in the CURRENT draft is
+ * swapped for the image (or removed when it was refused). The draft is never
+ * replaced by the text as it was when the upload began.
+ */
+export const placeholderOf = (token: string) => `![…](upload:${token})`;
+
+/** The draft with the placeholder for `token` at caret `at`. */
+export const startImage = (md: string, at: number, token: string) =>
+  insertImage(md, at, "…", `upload:${token}`);
+
+/** The current draft once the upload for `token` has ended. */
+export function finishImage(
+  current: string,
+  token: string,
+  name: string,
+  result: UploadResult,
+): ImageOutcome {
+  const ph = placeholderOf(token);
+  const i = current.indexOf(ph);
+  if (!result.ok) {
+    if (i < 0) return { ok: false, md: current, reason: result.error };
+    // Drop the placeholder and the line break it brought, if it sits alone on a line.
+    let a = i;
+    let b = i + ph.length;
+    if (current[b] === "\n") b++;
+    else if (a > 0 && current[a - 1] === "\n") a--;
+    return { ok: false, md: current.slice(0, a) + current.slice(b), reason: result.error };
+  }
+  const img = `![${altOf(name)}](${imageSrc(result.id)})`;
+  if (i < 0) {
+    // The learner deleted the placeholder: the image goes at the end.
+    const r = insertImage(current, current.length, altOf(name), imageSrc(result.id));
+    return { ok: true, ...r };
+  }
+  return {
+    ok: true,
+    md: current.slice(0, i) + img + current.slice(i + ph.length),
+    caret: i + img.length,
+  };
+}

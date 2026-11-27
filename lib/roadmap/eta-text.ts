@@ -31,6 +31,7 @@ export type PaceStrings = EtaStrings & {
 /** A YYYY-MM-DD day written out: "9 December", or "9 December 2027" in another year. */
 export function dayText(day: string, locale: string, today: string): string {
   const d = new Date(`${day}T12:00:00Z`);
+  if (!Number.isFinite(d.getTime())) return day;
   const sameYear = day.slice(0, 4) === today.slice(0, 4);
   const loc = locale === "zh-Hant" ? "zh-TW" : locale;
   return d.toLocaleDateString(loc, {

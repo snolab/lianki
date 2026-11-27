@@ -17,7 +17,14 @@ import { loadCatalog } from "@/lib/words/catalog-cache";
 import { normalizeSteps } from "@/lib/roadmap/notation";
 import { logToggle, setCheck } from "@/lib/roadmap/doc-checklist";
 import { measureStep } from "@/lib/roadmap/measure";
-import { overallShare, paceVerdict, roadmapEta, utcDay, type PaceState } from "@/lib/roadmap/eta";
+import {
+  checkTargetDate,
+  overallShare,
+  paceVerdict,
+  roadmapEta,
+  utcDay,
+  type PaceState,
+} from "@/lib/roadmap/eta";
 import { etaText, verdictText } from "@/lib/roadmap/eta-text";
 import { publicCfg } from "@/lib/config-client";
 import StepList, { type StepView } from "./StepList";
@@ -171,7 +178,13 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
   const overall = progress ? roadmapEta(progress.nodes, settings) : null;
   const share = progress ? overallShare(progress.nodes) : null;
   // While the editor is open the pace follows the draft date at once.
-  const target = editingGoal ? draftDate || null : (selectedGoal?.targetDate ?? null);
+  // An invalid or past draft date shows an error in the editor and gives no verdict.
+  const draftCheck = checkTargetDate(draftDate, settings.today);
+  const target = editingGoal
+    ? draftCheck.ok
+      ? draftCheck.value
+      : null
+    : (selectedGoal?.targetDate ?? null);
   const verdict = overall
     ? paceVerdict(overall, target, settings.today, publicCfg("roadmap.aheadDays"))
     : null;
@@ -304,10 +317,14 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
   const saveGoalEdit = async () => {
     const topicNow = draftTopic.trim();
     if (!topicNow || !selectedGoal) return;
+    const date = checkTargetDate(draftDate, settings.today);
+    // A date left as it was saved may lie in the past by now: keep it.
+    const unchanged = draftDate === (selectedGoal.targetDate ?? "");
+    if (!date.ok && !(unchanged && date.error === "past")) return;
     setSavingGoal(true);
     const r = await patchGoal({
       ...(topicNow !== selectedGoal.topic ? { topic: topicNow } : {}),
-      targetDate: draftDate || null,
+      targetDate: draftDate.trim() || null,
     });
     setSavingGoal(false);
     if (r.ok) {
@@ -471,6 +488,8 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
                         value={draftDate}
                         onChange={(e) => setDraftDate(e.target.value)}
                         data-target-date
+                        aria-invalid={!draftCheck.ok || undefined}
+                        aria-describedby={!draftCheck.ok ? "roadmap-date-error" : undefined}
                         className="mt-1 block min-h-10 rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 md:text-sm dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
                       />
                     </label>
@@ -484,6 +503,17 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
                       </button>
                     )}
                   </div>
+                  {!draftCheck.ok && (
+                    <p
+                      id="roadmap-date-error"
+                      role="alert"
+                      data-date-error={draftCheck.error}
+                      className="flex items-center gap-1 text-sm text-gray-700 dark:text-gray-300"
+                    >
+                      <Icon name="warning" />
+                      {draftCheck.error === "past" ? st.datePast : st.dateInvalid}
+                    </p>
+                  )}
                   {goalError && (
                     <p
                       role="alert"
@@ -496,7 +526,15 @@ export default function RoadmapClient({ locale, initialGoals }: Props) {
                   <div className="flex gap-2">
                     <button
                       type="submit"
-                      disabled={savingGoal || !draftTopic.trim()}
+                      disabled={
+                        savingGoal ||
+                        !draftTopic.trim() ||
+                        (!draftCheck.ok &&
+                          !(
+                            draftCheck.error === "past" &&
+                            draftDate === (selectedGoal.targetDate ?? "")
+                          ))
+                      }
                       className="min-h-10 rounded-lg bg-primary px-4 text-sm font-medium text-on-primary disabled:opacity-50"
                     >
                       {savingGoal ? st.saving : st.save}

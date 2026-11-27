@@ -17,11 +17,35 @@ import { stages, type Staged } from "./notation";
 const DAY = 86_400_000;
 
 /** YYYY-MM-DD of a time, UTC. */
-export const utcDay = (t: number | Date): string => new Date(t).toISOString().slice(0, 10);
+export const utcDay = (t: number | Date): string => {
+  const d = new Date(t);
+  return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : "";
+};
 
-/** The day `n` days after YYYY-MM-DD `day`. */
+/** True for YYYY-MM-DD that is a real calendar day ("2027-02-30" is not). */
+export const isDay = (s: unknown): s is string =>
+  typeof s === "string" &&
+  /^\d{4}-\d{2}-\d{2}$/.test(s) &&
+  utcDay(Date.parse(`${s}T00:00:00Z`)) === s;
+
+/** The day `n` days after YYYY-MM-DD `day` ("" for a day that is not one: never throws). */
 export const addDays = (day: string, n: number): string =>
-  utcDay(Date.parse(`${day}T00:00:00Z`) + n * DAY);
+  isDay(day) && Number.isFinite(n) ? utcDay(Date.parse(`${day}T00:00:00Z`) + n * DAY) : "";
+
+/**
+ * A target date as typed in the goal editor: empty = no target date; not a
+ * real day = "invalid"; before `today` = "past". Never throws.
+ */
+export function checkTargetDate(
+  s: string | null | undefined,
+  today: string,
+): { ok: true; value: string | null } | { ok: false; error: "invalid" | "past" } {
+  const v = (s ?? "").trim();
+  if (!v) return { ok: true, value: null };
+  if (!isDay(v)) return { ok: false, error: "invalid" };
+  if (isDay(today) && v < today) return { ok: false, error: "past" };
+  return { ok: true, value: v };
+}
 
 /** Whole days from `from` to `to` (YYYY-MM-DD each); negative when `to` is earlier. */
 export const daysBetween = (from: string, to: string): number =>
@@ -160,7 +184,8 @@ export function paceVerdict(
   today: string,
   aheadDays: number,
 ): PaceVerdict {
-  if (!target) return { state: "no-target" };
+  // No date, or one that is not a real day (shown as an error by the editor): no verdict.
+  if (!target || !isDay(target) || !isDay(today)) return { state: "no-target" };
   const left = daysBetween(today, target);
   if (eta.kind === "done") return { state: "ahead", target, by: Math.max(0, left) };
   if (eta.kind !== "eta") return { state: "no-data", target };

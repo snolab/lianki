@@ -25,6 +25,8 @@ import {
   stepEta,
   activeState,
   PACE_STATES,
+  checkTargetDate,
+  isDay,
 } from "@/lib/roadmap/eta";
 import { dayText, etaText, needText, verdictText } from "@/lib/roadmap/eta-text";
 import {
@@ -33,6 +35,8 @@ import {
   imageSrc,
   insertImage,
   readerIdOf,
+  startImage,
+  finishImage,
 } from "@/lib/roadmap/doc-image";
 import { checkRoadmapPatch } from "@/lib/roadmap/patch";
 import { fitRoadmap } from "@/lib/roadmap/generate-schema";
@@ -546,5 +550,61 @@ describe("each step kind's measure", () => {
   it("a non-image file is not taken into a doc", async () => {
     const f = Object.assign(new Blob(["x"], { type: "text/plain" }), { name: "a.txt" });
     expect(await addDocImage(f, "md", 0)).toEqual({ ok: false, md: "md", reason: "failed" });
+  });
+});
+
+describe("review fixes: a late upload, bad dates", () => {
+  it("an upload that ends after more typing keeps the typing and adds the image", () => {
+    const draft = "# Notes\nfirst line";
+    // Upload starts with the caret after "# Notes\n".
+    const started = startImage(draft, 8, "t1").md;
+    expect(started).toBe("# Notes\n![…](upload:t1)\nfirst line");
+    // The learner types more, before and after the placeholder, while it uploads.
+    const typed = `intro\n${started}\nsecond line typed meanwhile`;
+    const done = finishImage(typed, "t1", "chart.png", { ok: true, id: "img9" });
+    expect(done.md).toBe(
+      "intro\n# Notes\n![chart](/api/my/files/img9)\nfirst line\nsecond line typed meanwhile",
+    );
+  });
+
+  it("a refused late upload drops only its placeholder; two uploads land in their own places", () => {
+    let md = startImage("a\nb", 1, "x").md; // after "a"
+    md = startImage(md, md.length, "y").md; // at the end
+    md = `${md}\nc typed`;
+    const y = finishImage(md, "y", "y.png", { ok: true, id: "Y" });
+    const x = finishImage(y.md, "x", "x.png", { ok: false, error: "full" });
+    expect(x).toEqual({ ok: false, md: "a\nb\n![y](/api/my/files/Y)\nc typed", reason: "full" });
+    // Placeholder deleted by the learner meanwhile: the image goes at the end, nothing lost.
+    expect(finishImage("kept text", "z", "z.png", { ok: true, id: "Z" }).md).toBe(
+      "kept text\n![z](/api/my/files/Z)",
+    );
+    expect(finishImage("kept text", "z", "z.png", { ok: false, error: "failed" }).md).toBe(
+      "kept text",
+    );
+  });
+
+  it("target dates: an invalid string, the past, an empty value: checked, never thrown", () => {
+    expect(checkTargetDate("2027-02-30", TODAY)).toEqual({ ok: false, error: "invalid" });
+    expect(checkTargetDate("next friday", TODAY)).toEqual({ ok: false, error: "invalid" });
+    expect(checkTargetDate("2026-11-26", TODAY)).toEqual({ ok: false, error: "past" });
+    expect(checkTargetDate(TODAY, TODAY)).toEqual({ ok: true, value: TODAY });
+    expect(checkTargetDate("", TODAY)).toEqual({ ok: true, value: null });
+    expect(checkTargetDate(undefined, TODAY)).toEqual({ ok: true, value: null });
+    expect(isDay("2028-02-29")).toBe(true);
+    // Nothing downstream throws on a bad date.
+    const e = {
+      kind: "eta" as const,
+      days: 3,
+      date: addDays(TODAY, 3),
+      remaining: { words: 3 },
+      rate: {},
+    };
+    expect(() => paceVerdict(e, "garbage", TODAY, 7)).not.toThrow();
+    expect(paceVerdict(e, "garbage", TODAY, 7)).toEqual({ state: "no-target" });
+    expect(paceVerdict(e, "2027-13-01", "nope", 7)).toEqual({ state: "no-target" });
+    expect(addDays("nope", 3)).toBe("");
+    expect(dayText("nope", "en", TODAY)).toBe("nope");
+    // A past target that was saved earlier still gives a verdict: behind.
+    expect(paceVerdict(e, "2026-11-20", TODAY, 7)).toMatchObject({ state: "behind", by: 10 });
   });
 });

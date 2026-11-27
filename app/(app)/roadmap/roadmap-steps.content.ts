@@ -766,6 +766,42 @@ const dictionary = {
       mr: "लक्ष्य तारीख नाही",
       ko: "목표일 없음",
     }),
+    dateInvalid: t({
+      en: "This isn’t a valid date. Pick a day from the calendar.",
+      zh: "这不是有效的日期，请从日历中选一天。",
+      hi: "यह मान्य तारीख नहीं है। कैलेंडर से एक दिन चुनें।",
+      es: "Esta no es una fecha válida. Elige un día del calendario.",
+      fr: "Cette date n’est pas valide. Choisissez un jour dans le calendrier.",
+      ar: "هذا ليس تاريخًا صالحًا. اختر يومًا من التقويم.",
+      bn: "এটি সঠিক তারিখ নয়। ক্যালেন্ডার থেকে একটি দিন বেছে নিন।",
+      pt: "Esta não é uma data válida. Escolha um dia no calendário.",
+      ru: "Это неверная дата. Выберите день в календаре.",
+      ur: "یہ درست تاریخ نہیں ہے۔ کیلنڈر سے ایک دن چنیں۔",
+      id: "Ini bukan tanggal yang valid. Pilih hari dari kalender.",
+      de: "Das ist kein gültiges Datum. Wähl einen Tag im Kalender.",
+      ja: "有効な日付ではありません。カレンダーから日を選んでください。",
+      sw: "Hii si tarehe halali. Chagua siku kwenye kalenda.",
+      mr: "ही वैध तारीख नाही. दिनदर्शिकेतून एक दिवस निवडा.",
+      ko: "올바른 날짜가 아닙니다. 달력에서 날짜를 고르세요.",
+    }),
+    datePast: t({
+      en: "This date has already passed. Pick today or a later day.",
+      zh: "这个日期已经过去了，请选今天或以后的日子。",
+      hi: "यह तारीख बीत चुकी है। आज या आगे का कोई दिन चुनें।",
+      es: "Esta fecha ya pasó. Elige hoy o un día posterior.",
+      fr: "Cette date est déjà passée. Choisissez aujourd’hui ou un jour suivant.",
+      ar: "هذا التاريخ مضى. اختر اليوم أو يومًا لاحقًا.",
+      bn: "এই তারিখ পেরিয়ে গেছে। আজ বা পরের কোনো দিন বেছে নিন।",
+      pt: "Esta data já passou. Escolha hoje ou um dia depois.",
+      ru: "Эта дата уже прошла. Выберите сегодня или более поздний день.",
+      ur: "یہ تاریخ گزر چکی ہے۔ آج یا بعد کا کوئی دن چنیں۔",
+      id: "Tanggal ini sudah lewat. Pilih hari ini atau sesudahnya.",
+      de: "Dieses Datum ist schon vorbei. Wähl heute oder einen späteren Tag.",
+      ja: "この日付はもう過ぎています。今日以降の日を選んでください。",
+      sw: "Tarehe hii imeshapita. Chagua leo au siku ya baadaye.",
+      mr: "ही तारीख उलटून गेली आहे. आज किंवा पुढचा दिवस निवडा.",
+      ko: "이미 지난 날짜입니다. 오늘이나 그 이후 날짜를 고르세요.",
+    }),
     topicTaken: t({
       en: "You already have a roadmap with this goal.",
       zh: "你已经有一条这个目标的路线图了。",
@@ -1082,6 +1118,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Label of the date field in the goal editor on /roadmap: the day the learner wants to reach the goal by (an exam date, a deadline). Noun phrase.",
   clearDate:
     "Button in the goal editor on /roadmap: removes the target date, so the roadmap has none. Short phrase.",
+  dateInvalid:
+    "Error under the target-date field in the goal editor on /roadmap when what was entered is not a real calendar day (e.g. 30 February, or text). Asks to pick a day from the date picker. Calm, one or two short sentences.",
+  datePast:
+    "Error under the target-date field in the goal editor on /roadmap when the chosen target date is before today. Asks for today or a later day. Calm, one or two short sentences.",
   topicTaken:
     "Error in the goal editor on /roadmap when the new goal text is the same as another of the learner's roadmaps. One sentence.",
   paceLabel:
