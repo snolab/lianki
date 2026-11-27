@@ -20,6 +20,7 @@ import {
 import {
   DIGEST_CHAT_NOTE,
   DIGEST_NAMED_NOTE,
+  DIGEST_RAW_BUDGET,
   type Line,
   SEND_MAX_CHARS,
   briefBullet,
@@ -590,6 +591,92 @@ describe("each recipient sees only what its voice policy allows", () => {
     expect(digest!.lines.map((l) => l.text)).toEqual(["看一下", "首页", "登录页"]);
     expect(digest!.lines.some((l) => l.covered || l.covers)).toBe(false);
     expect(digest!.text).toBe("看一下，首页，登录页");
+  });
+
+  it("a chain of merges through the real digester: A covers B covers C (refused), no word of C survives", async () => {
+    const c = clock();
+    const flushed: Digest[] = [];
+    const d = makeDigester(OPTS, (x) => void flushed.push(x), c.timer);
+    await d.add(said("A", 401, "codex，看一下首页", "me"));
+    await d.add(said("B", 402, "还有登录页", "me"));
+    await d.add(said("C", 403, "agy，SECRET 是一二三四", "unknown"));
+    // B's polish swallows C, then A's swallows B: SECRET reaches A only through B.
+    expect(d.edit({ id: "B", text: "还有登录页，agy，SECRET 是一二三四", covers: ["C"] })).toBe(
+      true,
+    );
+    expect(
+      d.edit({
+        id: "A",
+        text: "codex，看一下首页，还有登录页，agy，SECRET 是一二三四",
+        covers: ["B"],
+      }),
+    ).toBe(true);
+    await c.advance(8_000);
+    expect(flushed).toHaveLength(1);
+    const whole = flushed[0]!;
+    expect(whole.text).toContain("SECRET");
+    // A strict-me recipient (tier ②, no forwardUnknownVoice): C is refused.
+    const allow = (x: Digest["lines"][number]) =>
+      voiceAllowed({ from: "owner", voice: x.voice }, {}, {});
+    expect(allow(whole.lines.find((l) => l.id === "C")!)).toBe(false);
+    const { digest, passed } = digestFor(whole, allow);
+    expect(passed).toEqual([403]);
+    expect(digest!.ids).toEqual(["A", "B"]);
+    expect(digest!.seqs).toEqual([401, 402]);
+    // A and B fall back to their own allowed raw text, uncovered.
+    expect(digest!.lines.map((l) => l.text)).toEqual(["codex，看一下首页", "还有登录页"]);
+    expect(digest!.lines.some((l) => l.covered || l.covers)).toBe(false);
+    expect(digest!.text).not.toContain("SECRET");
+    // Routing: codex (named in A) yes; agy (named only in C) gets nothing.
+    expect(digestRoute("codex", digest!)).toBe("named");
+    expect(digestRoute("agy", digest!)).toBeNull();
+    // The hand-off body: summary and raw lines both free of C.
+    const body = briefBullet("codex", {
+      id: "digest-A",
+      thread: "owner",
+      from: "owner",
+      text: digest!.text,
+      digest: digest!,
+    });
+    expect(body).toContain("ids A,B");
+    expect(body).toContain("  · A ");
+    expect(body).not.toContain("SECRET");
+    expect(body).not.toContain(" C ");
+    expect(body).not.toContain(UNSURE_MARK);
+  });
+
+  it("raw lines over the budget are left out, and the voiceprint warning stays on the head", () => {
+    const long = "长".repeat(DIGEST_RAW_BUDGET);
+    const lines = [
+      { id: "a", seq: 1, text: `codex，${long}`, raw: `codex，${long}`, typed: false, voice: "me" },
+      { id: "b", seq: 2, text: "短句", raw: "短句", typed: false, voice: "unknown" },
+    ];
+    const d: Digest = { ids: ["a", "b"], seqs: [1, 2], text: "x", lines, reason: "pause" };
+    const body = briefBullet("chat", {
+      id: "digest-a",
+      thread: "owner",
+      from: "owner",
+      text: "x",
+      digest: d,
+    });
+    expect(body.split("\n")).toHaveLength(1);
+    expect(body).toContain("ids a,b");
+    expect(body).toContain(UNSURE_MARK);
+    // Within the budget the raw lines are there, each with its own mark.
+    const short = {
+      ...d,
+      lines: [{ ...lines[0]!, text: "codex，看一下", raw: "codex，看一下" }, lines[1]!],
+    };
+    const both = briefBullet("chat", {
+      id: "digest-a",
+      thread: "owner",
+      from: "owner",
+      text: "x",
+      digest: short,
+    });
+    expect(both.split("\n")).toHaveLength(3);
+    expect(both.split("\n")[0]).toContain(UNSURE_MARK);
+    expect(both.split("\n")[2]).toContain(UNSURE_MARK);
   });
 
   it("digestFor leaves an all-allowed digest as it is, and returns nothing when all are dropped", () => {
