@@ -256,7 +256,7 @@ describe("real lazy WebGPU engine factory & race integration", () => {
       Tensor: class {
         constructor(
           public type: string,
-          public data: Float32Array | BigInt64Array,
+          public data: Float32Array | BigInt64Array | Uint8Array | boolean[],
           public dims: number[],
         ) {}
       },
@@ -490,5 +490,158 @@ describe("real lazy WebGPU engine factory & race integration", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(msgs.some((m) => m.includes('"error":"boom"'))).toBe(true);
     sock.close();
+  });
+
+  test("extractWhisperFeatures matches WhisperFeatureExtractor 30s padding, trimming, and log-mel numerics", () => {
+    const pcm = new Float32Array(1600);
+    for (let i = 0; i < pcm.length; i++) {
+      pcm[i] = 0.5 * Math.sin((2 * Math.PI * 440 * i) / 16000);
+    }
+    const feat = extractWhisperFeatures(pcm);
+    expect(feat.dims).toEqual([1, 80, 3000]);
+    expect(feat.data.length).toBe(240_000);
+
+    const at = (m: number, f: number) => feat.data[m * 3000 + f]!;
+    const expectClose = (actual: number, expected: number) => {
+      expect(Math.abs(actual - expected)).toBeLessThan(1e-4);
+    };
+
+    // Frame 0 (reflect-padded boundary), mels 0..4
+    const refFrame0 = [0.98328, 0.98662, 0.99715, 1.00781, 1.02748];
+    for (let m = 0; m < refFrame0.length; m++) expectClose(at(m, 0), refFrame0[m]!);
+
+    // Frame 5 (440 Hz peak at mel bin 11, clamped floor = max - 2.0 = -0.56180)
+    const refFrame5 = [1.15939, 1.34874, 1.4382, 1.29352, -0.5618];
+    for (let i = 0; i < refFrame5.length; i++) expectClose(at(9 + i, 5), refFrame5[i]!);
+
+    // Frame 20 (zero-padded 30s tail)
+    for (let m = 0; m < 5; m++) expectClose(at(m, 20), -0.5618);
+
+    // Signals longer than 30s (480,000 samples) are trimmed to [1, 80, 3000]
+    const longPcm = new Float32Array(500_000);
+    longPcm.set(pcm, 0);
+    const longFeat = extractWhisperFeatures(longPcm);
+    expect(longFeat.dims).toEqual([1, 80, 3000]);
+    expectClose(longFeat.data[11 * 3000 + 5]!, 1.4382);
+  });
+
+  test("merged decoder feeds all decoderSession.inputNames with exact shapes on step 0 and step N", async () => {
+    const tokenizerBytes = new TextEncoder().encode(
+      JSON.stringify({
+        model: {
+          vocab: {
+            "<|startoftranscript|>": 50258,
+            "<|transcribe|>": 50359,
+            "<|notimestamps|>": 50363,
+            "<|endoftext|>": 50257,
+            h: 100,
+            i: 101,
+          },
+        },
+        added_tokens: [
+          { id: 50258, content: "<|startoftranscript|>", special: true },
+          { id: 50359, content: "<|transcribe|>", special: true },
+          { id: 50363, content: "<|notimestamps|>", special: true },
+          { id: 50257, content: "<|endoftext|>", special: true },
+        ],
+      }),
+    );
+    const configBytes = new TextEncoder().encode(
+      JSON.stringify({ num_mel_bins: 80, decoder_attention_heads: 6, d_model: 384 }),
+    );
+
+    const decInputNames = [
+      "input_ids",
+      "encoder_hidden_states",
+      "past_key_values.0.decoder.key",
+      "past_key_values.0.decoder.value",
+      "use_cache_branch",
+    ];
+    const recordedFeeds: Array<Record<string, { dims?: number[]; data: ArrayLike<unknown> }>> = [];
+    const emitted = [100, 101, 50257];
+    let step = 0;
+
+    class FakeTensor {
+      type: string;
+      data: Float32Array | BigInt64Array | Uint8Array | boolean[];
+      dims: number[];
+      constructor(
+        type: string,
+        data: Float32Array | BigInt64Array | Uint8Array | boolean[],
+        dims: number[],
+      ) {
+        this.type = type;
+        this.data = data;
+        this.dims = dims;
+      }
+    }
+
+    const engine = createDefaultWebGpuEngine({
+      importOrt: async () => ({
+        Tensor: FakeTensor,
+        InferenceSession: {
+          async create(modelBytes: Uint8Array) {
+            if (modelBytes[0] === 1) {
+              return {
+                inputNames: ["input_features"],
+                outputNames: ["last_hidden_state"],
+                async run() {
+                  return {
+                    last_hidden_state: { data: new Float32Array(1500 * 384), dims: [1, 1500, 384] },
+                  };
+                },
+              };
+            }
+            return {
+              inputNames: decInputNames,
+              outputNames: ["logits", "present.0.decoder.key", "present.0.decoder.value"],
+              async run(feeds: Record<string, unknown>) {
+                recordedFeeds.push(
+                  feeds as Record<string, { dims?: number[]; data: ArrayLike<unknown> }>,
+                );
+                const tok = emitted[step] ?? 50257;
+                step++;
+                const seqLen = step === 1 ? 3 : 1;
+                const logits = new Float32Array(seqLen * 50365);
+                logits[(seqLen - 1) * 50365 + tok] = 10;
+                return {
+                  logits: { data: logits, dims: [1, seqLen, 50365] },
+                  "present.0.decoder.key": {
+                    data: new Float32Array(6 * step * 64),
+                    dims: [1, 6, step, 64],
+                  },
+                  "present.0.decoder.value": {
+                    data: new Float32Array(6 * step * 64),
+                    dims: [1, 6, step, 64],
+                  },
+                };
+              },
+            };
+          },
+        },
+      }),
+    });
+
+    await engine.load("test-whisper", {
+      encoder: new Uint8Array([1]),
+      decoder: new Uint8Array([2]),
+      tokenizerJson: tokenizerBytes,
+      configJson: configBytes,
+    });
+    const out = await engine.final(1, new Float32Array(1600));
+    expect(out.text).toBe("hi");
+    expect(recordedFeeds).toHaveLength(3);
+
+    const expectedKeys = [...decInputNames].sort();
+    for (let s = 0; s < recordedFeeds.length; s++) {
+      const f = recordedFeeds[s]!;
+      expect(Object.keys(f).sort()).toEqual(expectedKeys);
+      expect(f["use_cache_branch"]!.data[0]).toBe(s > 0);
+      expect(f["use_cache_branch"]!.dims).toEqual([1]);
+      expect(f["input_ids"]!.dims).toEqual([1, s === 0 ? 3 : 1]);
+      expect(f["past_key_values.0.decoder.key"]!.dims).toEqual([1, 6, s, 64]);
+      expect(f["past_key_values.0.decoder.value"]!.dims).toEqual([1, 6, s, 64]);
+    }
+    await engine.unload?.();
   });
 });

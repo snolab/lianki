@@ -91,7 +91,7 @@ export type OrtSessionLike = {
 export type OrtLike = {
   Tensor: new (
     type: string,
-    data: Float32Array | BigInt64Array,
+    data: Float32Array | BigInt64Array | Uint8Array | boolean[],
     dims: number[],
   ) => unknown;
   InferenceSession: {
@@ -102,38 +102,48 @@ export type OrtLike = {
   };
 };
 
-// ── Whisper Feature Extraction (80-bin log-Mel) ──────────────────────────────
+// ── Whisper Feature Extraction (Slaney 80-bin log-Mel, 30 s / 480,000 samples) ──
 
-function hzToMel(hz: number): number {
-  return 2595 * Math.log10(1 + hz / 700);
+const SLANEY_F_SP = 200.0 / 3;
+const SLANEY_MIN_LOG_HZ = 1000.0;
+const SLANEY_MIN_LOG_MEL = SLANEY_MIN_LOG_HZ / SLANEY_F_SP;
+const SLANEY_LOGSTEP = Math.log(6.4) / 27.0;
+
+function hzToMelSlaney(hz: number): number {
+  return hz >= SLANEY_MIN_LOG_HZ
+    ? SLANEY_MIN_LOG_MEL + Math.log(hz / SLANEY_MIN_LOG_HZ) / SLANEY_LOGSTEP
+    : hz / SLANEY_F_SP;
 }
 
-function melToHz(mel: number): number {
-  return 700 * (10 ** (mel / 2595) - 1);
+function melToHzSlaney(mel: number): number {
+  return mel >= SLANEY_MIN_LOG_MEL
+    ? SLANEY_MIN_LOG_HZ * Math.exp(SLANEY_LOGSTEP * (mel - SLANEY_MIN_LOG_MEL))
+    : mel * SLANEY_F_SP;
 }
 
 let cachedMelBank: Float32Array[] | null = null;
 function getMelFilterBank(): Float32Array[] {
   if (cachedMelBank) return cachedMelBank;
   const nFreqs = Math.floor(WHISPER_N_FFT / 2) + 1;
-  const melMin = hzToMel(0);
-  const melMax = hzToMel(WHISPER_SAMPLE_RATE / 2);
+  const melMin = hzToMelSlaney(0);
+  const melMax = hzToMelSlaney(WHISPER_SAMPLE_RATE / 2);
   const melPoints = new Float64Array(WHISPER_N_MELS + 2);
   for (let i = 0; i < melPoints.length; i++) {
-    melPoints[i] = melToHz(melMin + ((melMax - melMin) * i) / (WHISPER_N_MELS + 1));
+    melPoints[i] = melToHzSlaney(melMin + ((melMax - melMin) * i) / (WHISPER_N_MELS + 1));
   }
   const bank: Float32Array[] = [];
   for (let m = 0; m < WHISPER_N_MELS; m++) {
     const fLeft = melPoints[m]!;
     const fCenter = melPoints[m + 1]!;
     const fRight = melPoints[m + 2]!;
+    const enorm = fRight > fLeft ? 2.0 / (fRight - fLeft) : 0;
     const row = new Float32Array(nFreqs);
     for (let k = 0; k < nFreqs; k++) {
       const freq = (k * WHISPER_SAMPLE_RATE) / WHISPER_N_FFT;
       if (freq >= fLeft && freq <= fCenter && fCenter > fLeft) {
-        row[k] = (freq - fLeft) / (fCenter - fLeft);
+        row[k] = ((freq - fLeft) / (fCenter - fLeft)) * enorm;
       } else if (freq > fCenter && freq <= fRight && fRight > fCenter) {
-        row[k] = (fRight - freq) / (fRight - fCenter);
+        row[k] = ((fRight - freq) / (fRight - fCenter)) * enorm;
       }
     }
     bank.push(row);
@@ -153,34 +163,78 @@ function getHannWindow(): Float32Array {
   return w;
 }
 
+let cachedDft: { cos: Float32Array; sin: Float32Array } | null = null;
+function getDftTables(): { cos: Float32Array; sin: Float32Array } {
+  if (cachedDft) return cachedDft;
+  const nFreqs = Math.floor(WHISPER_N_FFT / 2) + 1;
+  const cos = new Float32Array(nFreqs * WHISPER_N_FFT);
+  const sin = new Float32Array(nFreqs * WHISPER_N_FFT);
+  for (let k = 0; k < nFreqs; k++) {
+    const angleStep = (-2 * Math.PI * k) / WHISPER_N_FFT;
+    const base = k * WHISPER_N_FFT;
+    for (let n = 0; n < WHISPER_N_FFT; n++) {
+      const a = angleStep * n;
+      cos[base + n] = Math.cos(a);
+      sin[base + n] = Math.sin(a);
+    }
+  }
+  cachedDft = { cos, sin };
+  return cachedDft;
+}
+
 /**
  * Compute Whisper-compatible 80-bin log-Mel spectrogram `[1, 80, frames]`.
- * Uses `frames = WHISPER_MAX_FRAMES` (3000) by default (30 s window).
+ * Pads or trims `pcm` to `frames * 160` samples (`480,000` samples = 30 s at
+ * default `frames = 3000`), applies center-padded STFT (`n_fft = 400`,
+ * `hop = 160`, Hann window), Slaney mel filterbank, `log10` clamped at
+ * `max - 8.0`, and `(x + 4.0) / 4.0` normalization.
  */
 export function extractWhisperFeatures(
   pcm: Float32Array,
   frames = WHISPER_MAX_FRAMES,
 ): { data: Float32Array; dims: [number, number, number] } {
+  const targetSamples = frames * WHISPER_HOP;
+  const halfFft = WHISPER_N_FFT >> 1;
   const win = getHannWindow();
   const bank = getMelFilterBank();
+  const { cos, sin } = getDftTables();
   const nFreqs = Math.floor(WHISPER_N_FFT / 2) + 1;
   const out = new Float32Array(WHISPER_N_MELS * frames);
   const spec = new Float32Array(nFreqs);
-  const activeFrames = Math.min(frames, Math.max(1, Math.floor(pcm.length / WHISPER_HOP) + 1));
+  const windowed = new Float32Array(WHISPER_N_FFT);
+  const nonZeroLimit = Math.min(pcm.length, targetSamples);
 
   let maxVal = -Infinity;
-  for (let f = 0; f < activeFrames; f++) {
-    const start = f * WHISPER_HOP;
+  for (let f = 0; f < frames; f++) {
+    const center = f * WHISPER_HOP;
+    const start = center - halfFft;
+    if (start >= nonZeroLimit) {
+      for (let m = 0; m < WHISPER_N_MELS; m++) out[m * frames + f] = -10.0;
+      if (-10.0 > maxVal) maxVal = -10.0;
+      continue;
+    }
+    let anyNonZero = false;
+    for (let n = 0; n < WHISPER_N_FFT; n++) {
+      let idx = start + n;
+      if (idx < 0) idx = -idx;
+      else if (idx >= targetSamples) idx = 2 * targetSamples - 2 - idx;
+      const s = idx >= 0 && idx < nonZeroLimit ? pcm[idx]! : 0;
+      if (s !== 0) anyNonZero = true;
+      windowed[n] = s * win[n]!;
+    }
+    if (!anyNonZero) {
+      for (let m = 0; m < WHISPER_N_MELS; m++) out[m * frames + f] = -10.0;
+      if (-10.0 > maxVal) maxVal = -10.0;
+      continue;
+    }
     for (let k = 0; k < nFreqs; k++) {
       let re = 0;
       let im = 0;
-      const angleStep = (-2 * Math.PI * k) / WHISPER_N_FFT;
+      const base = k * WHISPER_N_FFT;
       for (let n = 0; n < WHISPER_N_FFT; n++) {
-        const s = start + n < pcm.length ? pcm[start + n]! : 0;
-        const w = s * win[n]!;
-        const a = angleStep * n;
-        re += w * Math.cos(a);
-        im += w * Math.sin(a);
+        const w = windowed[n]!;
+        re += w * cos[base + n]!;
+        im += w * sin[base + n]!;
       }
       spec[k] = re * re + im * im;
     }
@@ -338,6 +392,8 @@ export function createDefaultWebGpuEngine(opts: {
   let encoderSession: OrtSessionLike | null = null;
   let decoderSession: OrtSessionLike | null = null;
   let tokenizer: WhisperTokenizer | null = null;
+  let numHeads = 6;
+  let headDim = 64;
 
   return {
     async load(_modelId, input) {
@@ -345,6 +401,20 @@ export function createDefaultWebGpuEngine(opts: {
       const bundle: WhisperModelBundle =
         input instanceof Uint8Array ? { encoder: input, decoder: input } : input;
       tokenizer = parseWhisperTokenizer(bundle.tokenizerJson, bundle.configJson);
+      if (bundle.configJson?.byteLength) {
+        try {
+          const cfg = JSON.parse(new TextDecoder().decode(bundle.configJson)) as {
+            decoder_attention_heads?: number;
+            d_model?: number;
+          };
+          if (typeof cfg.decoder_attention_heads === "number" && cfg.decoder_attention_heads > 0) {
+            numHeads = cfg.decoder_attention_heads;
+          }
+          if (typeof cfg.d_model === "number" && numHeads > 0) {
+            headDim = Math.floor(cfg.d_model / numHeads);
+          }
+        } catch {}
+      }
       encoderSession = await ort.InferenceSession.create(bundle.encoder, {
         executionProviders: ["webgpu"],
       });
@@ -369,21 +439,52 @@ export function createDefaultWebGpuEngine(opts: {
         hiddenDims,
       );
 
+      const decInputNames = decoderSession.inputNames ?? ["input_ids", "encoder_hidden_states"];
       const ids = [tokenizer.sotId, tokenizer.transcribeId, tokenizer.noTimestampsId];
+      let pastKv = new Map<string, unknown>();
+
       for (let step = 0; step < maxTokens; step++) {
-        const idsTensor = new ort.Tensor(
-          "int64",
-          BigInt64Array.from(ids.map((id) => BigInt(id))),
-          [1, ids.length],
-        );
-        const decOut = await decoderSession.run({
-          input_ids: idsTensor,
-          encoder_hidden_states: hiddenTensor,
-        });
+        const useCache = step > 0;
+        const stepIds = useCache ? [ids[ids.length - 1]!] : ids;
+        const feeds: Record<string, unknown> = {};
+        for (const name of decInputNames) {
+          if (name === "input_ids") {
+            feeds[name] = new ort.Tensor(
+              "int64",
+              BigInt64Array.from(stepIds.map((id) => BigInt(id))),
+              [1, stepIds.length],
+            );
+          } else if (name === "encoder_hidden_states") {
+            feeds[name] = hiddenTensor;
+          } else if (name === "use_cache_branch") {
+            feeds[name] = new ort.Tensor("bool", [useCache], [1]);
+          } else if (name.startsWith("past_key_values.")) {
+            const existing = pastKv.get(name);
+            feeds[name] =
+              existing ?? new ort.Tensor("float32", new Float32Array(0), [1, numHeads, 0, headDim]);
+          }
+        }
+        const decOut = await decoderSession.run(feeds);
+        const nextKv = new Map<string, unknown>();
+        for (const [outName, val] of Object.entries(decOut)) {
+          if (outName.startsWith("present.")) {
+            const pastName = `past_key_values.${outName.slice("present.".length)}`;
+            nextKv.set(
+              pastName,
+              new ort.Tensor(
+                "float32",
+                (val.data as Float32Array) ?? new Float32Array(0),
+                val.dims ? [...val.dims] : [1, numHeads, step + 1, headDim],
+              ),
+            );
+          }
+        }
+        pastKv = nextKv;
+
         const logitsKey = decoderSession.outputNames?.[0] ?? Object.keys(decOut)[0] ?? "logits";
         const logits = decOut[logitsKey];
         const nextId = logits?.data
-          ? argmaxLastStep(logits.data as ArrayLike<number>, logits.dims, ids.length)
+          ? argmaxLastStep(logits.data as ArrayLike<number>, logits.dims, stepIds.length)
           : tokenizer.eosId;
         if (nextId === tokenizer.eosId) break;
         ids.push(nextId);
