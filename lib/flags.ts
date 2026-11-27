@@ -110,6 +110,7 @@ export const FLAGS = {
     description:
       "统一学习伙伴流程：所有账号（包括有开发权限的账号）由同一套学习伙伴流程回答、整理和补充交接信息。连续语音停顿后合成一轮，保留原话编号；助手仍可直接监听、主动回答或不答，无需等待学习伙伴。额度、积分和已有权限不变。关闭 = 保留原来的回复规则。",
     default: false,
+    group: "ai",
   },
   "payments.stripe.live": {
     description:

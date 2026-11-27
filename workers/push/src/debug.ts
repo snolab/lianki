@@ -5444,6 +5444,8 @@ export class DebugHub {
    * the line, or a newer line started its own turn: a human reply wins.
    */
   private async standardOn() {
+    // An older main Worker has no model RPC: do not ask it for flags either.
+    if (!this.sessions?.partnerReply) return false;
     return (
       (await this.flagValue(PARTNER_STANDARD_FLAG).catch(() => false)) === true &&
       (await this.aiOn())
