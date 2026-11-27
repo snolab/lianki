@@ -187,6 +187,18 @@ describe("ids and polish", () => {
     );
     expect(e).toEqual({ id: "p1", text: "合并后的", thread: "owner", covers: ["p1", "p2"] });
     expect(editOf(JSON.stringify({ type: "chat", id: "x", text: "y" }))).toBeNull();
+    expect(editOf("not json")).toBeNull();
+  });
+
+  it("real timers by default; flush() empties the buffer now and clears them", async () => {
+    const got: Digest[] = [];
+    const d = makeDigester(OPTS, (x) => void got.push(x));
+    await d.add(spoken("r1", "hello"));
+    expect(d.ids()).toEqual(["r1"]);
+    await d.flush();
+    expect(got.map((x) => x.ids)).toEqual([["r1"]]);
+    expect(d.pending()).toBe(0);
+    expect(await d.flush()).toBeUndefined();
   });
 
   it("lineOf keeps an owner line's source (stt or typed)", () => {
