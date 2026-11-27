@@ -1861,6 +1861,13 @@ For Windows / desktop browsers with WebGPU (`packages/debug-chat/src/webgpu-stt.
   - `stt.webgpuModelUrl`: pinned model download URL.
   - `stt.webgpuCacheMb`: maximum browser cache / OPFS quota in MB (default `256`).
   - `stt.webgpuIdleUnloadMs`: idle GPU unload timeout in ms (default `300000`).
+  - `stt.webgpuOrtWasmBase`: where onnxruntime-web loads its wasm runtime
+    (`ort.env.wasm.wasmPaths`), pinned to the installed version (default
+    `https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/`). The jsep
+    wasm is 25.6 MiB, over the Workers 25 MiB per-asset limit, so it is never
+    bundled: `next.config.mjs` aliases `onnxruntime-web/webgpu` to the build
+    without the bundled wasm, and `scripts/ci/check-asset-size.ts` fails the
+    deploy on any asset over 25 MiB. Bump this with the package.
 - **On-demand background download & racing**:
   - Never downloads until `stt.webgpu` is enabled (or an explicit user action); `estimateSize()` queries `HEAD` `Content-Length` first so the size is known before downloading, and uncached downloads route through `downloadModelAssets` (`model-download.ts`) for metered/unknown-network confirmation (`confirmBrowserModelDownload`) and network-change cancellation.
   - While `webgpu:local` is `idle`, `downloading`, or `blocked`, `openWebGpuStt` closes immediately (`4010`) so the active utterance races straight onto server/cloud routes with zero delay (audio sent as usual), then emits `lk-stt-available` when ready.

@@ -1556,6 +1556,14 @@ export const CONFIG = {
     audience: "public",
     description: "客户端 WebGPU 本地语音识别模型的固定版本基础地址（pinned commit SHA）。",
   },
+  "stt.webgpuOrtWasmBase": {
+    default: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/",
+    schema: z.string().url().max(500),
+    group: "stt",
+    audience: "public",
+    description:
+      "客户端 WebGPU 本地语音识别的 onnxruntime-web wasm 文件基础地址（固定到已安装的版本，末尾带 /）。wasm 超过 Workers 单文件 25 MiB 上限，不随站点打包。",
+  },
   "stt.webgpuCacheMb": int({
     default: 256,
     min: 32,

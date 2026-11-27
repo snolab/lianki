@@ -69,6 +69,11 @@ const nextConfig = {
     },
     resolveAlias: {
       "node:sqlite": "./lib/stubs/node-sqlite.js",
+      // WebGPU STT (packages/debug-chat/src/webgpu-stt.ts): the ORT build that
+      // loads its wasm from ort.env.wasm.wasmPaths (a pinned CDN) instead of
+      // the default `.bundle` build, whose new URL("…jsep.wasm") made Turbopack
+      // emit a 25.6 MiB asset, over the Workers 25 MiB per-file limit.
+      "onnxruntime-web/webgpu": "./node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs",
       ...(process.env.CF_BUILD === "1" ? { mongodb: "./lib/stubs/mongodb.js" } : {}),
     },
   },
