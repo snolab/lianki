@@ -1643,4 +1643,135 @@ describe("recordings", () => {
     expect(fbErrMsg).not.toMatch(/[<>]/);
     expect(fbErrMsg.length).toBeLessThanOrEqual(240);
   });
+
+  test("callBytes aborts immediately before cancel() and never awaits a never-resolving cancel()", async () => {
+    const CHUNK = 500_000;
+    const ERR_CHUNK = 10_000;
+    const streamEvents: string[] = [];
+    const errEvents: string[] = [];
+    const headerEvents: string[] = [];
+    let headerBodyRead = false;
+    const h = harness({
+      env,
+      server: {
+        "GET /api/my/recordings": (c) => {
+          const clip = new URLSearchParams(c.query).get("clip");
+          if (clip === "hung_cancel_hdr_0001") {
+            return {
+              status: 200,
+              headers: new Headers({
+                "content-type": "audio/wav",
+                "content-length": String(RECORDING_MAX_BYTES + 1),
+              }),
+              body: {
+                cancel: () => {
+                  headerEvents.push("cancel");
+                  return new Promise(() => {});
+                },
+              },
+              arrayBuffer: async () => {
+                headerBodyRead = true;
+                return new ArrayBuffer(0);
+              },
+            } as unknown as Response;
+          }
+          if (clip === "hung_cancel_err_0001") {
+            return new Response(
+              new ReadableStream<Uint8Array>({
+                pull(controller) {
+                  controller.enqueue(new TextEncoder().encode(`502 ${"e".repeat(ERR_CHUNK)}`));
+                },
+                cancel() {
+                  errEvents.push("cancel");
+                  return new Promise(() => {});
+                },
+              }),
+              { status: 502, headers: { "content-type": "text/plain" } },
+            );
+          }
+          return new Response(
+            new ReadableStream<Uint8Array>({
+              pull(controller) {
+                controller.enqueue(new Uint8Array(CHUNK));
+              },
+              cancel() {
+                streamEvents.push("cancel");
+                return new Promise(() => {});
+              },
+            }),
+            { status: 200, headers: { "content-type": "audio/wav" } },
+          );
+        },
+      },
+    });
+    const inner = h.deps.fetch;
+    h.deps.fetch = async (u: URL, init: any = {}) => {
+      const clip = new URL(String(u)).searchParams.get("clip");
+      const target =
+        clip === "hung_cancel_hdr_0001"
+          ? headerEvents
+          : clip === "hung_cancel_err_0001"
+            ? errEvents
+            : streamEvents;
+      init.signal?.addEventListener("abort", () => target.push("abort"));
+      return inner(u, init);
+    };
+
+    const out = join(tmp(), "hung-cancel-out");
+    const overStream = await h.run(
+      "recordings",
+      "get",
+      "hung_cancel_stream_01",
+      "--out",
+      out,
+      "--json",
+    );
+    expect(overStream.code).toBe(4);
+    expect(envelope(overStream.err).error.code).toBe("server");
+    expect(streamEvents).toEqual(["abort", "cancel"]);
+    expect(existsSync(join(out, "hung_cancel_stream_01.wav"))).toBe(false);
+    expect(overStream.out + overStream.err).not.toContain(TOKEN);
+
+    const overHeader = await h.run("recordings", "get", "hung_cancel_hdr_0001", "--json");
+    expect(overHeader.code).toBe(4);
+    expect(envelope(overHeader.err).error.code).toBe("server");
+    expect(headerEvents).toEqual(["abort", "cancel"]);
+    expect(headerBodyRead).toBe(false);
+    expect(overHeader.out + overHeader.err).not.toContain(TOKEN);
+
+    const overErr = await h.run("recordings", "get", "hung_cancel_err_0001", "--json");
+    expect(overErr.code).toBe(4);
+    expect(envelope(overErr.err).error.code).toBe("server");
+    expect(envelope(overErr.err).error.message).toContain("502");
+    expect(errEvents).toEqual(["abort", "cancel"]);
+    expect(overErr.out + overErr.err).not.toContain(TOKEN);
+  });
+
+  test("plain recordings get works without LIANKI_MCP_ALLOW_AUDIO and mcp --help documents --allow-audio", async () => {
+    const noOptEnv: Record<string, string> = { ...env };
+    delete noOptEnv.LIANKI_MCP_ALLOW_AUDIO;
+    expect(noOptEnv.LIANKI_MCP_ALLOW_AUDIO).toBeUndefined();
+    const h = harness({
+      env: noOptEnv,
+      server: {
+        "GET /api/my/recordings": () =>
+          new Response(SYNTH_WAV, {
+            status: 200,
+            headers: {
+              "content-type": "audio/wav",
+              "content-length": String(SYNTH_WAV.length),
+            },
+          }),
+      },
+    });
+    const out = join(tmp(), "plain-cli-out");
+    const dl = await h.run("recordings", "get", CLIP_ID, "--out", out, "--json");
+    expect(dl.code).toBe(0);
+    expect(new Uint8Array(readFileSync(join(out, `${CLIP_ID}.wav`)))).toEqual(SYNTH_WAV);
+
+    const help = await h.run("mcp", "--help");
+    expect(help.code).toBe(0);
+    expect(help.out).toContain("--allow-audio");
+    expect(help.out).toContain("sends recordings to whatever model reads this MCP");
+  });
 });

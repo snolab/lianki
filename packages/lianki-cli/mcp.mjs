@@ -43,8 +43,15 @@ import {
 
 export * from "./mcp-tools.mjs";
 
+function mcpAllowAudio(c) {
+  return Boolean(
+    c.argv?.["allow-audio"] || c.argv?.allowAudio || c.deps?.env?.LIANKI_MCP_ALLOW_AUDIO === "1",
+  );
+}
+
 /** The MCP server for this token: only the tools its permissions allow. */
 export function buildServer(c, token, _initialScopes) {
+  const allowAudio = mcpAllowAudio(c);
   // lianki_chat_wait: the socket `lianki chat listen` opens, open before it is handed over.
   const io = {
     token,
@@ -88,7 +95,7 @@ export function buildServer(c, token, _initialScopes) {
     try {
       const identity = await tokenInfo(c, token);
       return {
-        tools: toolsFor(identity.scopes).map((t) => ({
+        tools: toolsFor(identity.scopes, { allowAudio }).map((t) => ({
           name: t.name,
           title: t.title,
           description: `${t.description} ${UNTRUSTED_NOTE}`,
@@ -123,8 +130,13 @@ export function buildServer(c, token, _initialScopes) {
       };
       const toolIo = {
         ...io,
-        fetchBytes: (req) =>
-          callBytes(c, token, { ...req, headers: { ...req.headers, ...toolHeaders } }),
+        allowAudio,
+        ...(allowAudio
+          ? {
+              fetchBytes: (req) =>
+                callBytes(c, token, { ...req, headers: { ...req.headers, ...toolHeaders } }),
+            }
+          : {}),
       };
       return await runTool(t, api, parsed.args, toolIo);
     } catch (error) {
@@ -148,6 +160,7 @@ export async function serveMcp(c) {
       "npx lianki auth login, or set LIANKI_TOKEN in this server's env block",
     );
   const scopes = await tokenScopes(c, token);
+  const allowAudio = mcpAllowAudio(c);
   const server = buildServer(c, token, scopes);
   const closed = new Promise((resolve) => (server.server.onclose = resolve));
   if (c.deps.mcpTransport) await server.connect(c.deps.mcpTransport);
@@ -157,7 +170,7 @@ export async function serveMcp(c) {
     await server.connect(new StdioServerTransport());
   }
   c.deps.err(
-    `lianki mcp: serving ${toolsFor(scopes).length} tools for ${c.site} on stdio (${scopes.join(", ") || "no permissions"})`,
+    `lianki mcp: serving ${toolsFor(scopes, { allowAudio }).length} tools for ${c.site} on stdio (${scopes.join(", ") || "no permissions"})`,
   );
   await closed;
 }

@@ -1509,9 +1509,16 @@ function build(args, deps, box) {
       "Run a local MCP server for your AI app (stdio)",
       (y) =>
         examples(
-          y.epilogue(
-            "Tools for your cards and chat, only those the token allows; no deletes. Uses the token from `lianki auth login` (or LIANKI_TOKEN). stdout is the protocol; messages go to stderr.",
-          ),
+          y
+            .option("allow-audio", {
+              type: "boolean",
+              default: false,
+              describe:
+                "Allow lianki_recordings_audio over stdio MCP (sends recordings to whatever model reads this MCP)",
+            })
+            .epilogue(
+              "Tools for your cards and chat, only those the token allows; no deletes. Uses the token from `lianki auth login` (or LIANKI_TOKEN). Raw recording audio is off by default (opt in with --allow-audio or LIANKI_MCP_ALLOW_AUDIO=1, which sends recordings to whatever model reads this MCP). stdout is the protocol; messages go to stderr.",
+            ),
           [
             ["claude mcp add lianki -- npx -y lianki mcp", "Claude Code"],
             ['{"mcpServers": {"lianki": {"command": "npx", "args": ["-y", "lianki", "mcp"]}}}', "Claude Desktop, Cursor"],

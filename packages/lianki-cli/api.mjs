@@ -167,6 +167,18 @@ export async function call(c, token, { method = "GET", path, query, body, header
   throw throwHttpError(c, r, text, data);
 }
 
+function noop() {}
+
+function abortAndCancel(controller, target) {
+  try {
+    controller?.abort();
+  } catch {}
+  try {
+    const p = target?.cancel?.();
+    if (p && typeof p.then === "function") p.then(noop, noop);
+  } catch {}
+}
+
 async function readStreamCapped(c, r, maxBytes, { onExceed, controller }) {
   const hasLimit = typeof maxBytes === "number" && maxBytes > 0;
   if (r.body && typeof r.body.getReader === "function") {
@@ -181,12 +193,7 @@ async function readStreamCapped(c, r, maxBytes, { onExceed, controller }) {
         const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
         if (!chunk.byteLength) continue;
         if (hasLimit && total + chunk.byteLength > maxBytes) {
-          try {
-            await reader.cancel();
-          } catch {}
-          try {
-            controller?.abort();
-          } catch {}
+          abortAndCancel(controller, reader);
           if (onExceed === "throw")
             throw new CliError(
               "server",
@@ -219,9 +226,7 @@ async function readStreamCapped(c, r, maxBytes, { onExceed, controller }) {
   }
   const raw = new Uint8Array(await r.arrayBuffer());
   if (hasLimit && raw.byteLength > maxBytes) {
-    try {
-      controller?.abort();
-    } catch {}
+    abortAndCancel(controller, null);
     if (onExceed === "throw")
       throw new CliError("server", EXIT.server, `${c.site} returned more than ${maxBytes} bytes`);
     return { bytes: raw.subarray(0, maxBytes), truncated: true };
@@ -265,12 +270,7 @@ export async function callBytes(
   }
   const len = Number(r.headers?.get?.("content-length"));
   if (maxBytes && Number.isFinite(len) && len > maxBytes) {
-    try {
-      await r.body?.cancel?.();
-    } catch {}
-    try {
-      controller?.abort();
-    } catch {}
+    abortAndCancel(controller, r.body);
     throw new CliError("server", EXIT.server, `${c.site} returned more than ${maxBytes} bytes`);
   }
   const { bytes } = await readStreamCapped(c, r, maxBytes, { onExceed: "throw", controller });

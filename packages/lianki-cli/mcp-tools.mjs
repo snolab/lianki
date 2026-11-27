@@ -523,7 +523,7 @@ export const TOOLS = [
       "To match a spoken chat line's recording, pass `before = timing.t_uploadStart + 1` and `limit = 5`, then pick the clip whose `at` lies in `[t_speechEnd, t_uploadStart]`.",
     remoteDescription:
       "List metadata only (id, timestamp, durationMs) of the user's own mic recordings, newest first (or one UTC day via `day`). " +
-      "Transcripts and audio are only available locally via the CLI or local stdio `lianki mcp`.",
+      "Transcripts and audio are only available locally via the CLI (or local stdio `lianki mcp`, with explicit opt-in for raw audio).",
     input: {
       limit: z
         .number()
@@ -562,7 +562,7 @@ export const TOOLS = [
     localOnly: true,
     title: "Fetch mic recording audio",
     description:
-      "Fetch one mic recording's WAV audio by its clip id (from lianki_recordings_list). Local stdio MCP only; returns metadata as untrusted data plus an audio content block.",
+      "Fetch one mic recording's WAV audio by its clip id (from lianki_recordings_list). Opt-in only (LIANKI_MCP_ALLOW_AUDIO=1 or --allow-audio): sends recordings to whatever model reads this MCP. Returns metadata as untrusted data plus an audio content block.",
     input: {
       id: z
         .string()
@@ -575,7 +575,13 @@ export const TOOLS = [
         throw new CliError(
           "local_only",
           EXIT.refused,
-          "Recording audio is only available locally (use `lianki recordings get` or local `lianki mcp` over stdio; remote /mcp never sends recording audio to cloud clients).",
+          "Recording audio is only available locally (use `lianki recordings get` to save a WAV locally; remote /mcp never sends recording audio to cloud clients).",
+        );
+      if (!io?.allowAudio)
+        throw new CliError(
+          "audio_opt_in_required",
+          EXIT.refused,
+          "Raw recording audio over MCP is off by default because it sends recordings to whatever model reads this MCP. Opt in with `lianki mcp --allow-audio` or LIANKI_MCP_ALLOW_AUDIO=1, or download locally with `lianki recordings get <id>`.",
         );
       validateRecordingId(a.id);
       if (!io?.fetchBytes)
@@ -774,11 +780,11 @@ export function waitChat(io, { after, timeoutSec } = {}) {
   );
 }
 
-/** The tools a token holding `scopes` may use (`remote: true` omits local-only tools). */
+/** The tools a token holding `scopes` may use (`localOnly` tools are omitted unless local and `allowAudio: true`). */
 export const missingToolScope = (tool, scopes) =>
   (tool.requires ?? [tool.scope]).find((scope) => !scopes.includes(scope));
-export const toolsFor = (scopes, { remote = false } = {}) =>
-  TOOLS.filter((t) => (!remote || !t.localOnly) && !missingToolScope(t, scopes));
+export const toolsFor = (scopes, { remote = false, allowAudio = false } = {}) =>
+  TOOLS.filter((t) => (!t.localOnly || (!remote && allowAudio)) && !missingToolScope(t, scopes));
 
 /**
  * A tool's result as text: the data between tags, with every `<` escaped so
