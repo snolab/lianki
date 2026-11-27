@@ -35,24 +35,31 @@ export function oversizedAssets(
   return out.sort((a, b) => b.bytes - a.bytes);
 }
 
-if (import.meta.main) {
-  const dir = process.argv[2] ?? ".open-next/assets";
-  const maxMiB = Number(process.argv[3] ?? 25);
-  const maxBytes = maxMiB * 1024 * 1024;
+/** The CLI: prints every oversized file and returns the exit code (0 ok, 1 too large, 2 unreadable). */
+export function checkAssetSize(
+  dir = ".open-next/assets",
+  maxMiB = 25,
+  log: Pick<Console, "log" | "error"> = console,
+): number {
   let bad: { file: string; bytes: number }[];
   try {
-    bad = oversizedAssets(dir, maxBytes);
+    bad = oversizedAssets(dir, maxMiB * 1024 * 1024);
   } catch (e) {
-    console.error(`check-asset-size: cannot read ${dir}: ${(e as Error).message}`);
-    process.exit(2);
+    log.error(`check-asset-size: cannot read ${dir}: ${(e as Error).message}`);
+    return 2;
   }
   const mib = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MiB`;
-  for (const f of bad) console.error(`✗ ${dir}/${f.file}: ${mib(f.bytes)} > ${maxMiB} MiB`);
+  for (const f of bad) log.error(`✗ ${dir}/${f.file}: ${mib(f.bytes)} > ${maxMiB} MiB`);
   if (bad.length) {
-    console.error(
+    log.error(
       `check-asset-size: ${bad.length} asset(s) over the Workers per-file limit; load them from a CDN or split them`,
     );
-    process.exit(1);
+    return 1;
   }
-  console.log(`✓ ${dir}: every asset is at most ${maxMiB} MiB`);
+  log.log(`✓ ${dir}: every asset is at most ${maxMiB} MiB`);
+  return 0;
+}
+
+if (import.meta.main) {
+  process.exit(checkAssetSize(process.argv[2], process.argv[3] ? Number(process.argv[3]) : 25));
 }
