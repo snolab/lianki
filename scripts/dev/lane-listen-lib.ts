@@ -246,14 +246,15 @@ export const ownerAt = (at?: string) => {
  * The rule every lane hears (owner, 2026-11-15 15:0x JST: "我在 @ 你的时候，这些只读
  * AI（包括 mimiai）不要乱回复"): answer only a line that names you or 全体.
  */
-export const NO_CROSS_RULE = "只答「点名你」「全体」；点名别人的不插话、不代答。";
+export const NO_CROSS_RULE =
+  "主人消息只答「点名你」「全体」；点名别人的不插话、不代答。助手间自主回应或不答。";
 /**
  * The rule of a lane that may answer unnamed lines (lanes.agents answerUnnamed; owner,
  * 2026-11-15 22:55 JST: "@coco 和杰咪都应该回复我，哪怕是没点名的信息，只要他们觉得他们有回答的想法就可以来回答"):
  * a line naming another lane is still never answered.
  */
 export const ANSWER_UNNAMED_RULE =
-  "「点名你」「全体」必答；「未点名」与你的项目有关才简短答；点名别人的不插话。";
+  "主人消息：「点名你」「全体」必答；「未点名」与你的项目有关才简短答；点名别人的不插话。助手间自主回应或不答。";
 
 /** How a lane treats his lines that name nobody: listen only (default), or answer briefly when it has something to say. */
 export type UnnamedOpts = { answerUnnamed?: boolean };

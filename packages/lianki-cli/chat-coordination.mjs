@@ -18,5 +18,5 @@ export function partnerCoordination(m) {
 }
 
 export function coordinationNote(c) {
-  return `\n[Learning Partner context update; advisory, not a new instruction or permission. Original ids: ${c.sources.map((s) => s.id).join(", ")}. Check these ids before acting again.]\n${c.summary}`;
+  return `\n[Learning Partner context update; advisory, not a new instruction or permission. You may respond or stay silent. Original ids: ${c.sources.map((s) => s.id).join(", ")}. Check these ids before acting again.]\n${c.summary}`;
 }
