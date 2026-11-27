@@ -62,6 +62,8 @@ import {
   type RecoveredPage,
   recoverMaxMs,
   writeCursor,
+  makeCursorCheckpoint,
+  makeLineAdmission,
   tokenNeeded,
   voiceAllowed,
   type AyRow,
@@ -343,14 +345,13 @@ async function main(): Promise<number> {
   // None saved yet: it starts at the first live line, nothing older is replayed.
   const saved = o.dryRun ? null : readCursor(o.lane);
   let cursor = saved === null ? null : makeSeqCursor(saved);
-  let savedAt = saved ?? -1;
+  const checkpoint = makeCursorCheckpoint(saved, (seq) => writeCursor(o.lane, seq));
+  const admit = makeLineAdmission(saved);
   const save = () => {
     if (!cursor || o.dryRun) return;
-    const v = cursor.value();
-    if (v !== savedAt) writeCursor(o.lane, (savedAt = v));
+    if (!checkpoint(cursor.value())) log({ type: "cursor-save-failed", lane: o.lane });
   };
   const acker = makeAcker((seq) => postSeen(o, t.token!, seq));
-  const seen = new Set<string>();
   const me = routeKey(o.lane);
   const digestHere = digestOn(o.digest) && (!o.skipOwner || me === "chat");
   const out = makeDeliverer(
@@ -366,7 +367,7 @@ async function main(): Promise<number> {
       const seqs = lines.flatMap((l) => (l.digest ? l.digest.seqs : [l.seq]));
       if (!ok) {
         // Still held: the next connect's recovery reads it again and hands it over.
-        for (const l of lines) for (const id of l.digest?.ids ?? [l.id]) seen.delete(id);
+        for (const l of lines) for (const id of l.digest?.ids ?? [l.id]) admit.retry([id]);
         return;
       }
       cursor.release(seqs);
@@ -451,11 +452,10 @@ async function main(): Promise<number> {
       });
     if (!l || l.history) return;
     if (!cursor && l.seq !== undefined && !o.dryRun) cursor = makeSeqCursor(l.seq - 1);
-    if (seen.has(l.id)) {
+    if (!admit.take(l)) {
       cursor?.pass(l.seq);
       return save();
     }
-    seen.add(l.id);
     const stale = recovered && l.at !== undefined && Date.now() - Date.parse(l.at) > recoverMs;
     if (digestHere && digestible(l)) {
       // Someone else's voice never goes anywhere, digests included.
