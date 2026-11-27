@@ -60,30 +60,15 @@ export const LOGIN_HINT ="lianki auth login   (agents: set LIANKI_TOKEN=lk_… o
 export const SCOPE_HINT =
   "the token lacks that permission: make one that has it at lianki.com/my/preferences → API tokens, or lianki auth login again";
 
-export async function call(c, token, { method = "GET", path, query, body, headers: extra }) {
+function buildUrl(c, path, query) {
   const url = new URL(path, c.base + "/");
   for (const [k, v] of Object.entries(query ?? {}))
     if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
-  const headers = { accept: "application/json", ...extra };
-  if (token) headers.authorization = `Bearer ${token}`;
-  if (body !== undefined) headers["content-type"] = "application/json";
-  let r;
-  try {
-    r = await c.deps.fetch(url, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      redirect: "manual",
-    });
-  } catch (e) {
-    throw new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`);
-  }
-  const text = await r.text();
-  let data = null;
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {}
-  if (r.status >= 200 && r.status < 300 && data !== null) return { status: r.status, data };
+  return url;
+}
+
+/** @returns {never} */
+function throwHttpError(c, r, text, data) {
   const said = (data && typeof data.error === "string" && data.error) || text.slice(0, 200);
   // Angle brackets dropped, so no markup survives (CodeQL: a tag regex alone is incomplete).
   const detail = said.replace(/[<>]/g, " ").replace(/\s+/g, " ").trim();
@@ -154,4 +139,62 @@ export async function call(c, token, { method = "GET", path, query, body, header
     EXIT.refused,
     `${c.site} refused it (${r.status})${detail ? `: ${detail}` : ""}`,
   );
+}
+
+export async function call(c, token, { method = "GET", path, query, body, headers: extra }) {
+  const url = buildUrl(c, path, query);
+  const headers = { accept: "application/json", ...extra };
+  if (token) headers.authorization = `Bearer ${token}`;
+  if (body !== undefined) headers["content-type"] = "application/json";
+  let r;
+  try {
+    r = await c.deps.fetch(url, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      redirect: "manual",
+    });
+  } catch (e) {
+    throw new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`);
+  }
+  const text = await r.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {}
+  if (r.status >= 200 && r.status < 300 && data !== null) return { status: r.status, data };
+  throw throwHttpError(c, r, text, data);
+}
+
+export async function callBytes(
+  c,
+  token,
+  { method = "GET", path, query, accept = "*/*", headers: extra, maxBytes },
+) {
+  const url = buildUrl(c, path, query);
+  const headers = { accept, ...extra };
+  if (token) headers.authorization = `Bearer ${token}`;
+  let r;
+  try {
+    r = await c.deps.fetch(url, { method, headers, redirect: "manual" });
+  } catch (e) {
+    throw new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`);
+  }
+  if (r.status < 200 || r.status >= 300) {
+    const text = await r.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {}
+    throw throwHttpError(c, r, text, data);
+  }
+  const len = Number(r.headers?.get?.("content-length"));
+  if (maxBytes && Number.isFinite(len) && len > maxBytes) {
+    await r.body?.cancel?.().catch(() => {});
+    throw new CliError("server", EXIT.server, `${c.site} response exceeded ${maxBytes} bytes`);
+  }
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  if (maxBytes && bytes.length > maxBytes)
+    throw new CliError("server", EXIT.server, `${c.site} response exceeded ${maxBytes} bytes`);
+  return { status: r.status, bytes, contentType: r.headers?.get?.("content-type") ?? "" };
 }

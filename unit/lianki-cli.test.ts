@@ -1239,3 +1239,207 @@ describe("chat attachment get", () => {
     expect((await h.run("chat", "attachment", "get", ID)).code).not.toBe(0);
   });
 });
+
+describe("recordings", () => {
+  const CLIP_ID = "rec_clip_0123456789ab";
+  // Synthetic 48-byte RIFF/WAVE header + 4 zero PCM bytes (no mic, no playback).
+  const SYNTH_WAV = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0x28, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45, 0x66, 0x6d, 0x74, 0x20,
+    0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x80, 0x3e, 0x00, 0x00, 0x00, 0x7d, 0x00, 0x00,
+    0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  ]);
+  const SAMPLE_CLIP = {
+    id: CLIP_ID,
+    day: "2026-11-27",
+    at: Date.parse("2026-11-27T12:00:00Z"),
+    durationMs: 2400,
+    bytes: SYNTH_WAV.length,
+    mode: "active",
+    source: "local",
+    device: "mac",
+    speaker: "me",
+    text: "synthetic test transcript",
+    extraServerField: "dropped",
+  };
+
+  test("list supports default limit, --limit/--before, --day and human output", async () => {
+    const h = harness({
+      env,
+      server: {
+        "GET /api/my/recordings": (c) => {
+          const p = new URLSearchParams(c.query);
+          if (p.has("day")) return json({ day: p.get("day"), clips: [SAMPLE_CLIP] });
+          return json({ clips: [SAMPLE_CLIP], more: true });
+        },
+      },
+    });
+    const def = await h.run("recordings", "list", "--json");
+    expect(def.code).toBe(0);
+    expect(h.calls.at(-1)).toMatchObject({
+      method: "GET",
+      path: "/api/my/recordings",
+      query: "?limit=20",
+      auth: `Bearer ${TOKEN}`,
+    });
+    expect(envelope(def.out)).toEqual({
+      v: 1,
+      ok: true,
+      command: "recordings list",
+      data: {
+        clips: [
+          {
+            id: CLIP_ID,
+            day: "2026-11-27",
+            at: SAMPLE_CLIP.at,
+            durationMs: 2400,
+            bytes: SYNTH_WAV.length,
+            mode: "active",
+            source: "local",
+            device: "mac",
+            speaker: "me",
+            text: "synthetic test transcript",
+          },
+        ],
+        more: true,
+      },
+    });
+
+    const paged = await h.run(
+      "recordings",
+      "list",
+      "--limit",
+      "5",
+      "--before",
+      "1700000000000",
+      "--json",
+    );
+    expect(paged.code).toBe(0);
+    expect(h.calls.at(-1)?.query).toBe("?before=1700000000000&limit=5");
+
+    const byDay = await h.run("recordings", "list", "--day", "2026-11-27", "--json");
+    expect(byDay.code).toBe(0);
+    expect(h.calls.at(-1)?.query).toBe("?day=2026-11-27");
+    expect(envelope(byDay.out).data).toMatchObject({ day: "2026-11-27" });
+    expect(envelope(byDay.out).data.more).toBeUndefined();
+
+    const human = await h.run("recordings", "list");
+    expect(human.code).toBe(0);
+    expect(human.out).toContain(CLIP_ID);
+    expect(human.out).toContain("[me]");
+    expect(human.out).toContain("synthetic test transcript");
+    expect(def.out + paged.out + byDay.out + human.out).not.toContain(TOKEN);
+  });
+
+  test("list rejects invalid --day or combining --day with --limit/--before (exit 1, no request)", async () => {
+    const h = harness({
+      env,
+      server: { "GET /api/my/recordings": () => json({ clips: [], more: false }) },
+    });
+    for (const args of [
+      ["recordings", "list", "--day", "2026-02-30", "--json"],
+      ["recordings", "list", "--day", "not-a-day", "--json"],
+      ["recordings", "list", "--day", "2026-11-27", "--limit", "5", "--json"],
+      ["recordings", "list", "--day", "2026-11-27", "--before", "1000", "--json"],
+      ["recordings", "list", "--limit", "0", "--json"],
+      ["recordings", "list", "--limit", "201", "--json"],
+      ["recordings", "list", "--before", "-1", "--json"],
+    ]) {
+      const r = await h.run(...args);
+      expect(r.code).toBe(1);
+      expect(envelope(r.err).error.code).toBe("usage");
+    }
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("get fetches synthetic WAV with accept: audio/wav, writes with wx, refuses EEXIST (exit 5), never leaks token", async () => {
+    const sentHeaders: Record<string, string>[] = [];
+    const h = harness({
+      env,
+      server: {
+        "GET /api/my/recordings": (c) => {
+          const p = new URLSearchParams(c.query);
+          if (p.get("clip") !== CLIP_ID) return json({ error: "not-found" }, 404);
+          return new Response(SYNTH_WAV, {
+            status: 200,
+            headers: {
+              "content-type": "audio/wav; charset=binary",
+              "content-length": String(SYNTH_WAV.length),
+            },
+          });
+        },
+      },
+    });
+    const inner = h.deps.fetch;
+    h.deps.fetch = async (u: URL, init: any = {}) => {
+      sentHeaders.push(init.headers ?? {});
+      return inner(u, init);
+    };
+
+    const out = join(tmp(), "recs");
+    const first = await h.run("recordings", "get", CLIP_ID, "--out", out, "--json");
+    expect(first.code).toBe(0);
+    expect(sentHeaders[0]).toMatchObject({
+      accept: "audio/wav",
+      authorization: `Bearer ${TOKEN}`,
+    });
+    const file = join(out, `${CLIP_ID}.wav`);
+    expect(envelope(first.out)).toEqual({
+      v: 1,
+      ok: true,
+      command: "recordings get",
+      data: { id: CLIP_ID, mimeType: "audio/wav", bytes: SYNTH_WAV.length, file },
+    });
+    expect(new Uint8Array(readFileSync(file))).toEqual(SYNTH_WAV);
+    expect(first.out + first.err).not.toContain(TOKEN);
+
+    // Existing file is never overwritten (flag: "wx" -> EEXIST -> exit 5).
+    writeFileSync(file, "KEEP");
+    const second = await h.run("recordings", "get", CLIP_ID, "--out", out, "--json");
+    expect(second.code).toBe(5);
+    expect(envelope(second.err).error.code).toBe("exists");
+    expect(readFileSync(file, "utf8")).toBe("KEEP");
+    expect(second.out + second.err).not.toContain(TOKEN);
+  });
+
+  test("get rejects bad id (exit 1) and oversized responses (> 1,300,000 bytes)", async () => {
+    let bodyRead = false;
+    const h = harness({
+      env,
+      server: {
+        "GET /api/my/recordings": (c) => {
+          const clip = new URLSearchParams(c.query).get("clip");
+          if (clip === "header_too_large_0001") {
+            return {
+              status: 200,
+              headers: new Headers({
+                "content-type": "audio/wav",
+                "content-length": "1300001",
+              }),
+              arrayBuffer: async () => {
+                bodyRead = true;
+                return new ArrayBuffer(0);
+              },
+            } as unknown as Response;
+          }
+          return new Response(new Uint8Array(1_300_001), {
+            status: 200,
+            headers: { "content-type": "audio/wav" },
+          });
+        },
+      },
+    });
+    const bad = await h.run("recordings", "get", "../bad-id", "--json");
+    expect(bad.code).toBe(1);
+    expect(envelope(bad.err).error.code).toBe("usage");
+    expect(h.calls).toHaveLength(0);
+
+    const byHeader = await h.run("recordings", "get", "header_too_large_0001", "--json");
+    expect(byHeader.code).toBe(4);
+    expect(bodyRead).toBe(false);
+    expect(byHeader.out + byHeader.err).not.toContain(TOKEN);
+
+    const byBody = await h.run("recordings", "get", "body_too_large_000001", "--json");
+    expect(byBody.code).toBe(4);
+    expect(byBody.out + byBody.err).not.toContain(TOKEN);
+  });
+});

@@ -13,13 +13,33 @@ import {
   ackBody,
   reportBody,
 } from "./progress.mjs";
+import {
+  RECORDINGS_PATH,
+  RECORDING_DAY_RE,
+  RECORDING_ID_RE,
+  RECORDING_LIST_DEFAULT,
+  RECORDING_LIST_MAX,
+  RECORDING_MAX_BYTES,
+  bytesToBase64,
+  clipSummary,
+  recordingsListQuery,
+  validateRecordingId,
+} from "./recordings.mjs";
 
 export const CLIENT_HEADER = "x-lianki-client";
 /** Most pages one lianki_import call sends (the server's own cap is higher). */
 export const IMPORT_MAX = 100;
 export const CHAT_PATH = "/api/version/chat";
 /** Known tool permissions; introspection must explicitly grant each permission. */
-const ALL_SCOPES = ["study", "chat:read", "chat:write", "chat:ask", "progress", "apps:publish"];
+const ALL_SCOPES = [
+  "study",
+  "chat:read",
+  "chat:write",
+  "chat:ask",
+  "progress",
+  "apps:publish",
+  "recordings:read",
+];
 /** lianki_chat_wait: how long it waits by default, and at most (under a client's usual 60 s request timeout). */
 export const WAIT_DEFAULT_SEC = 50;
 export const WAIT_MAX_SEC = 55;
@@ -493,6 +513,96 @@ export const TOOLS = [
       return { id: d.id ?? null, task: d.task ?? null, etaAt: d.etaAt ?? null };
     },
   },
+  {
+    name: "lianki_recordings_list",
+    scope: "recordings:read",
+    title: "List mic recordings",
+    description:
+      "List metadata and transcripts of the user's own mic recordings, newest first (or one UTC day via `day`). " +
+      "To match a spoken chat line's recording, pass `before = timing.t_uploadStart + 1` and `limit = 5`, then pick the clip whose `at` lies in `[t_speechEnd, t_uploadStart]`.",
+    input: {
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(RECORDING_LIST_MAX)
+        .optional()
+        .describe(
+          `How many clips to return (1–${RECORDING_LIST_MAX}, default ${RECORDING_LIST_DEFAULT}; cannot be combined with day)`,
+        ),
+      before: z
+        .number()
+        .int()
+        .min(0)
+        .max(Number.MAX_SAFE_INTEGER)
+        .optional()
+        .describe("Clips recorded before this epoch timestamp in ms (cannot be combined with day)"),
+      day: z
+        .string()
+        .regex(RECORDING_DAY_RE)
+        .optional()
+        .describe("One UTC calendar day YYYY-MM-DD (oldest first; cannot be combined with before or limit)"),
+    },
+    annotations: READ,
+    run: async (api, a) => {
+      const query = recordingsListQuery(a);
+      const d = await api({ path: RECORDINGS_PATH, query });
+      const clips = (Array.isArray(d.clips) ? d.clips : []).map(clipSummary);
+      return query.day ? { day: d.day ?? query.day, clips } : { clips, more: Boolean(d.more) };
+    },
+  },
+  {
+    name: "lianki_recordings_audio",
+    scope: "recordings:read",
+    title: "Fetch mic recording audio",
+    description:
+      "Fetch one mic recording's WAV audio by its clip id (from lianki_recordings_list). Returns metadata as untrusted data plus an audio content block.",
+    input: {
+      id: z
+        .string()
+        .regex(RECORDING_ID_RE)
+        .describe("The clip id from lianki_recordings_list (16–32 characters)"),
+    },
+    annotations: READ,
+    run: async (_api, a, io) => {
+      validateRecordingId(a.id);
+      if (!io?.fetchBytes)
+        throw new CliError(
+          "unavailable",
+          EXIT.server,
+          "fetching recording audio is not available here",
+        );
+      const { bytes, contentType } = await io.fetchBytes({
+        path: RECORDINGS_PATH,
+        query: { clip: a.id },
+        accept: "audio/wav",
+        maxBytes: RECORDING_MAX_BYTES,
+      });
+      if (!bytes.length)
+        throw new CliError("server", EXIT.server, "lianki.com returned empty audio");
+      const ct = String(contentType ?? "").trim();
+      const mimeType = ct.toLowerCase().startsWith("audio/")
+        ? ct.split(";")[0].trim().toLowerCase()
+        : "audio/wav";
+      return {
+        __mcpContent: [
+          {
+            type: "text",
+            text: untrusted("lianki_recordings_audio", {
+              id: a.id,
+              mimeType,
+              bytes: bytes.length,
+            }),
+          },
+          {
+            type: "audio",
+            data: bytesToBase64(bytes),
+            mimeType,
+          },
+        ],
+      };
+    },
+  },
 ];
 
 /**
@@ -762,6 +872,7 @@ export function parseArgs(t, raw) {
 export async function runTool(t, api, args, io) {
   try {
     const data = await t.run(api, args ?? {}, io);
+    if (data && Array.isArray(data.__mcpContent)) return { content: data.__mcpContent };
     return { content: [{ type: "text", text: untrusted(t.name, data) }] };
   } catch (e) {
     return toolError(e);

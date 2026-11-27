@@ -11,7 +11,7 @@
 
 import yargs from "yargs";
 import { readPublishInput } from "./app-publish.mjs";
-import { CliError, EXIT, LOGIN_HINT, PREF_KEYS, SCOPE_HINT, call, nextHlc } from "./api.mjs";
+import { CliError, EXIT, LOGIN_HINT, PREF_KEYS, SCOPE_HINT, call, callBytes, nextHlc } from "./api.mjs";
 export { nextHlc };
 import { DEVICE_RE, randomId, s256, TOKEN_RE } from "./auth.mjs";
 import { createChatBridge, filterDecision, ayDeliver, bridgeConfig } from "./chat-bridge.mjs";
@@ -36,10 +36,19 @@ import {
   sinceMs,
   statsOf,
 } from "./progress.mjs";
+import {
+  RECORDINGS_PATH,
+  RECORDING_LIST_DEFAULT,
+  RECORDING_LIST_MAX,
+  RECORDING_MAX_BYTES,
+  clipSummary,
+  recordingsListQuery,
+  validateRecordingId,
+} from "./recordings.mjs";
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 
-export { CliError, EXIT, PREF_KEYS, call };
+export { CliError, EXIT, PREF_KEYS, call, callBytes };
 
 export const SCHEMA_VERSION = 1;
 export const DEFAULT_URL = "https://lianki.com";
@@ -976,6 +985,63 @@ async function cmdProgressHistory(c) {
   emit(c, "progress history", { items }, (d) => formatHistory(d.items));
 }
 
+const recordingLine = (x) =>
+  `${new Date(x.at).toISOString().slice(0, 19).replace("T", " ")}  ${x.id}  ${(Number(x.durationMs ?? 0) / 1000).toFixed(1)}s${x.speaker ? `  [${x.speaker}]` : ""}${x.text ? `  ${x.text}` : ""}`;
+
+async function cmdRecordingsList(c) {
+  const query = recordingsListQuery({
+    day: c.argv.day,
+    before: c.argv.before,
+    limit: c.argv.limit,
+  });
+  const token = await needToken(c);
+  const { data } = await call(c, token, { path: RECORDINGS_PATH, query });
+  const clips = (Array.isArray(data.clips) ? data.clips : []).map(clipSummary);
+  const out = query.day
+    ? { day: data.day ?? query.day, clips }
+    : { clips, more: Boolean(data.more) };
+  emit(c, "recordings list", out, (d) =>
+    d.clips.length ? d.clips.map(recordingLine).join("\n") : "no recordings",
+  );
+}
+
+async function cmdRecordingsGet(c) {
+  const id = validateRecordingId(c.argv.id);
+  const token = await needToken(c);
+  const { bytes, contentType } = await callBytes(c, token, {
+    path: RECORDINGS_PATH,
+    query: { clip: id },
+    accept: "audio/wav",
+    maxBytes: RECORDING_MAX_BYTES,
+  });
+  if (!bytes.length) throw new CliError("server", EXIT.server, `${c.site} returned empty audio`);
+  const outDir = String(c.argv.out ?? ".");
+  const file = join(outDir, `${id}.wav`);
+  try {
+    await (
+      c.deps.writeFile ??
+      (async (f, b) => {
+        const { mkdir, writeFile } = await import("node:fs/promises");
+        await mkdir(outDir, { recursive: true });
+        await writeFile(f, b, { flag: "wx" });
+      })
+    )(file, bytes);
+  } catch (e) {
+    if (e?.code === "EEXIST")
+      throw new CliError(
+        "exists",
+        EXIT.refused,
+        `${file} already exists; not overwritten (pick another --out)`,
+      );
+    throw e;
+  }
+  const ct = String(contentType ?? "").trim();
+  const mimeType = ct.toLowerCase().startsWith("audio/")
+    ? ct.split(";")[0].trim().toLowerCase()
+    : "audio/wav";
+  emit(c, "recordings get", { id, mimeType, bytes: bytes.length, file }, (d) => d.file);
+}
+
 async function cmdMcp(c) {
   const { serveMcp } = await import("./mcp.mjs");
   await serveMcp(c);
@@ -1379,6 +1445,64 @@ function build(args, deps, box) {
           ),
         [['lianki progress --path /dev/cli --task "CLI: progress verbs" --status doing --eta 30m', ""]],
       ),
+    )
+    .command(
+      "recordings",
+      "Read your own mic recordings (requires recordings:read)",
+      (y) =>
+        examples(
+          sub(y)
+            .usage("lianki recordings <list|get>")
+            .command(
+              "list",
+              "List your mic recordings (metadata and transcripts, newest first)",
+              (y) =>
+                examples(
+                  y
+                    .option("limit", {
+                      type: "number",
+                      describe: `How many clips (1–${RECORDING_LIST_MAX}, default ${RECORDING_LIST_DEFAULT})`,
+                    })
+                    .option("before", {
+                      type: "number",
+                      describe: "Clips recorded before this epoch timestamp (ms)",
+                    })
+                    .option("day", {
+                      type: "string",
+                      describe:
+                        "One UTC calendar day YYYY-MM-DD (oldest first; cannot combine with --before/--limit)",
+                    }),
+                  [
+                    ["lianki recordings list --limit 10 --json", "latest 10 recordings"],
+                    ["lianki recordings list --day 2026-11-27 --json", "one UTC day"],
+                  ],
+                ),
+              act(cmdRecordingsList),
+            )
+            .command(
+              "get <id>",
+              "Download one recording's WAV audio",
+              (y) =>
+                examples(
+                  y
+                    .positional("id", {
+                      type: "string",
+                      describe: "The clip id (from recordings list)",
+                    })
+                    .option("out", {
+                      type: "string",
+                      default: ".",
+                      describe: "Folder to save <id>.wav in",
+                    }),
+                  [["lianki recordings get abcdefghijklmnop --out /tmp/rec", "saves <id>.wav"]],
+                ),
+              act(cmdRecordingsGet),
+            )
+            .epilogue(
+              "Needs a token with recordings:read (lianki.com/my/preferences → API tokens; dev accounts only). Never writes or deletes recordings.",
+            ),
+          [["lianki recordings list --limit 5", ""]],
+        ),
     )
     .command(
       "mcp",

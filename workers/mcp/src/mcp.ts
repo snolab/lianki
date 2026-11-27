@@ -34,7 +34,7 @@
  * Types are declared here rather than taken from @cloudflare/workers-types:
  * the repo's root tsconfig type-checks this folder with the DOM lib.
  */
-import { CliError, EXIT, call } from "../../../packages/lianki-cli/api.mjs";
+import { CliError, EXIT, call, callBytes } from "../../../packages/lianki-cli/api.mjs";
 import {
   CHAT_PATH,
   CLIENT_HEADER,
@@ -190,20 +190,31 @@ type WorkerSocket = {
 };
 
 /**
- * lianki_chat_wait's socket: the token chat WebSocket `lianki chat listen`
- * opens, here through the PUSH binding (lianki-push owns /api/version/chat).
- * The token goes in its first message (mcp-tools.mjs waitChat), never a header.
+ * Tool runtime IO: `openChat` opens the token chat WebSocket through PUSH
+ * (lianki-push owns /api/version/chat; the token goes in its first message,
+ * never a header) and `fetchBytes` fetches binary account endpoints (such as
+ * mic recording audio) through `callBytes` with the MCP client audit header.
  */
-function chatIo(env: Env, token: string, tool: string) {
+function toolIo(c: Ctx, env: Env, token: string, tool: string) {
+  const client = `mcp-remote/${SERVER_VERSION} tool=${tool}`;
   return {
     token,
     observeWait: env.observeWait,
+    fetchBytes: (req: Record<string, unknown>) => {
+      const headers = {
+        ...(req.headers && typeof req.headers === "object"
+          ? (req.headers as Record<string, string>)
+          : {}),
+        [CLIENT_HEADER]: client,
+      };
+      return callBytes(c, token, { ...req, headers } as Parameters<typeof callBytes>[2]);
+    },
     openChat: async () => {
       const res = await env.PUSH.fetch(
         new Request(new URL(CHAT_PATH, SITE), {
           headers: {
             upgrade: "websocket",
-            [CLIENT_HEADER]: `mcp-remote/${SERVER_VERSION} tool=${tool}`,
+            [CLIENT_HEADER]: client,
           },
         }),
       );
@@ -300,7 +311,7 @@ async function dispatch(
         t,
         api as never,
         parsed.args as never,
-        chatIo(env, token, t.name),
+        toolIo(c, env, token, t.name),
       );
       // The token itself refused (unknown, expired, revoked): the client should sign in again.
       if (seen.unauthorized) throw new Unauthorized();

@@ -93,6 +93,7 @@ shows each token's permissions, expiry and last use, with one-click Revoke.
 | `chat:write` | post in your own chat (`chat say`, `chat avatar`)           |
 | `chat:ask`   | post question cards in your own chat (`chat ask`)           |
 | `progress`   | report your work to the task list (`progress`); site owners' tokens only |
+| `recordings:read` | read your own mic recordings (`recordings list`, `recordings get`); dev accounts only |
 
 No token can run code, pair a device, answer a card or reach another
 account's chat.
@@ -155,6 +156,22 @@ shows only the name). `--status` is doing, blocked (`--who owner|<name>
 not done, report again within 5 minutes with a new `--eta` and `--late "why"`.
 The hub judges titles, scopes and the ETA rule; its reason comes back as exit 5.
 
+## Recordings
+
+Read your own mic recordings (metadata, transcripts, and WAV clips), with a
+token holding `recordings:read` (dev accounts only; never writes or deletes):
+
+```bash
+lianki recordings list --limit 10 --json
+lianki recordings list --before 1700000000000 --limit 5 --json
+lianki recordings list --day 2026-11-27 --json
+lianki recordings get <id> --out /tmp/recordings --json
+```
+
+`recordings get` saves `<id>.wav` inside `--out` (default `.`) using `wx` and
+refuses to overwrite an existing file (exit 5). `--day` lists one UTC day oldest
+first and cannot be combined with `--before` or `--limit`.
+
 ## Settings
 
 The settings that follow your account (the ones the app syncs between your
@@ -216,6 +233,8 @@ chat.
 | `lianki_chat_say`     | `chat:write` | post a line                                    |
 | `lianki_chat_avatar`  | `chat:write` | set your chat picture (`svg`, or null)         |
 | `lianki_chat_ask`     | `chat:ask`   | post a question card; only your tap answers it |
+| `lianki_recordings_list` | `recordings:read` | list mic recordings metadata and transcripts (`limit`, `before`, `day`) |
+| `lianki_recordings_audio` | `recordings:read` | fetch one recording's WAV audio (`id`) as an audio content block |
 
 Only the tools your token allows are listed. There are no delete tools.
 Results are marked as untrusted data (page titles and chat lines can be
@@ -288,6 +307,8 @@ lianki settings set --help
 | `progress show` | `{ entries, log, history? }`                                                                   |
 | `progress stats`| `{ since, agents: [{ agent, done, estimated, medianRatio?, tasks }] }`                          |
 | `progress history` | `{ items: [{ id, title, agent, endedAt, prs?, doneKind?, evidence? }] }`                    |
+| `recordings list`  | `{ clips: [{ id, day, at, durationMs, bytes, mode, source, device, speaker, text }], more }`, or with `--day` `{ day, clips }` |
+| `recordings get`   | `{ id, mimeType, bytes, file }`: saved as `<id>.wav` in `--out`, never over an existing file   |
 
 Within `v: 1` fields are only ever added; removing or renaming one bumps `v`.
 

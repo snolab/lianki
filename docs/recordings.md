@@ -328,6 +328,32 @@ bun scripts/dev/recordings-pull.ts --day 2026-11-14 --stt ws://127.0.0.1:5193 --
 - **Local only.** The only network calls are reading from lianki.com and the
   local STT socket. Nothing is uploaded anywhere.
 
+## CLI and MCP (`recordings:read`)
+
+The standard `lianki` CLI and MCP servers (local stdio `lianki mcp` and remote
+`https://lianki.com/mcp`) also expose read-only access to the token account's
+own mic recordings when the token holds `recordings:read`:
+
+```bash
+lianki recordings list --limit 10 --json
+lianki recordings list --before 1700000000000 --limit 5 --json
+lianki recordings list --day 2026-11-27 --json
+lianki recordings get <id> --out /tmp/recordings --json   # writes <id>.wav (flag wx; never overwrites)
+```
+
+MCP tools (listed and callable only with `recordings:read`; missing scope returns
+a public approval link without hitting `/api/my/recordings`):
+
+- `lianki_recordings_list` (`{ limit?, before?, day? }`): returns clip metadata
+  and transcripts as untrusted data. To match a spoken chat line's clip, pass
+  `before = timing.t_uploadStart + 1` and `limit = 5`, then pick the clip whose
+  `at` falls in `[t_speechEnd, t_uploadStart]`.
+- `lianki_recordings_audio` (`{ id }`): fetches the clip's WAV audio (bounded by
+  `1,300,000` bytes) and returns an untrusted metadata text block plus an MCP
+  `audio` content block (`audio/wav`, base64).
+
+Neither CLI nor MCP exposes write or delete operations for recordings.
+
 ## Phase 2 (not done)
 
 - A queue that survives a reload (IndexedDB), so clips recorded just before a

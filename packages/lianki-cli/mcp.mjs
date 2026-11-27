@@ -23,7 +23,7 @@ import {
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CliError, EXIT, call, currentToken } from "./cli.mjs";
+import { CliError, EXIT, call, callBytes, currentToken } from "./cli.mjs";
 import {
   CHAT_PATH,
   CLIENT_HEADER,
@@ -116,11 +116,17 @@ export function buildServer(c, token, _initialScopes) {
           isError: true,
           content: [{ type: "text", text: `Invalid arguments: ${parsed.error}` }],
         };
+      const toolHeaders = { [CLIENT_HEADER]: `mcp/${c.deps.version} tool=${t.name}` };
       const api = async (req) => {
-        const headers = { [CLIENT_HEADER]: `mcp/${c.deps.version} tool=${t.name}` };
+        const headers = { ...req.headers, ...toolHeaders };
         return (await call(c, token, { ...req, headers })).data;
       };
-      return await runTool(t, api, parsed.args, io);
+      const toolIo = {
+        ...io,
+        fetchBytes: (req) =>
+          callBytes(c, token, { ...req, headers: { ...req.headers, ...toolHeaders } }),
+      };
+      return await runTool(t, api, parsed.args, toolIo);
     } catch (error) {
       return toolError(error);
     }
