@@ -1,8 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { createLocalStt, localSttRoute, type WsLike } from "../packages/debug-chat/src/local-stt";
+import type { ModelNetwork } from "../packages/debug-chat/src/model-download";
 import {
   DEFAULT_WEBGPU_MODEL_URL,
+  DEFAULT_WEBGPU_ESTIMATED_MB,
+  DEFAULT_WEBGPU_ORT_ESTIMATED_MB,
+  DEFAULT_WEBGPU_ORT_MJS_BYTES,
+  DEFAULT_WEBGPU_ORT_MJS_SHA256,
+  DEFAULT_WEBGPU_ORT_WASM_BYTES,
   DEFAULT_WEBGPU_ORT_WASM_BASE,
+  DEFAULT_WEBGPU_ORT_WASM_SHA256,
+  WEBGPU_ORT_MJS_FILE,
+  WEBGPU_ORT_WASM_FILE,
   WEBGPU_STT_URL,
   createDefaultWebGpuEngine,
   createWebGpuModelManager,
@@ -34,6 +43,25 @@ function memoryCacheApi(): () => Promise<Pick<Cache, "match" | "put" | "delete">
     },
   };
   return async () => api;
+}
+
+// Stand-in ORT runtime files and their pinned hashes: the manager downloads them
+// with the model through the same guard and verifies them.
+const ORT_MJS = new TextEncoder().encode("export default {}");
+const ORT_WASM = new Uint8Array([0, 97, 115, 109]);
+const sha256 = (b: Uint8Array) => new Bun.CryptoHasher("sha256").update(b).digest("hex");
+const ortDeps = { ortMjsSha256: sha256(ORT_MJS), ortWasmSha256: sha256(ORT_WASM) };
+type TestFetch = (url: string, init?: RequestInit) => Promise<Response>;
+function withOrt(f: TestFetch): TestFetch {
+  return (url, init) => {
+    if (init?.method !== "HEAD" && url.endsWith(WEBGPU_ORT_MJS_FILE)) {
+      return Promise.resolve(new Response(ORT_MJS));
+    }
+    if (init?.method !== "HEAD" && url.endsWith(WEBGPU_ORT_WASM_FILE)) {
+      return Promise.resolve(new Response(ORT_WASM));
+    }
+    return f(url, init);
+  };
 }
 
 function fakeEngine(
@@ -137,7 +165,8 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
       onReadyEvent: () => {
         readyEvents++;
       },
-      fetch: async (_url, init) => {
+      ...ortDeps,
+      fetch: withOrt(async (_url, init) => {
         if (init?.method === "HEAD") {
           return new Response(null, {
             status: 200,
@@ -146,12 +175,15 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
         }
         gets++;
         return new Response(payload, { status: 200 });
-      },
+      }),
     });
 
     expect(await mgr.ensureReady()).toBe(true);
-    expect(confirmed).toEqual([{ estimatedMb: 3, risk: "restricted" }]);
-    expect(mgr.snapshot().sizeLabel).toBe("6 B");
+    // Cellular: no HEAD before the confirm, so the fallback total (capped at cacheMb).
+    expect(confirmed).toEqual([{ estimatedMb: 10, risk: "restricted" }]);
+    expect(mgr.snapshot().sizeLabel).toBe(
+      formatModelSize(payload.byteLength + ORT_MJS.byteLength + ORT_WASM.byteLength),
+    );
     expect(gets).toBe(1);
     expect(eng.loads).toBe(1);
     expect(readyEvents).toBe(1);
@@ -178,21 +210,22 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
       probe: async () => ({ supported: true }),
       network: () => ({ online: true, connection: { type: "cellular" } }),
       confirmDownload: () => false,
-      fetch: async (_url, init) => {
+      ...ortDeps,
+      fetch: withOrt(async (_url, init) => {
+        gets++;
         if (init?.method === "HEAD") {
           return new Response(null, {
             status: 200,
             headers: { "content-length": String(40 * 1024 * 1024) },
           });
         }
-        gets++;
         return new Response(new Uint8Array([1, 2]), { status: 200 });
-      },
+      }),
     });
     expect(await mgr.ensureReady()).toBe(false);
     expect(mgr.status()).toBe("blocked");
     expect(gets).toBe(0);
-    expect(mgr.snapshot().sizeLabel).toBe("40.0 MB");
+    expect(mgr.snapshot().sizeLabel).toBeUndefined();
   });
 
   test("rejects downloads exceeding cacheMb limit", async () => {
@@ -201,6 +234,7 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
       cache: memoryCacheApi(),
       engine: fakeEngine(),
       probe: async () => ({ supported: true }),
+      network: () => ({ online: true, connection: { type: "wifi" } }),
       fetch: async () =>
         new Response(new Uint8Array(0), {
           status: 200,
@@ -314,7 +348,8 @@ describe("real lazy WebGPU engine factory & race integration", () => {
       engine: realEngine,
       probe: async () => ({ supported: true }),
       network: () => ({ online: true, connection: { type: "wifi" } }),
-      fetch: async (url, init) => {
+      ...ortDeps,
+      fetch: withOrt(async (url, init) => {
         if (init?.method === "HEAD") {
           return new Response(null, { status: 200, headers: { "content-length": "1024" } });
         }
@@ -322,7 +357,7 @@ describe("real lazy WebGPU engine factory & race integration", () => {
         if (url.endsWith("decoder_model_merged_quantized.onnx")) return new Response(decoderBuf);
         if (url.endsWith("tokenizer.json")) return new Response(tokenizerBytes);
         return new Response(configBytes);
-      },
+      }),
     });
 
     expect(modelAssetUrls(DEFAULT_WEBGPU_MODEL_URL)).toHaveLength(4);
@@ -358,7 +393,8 @@ describe("real lazy WebGPU engine factory & race integration", () => {
       engine: eng,
       probe: async () => ({ supported: true }),
       network: () => ({ online: true, connection: { type: "wifi" } }),
-      fetch: (_url, init) => {
+      ...ortDeps,
+      fetch: withOrt((_url, init) => {
         if (init?.method === "HEAD") {
           return Promise.resolve(
             new Response(null, { status: 200, headers: { "content-length": "3" } }),
@@ -367,7 +403,7 @@ describe("real lazy WebGPU engine factory & race integration", () => {
         return new Promise<Response>((res) => {
           resolveFetch = res;
         });
-      },
+      }),
     });
 
     const events: Record<string, unknown>[] = [];
@@ -450,7 +486,8 @@ describe("real lazy WebGPU engine factory & race integration", () => {
       engine: fakeEngine(),
       probe: async () => ({ supported: true }),
       network: () => ({ online: true, connection: { type: "wifi" } }),
-      fetch: (_url, init) => {
+      ...ortDeps,
+      fetch: withOrt((_url, init) => {
         if (init?.method === "HEAD") {
           return Promise.resolve(new Response(null, { status: 200 }));
         }
@@ -459,7 +496,7 @@ describe("real lazy WebGPU engine factory & race integration", () => {
             rej(Object.assign(new Error("aborted"), { name: "AbortError" })),
           );
         });
-      },
+      }),
     });
     const p = cancelMgr.ensureReady();
     await new Promise((r) => setTimeout(r, 10));
@@ -477,7 +514,8 @@ describe("real lazy WebGPU engine factory & race integration", () => {
       }),
       probe: async () => ({ supported: true }),
       network: () => ({ online: true, connection: { type: "wifi" } }),
-      fetch: async () => new Response(new Uint8Array([1, 2]), { status: 200 }),
+      ...ortDeps,
+      fetch: withOrt(async () => new Response(new Uint8Array([1, 2]), { status: 200 })),
     });
     expect(await errMgr.ensureReady()).toBe(true);
     const sock = openWebGpuStt(errMgr);
@@ -668,9 +706,10 @@ describe("real lazy WebGPU engine factory & race integration", () => {
   });
 });
 
-describe("ORT wasm comes from a pinned CDN, never the Next build", () => {
+describe("ORT runtime: pinned, guarded, verified, handed over as bytes", () => {
   const pkg = require("../package.json") as { dependencies?: Record<string, string> };
-  const fakeOrt = (env: { wasm: { wasmPaths?: unknown } }): OrtLike => ({
+  type Env = { wasm: { wasmPaths?: unknown; wasmBinary?: unknown; numThreads?: number } };
+  const fakeOrt = (env: Env): OrtLike => ({
     env,
     Tensor: class {} as unknown as OrtLike["Tensor"],
     InferenceSession: {
@@ -683,29 +722,493 @@ describe("ORT wasm comes from a pinned CDN, never the Next build", () => {
       },
     },
   });
+  const model = { encoder: new Uint8Array([1]), decoder: new Uint8Array([2]) };
 
-  test("default base is pinned to the exact installed onnxruntime-web", () => {
+  test("defaults are pinned to the exact installed onnxruntime-web", () => {
     const v = pkg.dependencies?.["onnxruntime-web"];
     expect(v).toMatch(/^\d+\.\d+\.\d+$/);
     expect(DEFAULT_WEBGPU_ORT_WASM_BASE).toBe(
       `https://cdn.jsdelivr.net/npm/onnxruntime-web@${v}/dist/`,
     );
+    // The installed files are the ones the CDN serves for that version.
+    const dist = `${import.meta.dir}/../node_modules/onnxruntime-web/dist/`;
+    const fs = require("fs") as typeof import("fs");
+    if (fs.existsSync(dist + WEBGPU_ORT_WASM_FILE)) {
+      expect(sha256(fs.readFileSync(dist + WEBGPU_ORT_MJS_FILE))).toBe(
+        DEFAULT_WEBGPU_ORT_MJS_SHA256,
+      );
+      expect(sha256(fs.readFileSync(dist + WEBGPU_ORT_WASM_FILE))).toBe(
+        DEFAULT_WEBGPU_ORT_WASM_SHA256,
+      );
+    }
   });
 
-  test("load() sets ort.env.wasm.wasmPaths to the default base", async () => {
-    const env: { wasm: { wasmPaths?: unknown } } = { wasm: {} };
-    const engine = createDefaultWebGpuEngine({ importOrt: async () => fakeOrt(env) });
-    await engine.load("m", { encoder: new Uint8Array(1), decoder: new Uint8Array(1) });
-    expect(env.wasm.wasmPaths).toBe(DEFAULT_WEBGPU_ORT_WASM_BASE);
-  });
-
-  test("the manager passes a configured base to the default engine", async () => {
-    const env: { wasm: { wasmPaths?: unknown } } = { wasm: {} };
+  test("load() hands ORT the verified bytes and a module URL, single-threaded, then revokes it", async () => {
+    const env: Env = { wasm: {} };
+    const made: Uint8Array[] = [];
+    let revoked = 0;
     const engine = createDefaultWebGpuEngine({
       importOrt: async () => fakeOrt(env),
-      ortWasmBase: "https://cdn.example/ort/",
+      moduleUrl: (b) => {
+        made.push(b);
+        return { url: "blob:verified-glue", revoke: () => revoked++ };
+      },
     });
-    await engine.load("m", new Uint8Array(1));
-    expect(env.wasm.wasmPaths).toBe("https://cdn.example/ort/");
+    await engine.load("m", { ...model, ortMjs: ORT_MJS, ortWasm: ORT_WASM });
+    expect(env.wasm.wasmBinary).toBe(ORT_WASM);
+    expect(env.wasm.wasmPaths).toEqual({ mjs: "blob:verified-glue" });
+    expect(env.wasm.numThreads).toBe(1);
+    expect(made).toEqual([ORT_MJS]);
+    expect(revoked).toBe(1);
+  });
+
+  test("load() refuses a real ORT without verified runtime bytes (ORT never fetches its own)", async () => {
+    const env: Env = { wasm: {} };
+    const engine = createDefaultWebGpuEngine({ importOrt: async () => fakeOrt(env) });
+    await expect(engine.load("m", model)).rejects.toThrow("webgpu-ort-runtime-unverified");
+    expect(env.wasm.wasmPaths).toBeUndefined();
+  });
+
+  const managerWith = (o: {
+    fetch: TestFetch;
+    engine?: WebGpuEngine;
+    confirm?: (d: { estimatedMb: number }) => boolean;
+    network?: string | (() => ModelNetwork);
+    cache?: ReturnType<typeof memoryCacheApi>;
+    pinned?: boolean;
+  }) =>
+    createWebGpuModelManager({
+      modelUrl: "https://cdn.example/model.onnx",
+      ortWasmBase: "https://cdn.example/ort",
+      ...(o.pinned ? {} : ortDeps),
+      cacheMb: 256,
+      cache: o.cache ?? memoryCacheApi(),
+      engine: o.engine ?? fakeEngine(),
+      probe: async () => ({ supported: true }),
+      network: ((n) =>
+        typeof n === "function" ? n : () => ({ online: true, connection: { type: n ?? "wifi" } }))(
+        o.network,
+      ),
+      ...(o.confirm ? { confirmDownload: o.confirm } : {}),
+      fetch: o.fetch,
+    });
+
+  test("on cellular the confirm total includes the ORT runtime, and nothing is requested first", async () => {
+    let requests = 0;
+    const confirmed: number[] = [];
+    const mgr = managerWith({
+      pinned: true,
+      network: "cellular",
+      confirm: (d) => {
+        confirmed.push(d.estimatedMb);
+        return false;
+      },
+      fetch: async () => {
+        requests++;
+        throw new Error("nothing may be requested before the confirm");
+      },
+    });
+    expect(await mgr.ensureReady()).toBe(false);
+    expect(mgr.status()).toBe("blocked");
+    // Model fallback (44 MB) + runtime (26 MB).
+    expect(confirmed).toEqual([DEFAULT_WEBGPU_ESTIMATED_MB + DEFAULT_WEBGPU_ORT_ESTIMATED_MB]);
+    expect(requests).toBe(0);
+  });
+
+  test("model cached, runtime cold, on cellular: zero requests without a confirm, and none after a refusal", async () => {
+    for (const confirm of [undefined, () => false]) {
+      const cache = memoryCacheApi();
+      const store = await cache();
+      await store.put("https://cdn.example/model.onnx", new Response(new Uint8Array([1, 2, 3])));
+      let requests = 0;
+      const confirmed: number[] = [];
+      const mgr = managerWith({
+        pinned: true,
+        cache,
+        network: "cellular",
+        ...(confirm
+          ? {
+              confirm: (d: { estimatedMb: number }) => {
+                confirmed.push(d.estimatedMb);
+                return confirm();
+              },
+            }
+          : {}),
+        fetch: async () => {
+          requests++;
+          return new Response(null, { status: 200 });
+        },
+      });
+      expect(await mgr.ensureReady()).toBe(false);
+      expect(mgr.status()).toBe("blocked");
+      expect(requests).toBe(0);
+      // Only the runtime is missing: its exact pinned size, 26,874,157 bytes.
+      if (confirm) {
+        expect(confirmed).toEqual([
+          Math.ceil((DEFAULT_WEBGPU_ORT_MJS_BYTES + DEFAULT_WEBGPU_ORT_WASM_BYTES) / (1024 * 1024)),
+        ]);
+      }
+    }
+  });
+
+  test("on an unmetered network the HEAD size covers the model and both runtime files", async () => {
+    const heads: string[] = [];
+    const sizes: Record<string, number> = {
+      "https://cdn.example/model.onnx": 40 * 1024 * 1024,
+      [`https://cdn.example/ort/${WEBGPU_ORT_MJS_FILE}`]: DEFAULT_WEBGPU_ORT_MJS_BYTES,
+      [`https://cdn.example/ort/${WEBGPU_ORT_WASM_FILE}`]: DEFAULT_WEBGPU_ORT_WASM_BYTES,
+    };
+    const mgr = managerWith({
+      fetch: async (url, init) => {
+        heads.push(`${init?.method}:${url}`);
+        return new Response(null, { headers: { "content-length": String(sizes[url] ?? 0) } });
+      },
+    });
+    const est = await mgr.estimateSize();
+    expect(heads.sort()).toEqual(
+      Object.keys(sizes)
+        .map((u) => `HEAD:${u}`)
+        .sort(),
+    );
+    // 41,943,040 + 46,614 + 26,827,543 bytes.
+    expect(est.label).toBe("65.6 MB");
+  });
+
+  test("a runtime file with the wrong SHA-256 is refused and never reaches ORT", async () => {
+    const eng = fakeEngine();
+    const mgr = managerWith({
+      engine: eng,
+      fetch: async (url, init) => {
+        if (init?.method === "HEAD") return new Response(null, { status: 200 });
+        if (url.endsWith(WEBGPU_ORT_WASM_FILE)) return new Response(new Uint8Array([6, 6, 6]));
+        if (url.endsWith(WEBGPU_ORT_MJS_FILE)) return new Response(ORT_MJS);
+        return new Response(new Uint8Array([1, 2]));
+      },
+    });
+    expect(await mgr.ensureReady()).toBe(false);
+    expect(mgr.status()).toBe("error");
+    expect(mgr.snapshot().error).toBe("model-download-digest");
+    expect(eng.loads).toBe(0);
+  });
+
+  test("cancelling during the ORT wasm download stops it and loads nothing", async () => {
+    const eng = fakeEngine();
+    const got: string[] = [];
+    const mgr = managerWith({
+      engine: eng,
+      fetch: (url, init) => {
+        if (init?.method === "HEAD") return Promise.resolve(new Response(null, { status: 200 }));
+        got.push(url);
+        if (!url.endsWith(WEBGPU_ORT_WASM_FILE)) {
+          return Promise.resolve(
+            new Response(url.endsWith(WEBGPU_ORT_MJS_FILE) ? ORT_MJS : new Uint8Array([1])),
+          );
+        }
+        return new Promise((_res, rej) => {
+          init?.signal?.addEventListener("abort", () =>
+            rej(Object.assign(new Error("aborted"), { name: "AbortError" })),
+          );
+        });
+      },
+    });
+    const p = mgr.ensureReady();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(got.at(-1)).toBe(`https://cdn.example/ort/${WEBGPU_ORT_WASM_FILE}`);
+    mgr.cancelDownload();
+    expect(await p).toBe(false);
+    expect(["idle", "blocked"]).toContain(mgr.status());
+    expect(eng.loads).toBe(0);
+  });
+
+  test("the verified runtime bytes reach the engine with the model", async () => {
+    let seen: { ortMjs?: Uint8Array; ortWasm?: Uint8Array } | null = null;
+    const mgr = managerWith({
+      engine: fakeEngine({
+        async load(_id, b) {
+          seen = b as { ortMjs?: Uint8Array; ortWasm?: Uint8Array };
+        },
+      }),
+      fetch: withOrt(async () => new Response(new Uint8Array([1]))),
+    });
+    expect(await mgr.ensureReady()).toBe(true);
+    expect(seen!.ortMjs).toEqual(ORT_MJS);
+    expect(seen!.ortWasm).toEqual(ORT_WASM);
+  });
+
+  const deferredEngine = () => {
+    let finish!: () => void;
+    const eng = fakeEngine();
+    const signals: (AbortSignal | undefined)[] = [];
+    eng.load = (_m, _b, o) =>
+      new Promise<void>((res) => {
+        eng.loads++;
+        signals.push(o?.signal);
+        finish = res;
+      });
+    return { eng, signals, finish: () => finish() };
+  };
+
+  test("a network change during engine.load cancels that load (its signal) and unloads nothing", async () => {
+    let type = "wifi";
+    let onChange: (() => void) | null = null;
+    const connection = {
+      get type() {
+        return type;
+      },
+      addEventListener: (_t: string, fn: () => void) => {
+        onChange = fn;
+      },
+      removeEventListener: () => {
+        onChange = null;
+      },
+    };
+    const { eng, signals, finish } = deferredEngine();
+    const mgr = managerWith({
+      engine: eng,
+      network: () => ({ online: true, connection }),
+      fetch: withOrt(async () => new Response(new Uint8Array([1]))),
+    });
+    const p = mgr.ensureReady();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(eng.loads).toBe(1);
+    type = "cellular";
+    onChange!();
+    expect(await p).toBe(false);
+    expect(mgr.status()).toBe("blocked");
+    expect(signals[0]?.aborted).toBe(true);
+    finish();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(eng.unloads).toBe(0);
+    expect(onChange).toBeNull();
+  });
+
+  test("cancelDownload during engine.load ends it too", async () => {
+    const { eng, signals, finish } = deferredEngine();
+    const mgr = managerWith({
+      engine: eng,
+      fetch: withOrt(async () => new Response(new Uint8Array([1]))),
+    });
+    const p = mgr.ensureReady();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(eng.loads).toBe(1);
+    mgr.cancelDownload();
+    expect(await p).toBe(false);
+    expect(mgr.status()).toBe("idle");
+    expect(signals[0]?.aborted).toBe(true);
+    finish();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(eng.unloads).toBe(0);
+  });
+
+  test("cancel, retry, retry ready, then the old load ends: the ready engine is untouched", async () => {
+    const finishers: (() => void)[] = [];
+    const eng = fakeEngine();
+    eng.load = () =>
+      new Promise<void>((res) => {
+        eng.loads++;
+        finishers.push(res);
+      });
+    const mgr = managerWith({
+      engine: eng,
+      fetch: withOrt(async () => new Response(new Uint8Array([1]))),
+    });
+    const first = mgr.ensureReady();
+    await new Promise((r) => setTimeout(r, 10));
+    mgr.cancelDownload();
+    expect(await first).toBe(false);
+    expect(eng.unloads).toBe(0);
+
+    const retry = mgr.ensureReady();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(eng.loads).toBe(2);
+    finishers[1]!();
+    expect(await retry).toBe(true);
+    expect(mgr.status()).toBe("ready");
+
+    // The cancelled first load ends only now: nothing unloads the retry's engine.
+    finishers[0]!();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(eng.unloads).toBe(0);
+    expect(mgr.status()).toBe("ready");
+  });
+
+  // A real engine over a fake ORT whose session creation the test controls.
+  const controlledOrt = () => {
+    const sessions: { tag: string; released: boolean }[] = [];
+    const pending: { resolve: () => void; reject: (e: Error) => void; tag: string }[] = [];
+    const ort: OrtLike = {
+      Tensor: class {} as unknown as OrtLike["Tensor"],
+      InferenceSession: {
+        create(buf: Uint8Array) {
+          const tag = `${String.fromCharCode(buf[0]!)}${pending.length}`;
+          return new Promise((resolve, reject) => {
+            pending.push({
+              tag,
+              reject,
+              resolve: () => {
+                const s = { tag, released: false };
+                sessions.push(s);
+                resolve({
+                  inputNames: [],
+                  outputNames: [],
+                  async run() {
+                    return {};
+                  },
+                  release() {
+                    s.released = true;
+                  },
+                });
+              },
+            });
+          });
+        },
+      },
+    };
+    return { ort, sessions, pending };
+  };
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const bundleOf = (c: string) => ({
+    encoder: new TextEncoder().encode(`${c}e`),
+    decoder: new TextEncoder().encode(`${c}d`),
+  });
+
+  test("a superseded engine load releases only its own sessions, never the newer ones", async () => {
+    const c = controlledOrt();
+    const engine = createDefaultWebGpuEngine({ importOrt: async () => c.ort });
+    const old = engine.load("m", bundleOf("o"));
+    await tick();
+    c.pending[0]!.resolve(); // old encoder built
+    await tick();
+    await engine.unload?.(); // cancelled while its decoder is still being built
+    const retry = engine.load("m", bundleOf("n"));
+    await tick();
+    c.pending[2]!.resolve(); // retry encoder
+    await tick();
+    c.pending[3]!.resolve(); // retry decoder
+    await retry;
+    c.pending[1]!.resolve(); // old decoder ends last
+    await expect(old).rejects.toThrow("webgpu-load-superseded");
+    const byTag = Object.fromEntries(c.sessions.map((s) => [s.tag, s.released]));
+    expect(byTag).toEqual({ o0: true, o1: true, n2: false, n3: false });
+    // The retry's sessions are the live ones.
+    await expect(engine.final(1, new Float32Array(160))).resolves.toBeDefined();
+  });
+
+  test("by default the verified glue is a blob URL, revoked once the sessions exist", async () => {
+    const env: { wasm: { wasmPaths?: unknown } } = { wasm: {} };
+    const c = controlledOrt();
+    const engine = createDefaultWebGpuEngine({ importOrt: async () => ({ ...c.ort, env }) });
+    const p = engine.load("m", { ...bundleOf("g"), ortMjs: ORT_MJS, ortWasm: ORT_WASM });
+    await tick();
+    const url = (env.wasm.wasmPaths as { mjs: string }).mjs;
+    expect(url.startsWith("blob:")).toBe(true);
+    c.pending[0]!.resolve();
+    await tick();
+    c.pending[1]!.resolve();
+    await p;
+    expect(
+      await fetch(url).then(
+        () => "live",
+        () => "revoked",
+      ),
+    ).toBe("revoked");
+  });
+
+  test("a failed engine load releases its partial session and keeps the ready ones", async () => {
+    const c = controlledOrt();
+    const engine = createDefaultWebGpuEngine({ importOrt: async () => c.ort, maxTokens: 1 });
+    const first = engine.load("m", bundleOf("a"));
+    await tick();
+    c.pending[0]!.resolve();
+    await tick();
+    c.pending[1]!.resolve();
+    await first;
+    const failing = engine.load("m", bundleOf("b"));
+    await tick();
+    c.pending[2]!.resolve(); // encoder built
+    await tick();
+    c.pending[3]!.reject(new Error("decoder-failed"));
+    await expect(failing).rejects.toThrow("decoder-failed");
+    const byTag = Object.fromEntries(c.sessions.map((s) => [s.tag, s.released]));
+    expect(byTag).toEqual({ a0: false, a1: false, b2: true });
+    await expect(engine.final(1, new Float32Array(160))).resolves.toBeDefined();
+  });
+
+  // codex's repro for #1157: an engine with no generation logic of its own.
+  test("a cancelled old load cannot unload a newer ready engine (manager never unloads on cancel)", async () => {
+    let release!: () => void;
+    let started!: () => void;
+    const start = new Promise<void>((r) => (started = r));
+    let calls = 0;
+    let usable = false;
+    let unloads = 0;
+    const engine: WebGpuEngine = {
+      async load() {
+        calls++;
+        if (calls === 1) {
+          started();
+          await new Promise<void>((r) => (release = r));
+        }
+        usable = true;
+      },
+      async final() {
+        if (!usable) throw new Error("unloaded");
+        return { text: "ok" };
+      },
+      unload() {
+        usable = false;
+        unloads++;
+      },
+    };
+    const m = managerWith({
+      engine,
+      fetch: withOrt(async () => new Response(new Uint8Array([1]))),
+    });
+    const first = m.ensureReady();
+    await start;
+    m.cancelDownload();
+    expect(await first).toBe(false);
+    expect(await m.ensureReady()).toBe(true);
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(m.status()).toBe("ready");
+    expect(unloads).toBe(0);
+    expect((await engine.final(1, new Float32Array())).text).toBe("ok");
+  });
+
+  test("the real engine: an aborted load drops its own sessions, the retry's stay live", async () => {
+    const c = controlledOrt();
+    const engine = createDefaultWebGpuEngine({ importOrt: async () => c.ort });
+    const ctrl = new AbortController();
+    const old = engine.load("m", bundleOf("o"), { signal: ctrl.signal });
+    await tick();
+    c.pending[0]!.resolve(); // old encoder
+    await tick();
+    ctrl.abort(); // cancelled while its decoder is being built
+    const retry = engine.load("m", bundleOf("n"));
+    await tick();
+    c.pending[2]!.resolve();
+    await tick();
+    c.pending[3]!.resolve();
+    await retry;
+    c.pending[1]!.resolve(); // the old decoder lands last
+    await expect(old).rejects.toThrow("webgpu-load-superseded");
+    const byTag = Object.fromEntries(c.sessions.map((s) => [s.tag, s.released]));
+    expect(byTag).toEqual({ o0: true, o1: true, n2: false, n3: false });
+    await expect(engine.final(1, new Float32Array(160))).resolves.toBeDefined();
+  });
+
+  test("the real engine: aborting a load after a newer one started changes nothing", async () => {
+    const c = controlledOrt();
+    const engine = createDefaultWebGpuEngine({ importOrt: async () => c.ort });
+    const ctrl = new AbortController();
+    ctrl.abort();
+    const old = engine.load("m", bundleOf("o"), { signal: ctrl.signal });
+    await tick();
+    c.pending[0]!.resolve();
+    await tick();
+    c.pending[1]!.resolve();
+    await expect(old).rejects.toThrow("webgpu-load-superseded");
+    expect(c.sessions.every((s) => s.released)).toBe(true);
   });
 });

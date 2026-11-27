@@ -20,10 +20,41 @@ export function browserModelNetwork(): ModelNetwork {
   return { connection: n?.connection ?? n?.mozConnection ?? n?.webkitConnection, online: n?.onLine };
 }
 const networkKey = (n: ModelNetwork) => JSON.stringify([n.online, n.connection?.type, n.connection?.saveData, n.connection?.metered, n.connection?.effectiveType]);
-export type ModelAsset = { url: string; sha256?: string };
+/** `bytes`: the exact size when known in advance (pinned files), so the confirm total needs no request. */
+export type ModelAsset = { url: string; sha256?: string; bytes?: number };
 export type ModelAssetBytes = { url: string; bytes: ArrayBuffer; downloaded?: boolean };
 export class ModelDownloadBlocked extends Error {
   constructor() { super("model-download-blocked"); }
+}
+
+/**
+ * Cancels (calls `onCancel`) when the page goes offline, or the connection
+ * changes to anything but an unmetered one. Returns the function that stops
+ * watching. Used for the download and for the load after it.
+ */
+export function watchModelNetwork(o: {
+  network?: () => ModelNetwork;
+  events?: Pick<Window, "addEventListener" | "removeEventListener">;
+  onCancel: () => void;
+}): () => void {
+  const network = o.network ?? browserModelNetwork;
+  const events = o.events ?? globalThis.window;
+  const initial = network();
+  const connection = initial.connection;
+  const key = networkKey(initial);
+  const cancel = () => o.onCancel();
+  const changed = () => {
+    const current = network();
+    if (current.online === false || (modelDownloadRisk(current) !== "unmetered" && networkKey(current) !== key)) cancel();
+  };
+  connection?.addEventListener?.("change", changed);
+  events?.addEventListener("offline", cancel);
+  events?.addEventListener("online", changed);
+  return () => {
+    connection?.removeEventListener?.("change", changed);
+    events?.removeEventListener("offline", cancel);
+    events?.removeEventListener("online", changed);
+  };
 }
 
 /**
@@ -64,6 +95,11 @@ export async function downloadModelAssets(o: {
     missing.push(asset);
   }
   if (!missing.length) return results;
+  // Only what is missing is downloaded: when every missing file's size is known, that is the total.
+  const known = missing.every((a) => typeof a.bytes === "number" && a.bytes > 0);
+  const estimatedMb = known
+    ? Math.max(1, Math.ceil(missing.reduce((n, a) => n + (a.bytes ?? 0), 0) / (1024 * 1024)))
+    : o.estimatedMb;
   const controller = new AbortController();
   const events = o.events ?? globalThis.window;
   const initial = network();
@@ -81,12 +117,12 @@ export async function downloadModelAssets(o: {
   try {
     if (o.signal?.aborted) cancel();
     if (initial.online === false) throw new ModelDownloadBlocked();
-    if (!Number.isFinite(o.estimatedMb) || o.estimatedMb <= 0) throw new ModelDownloadBlocked();
+    if (!Number.isFinite(estimatedMb) || estimatedMb <= 0) throw new ModelDownloadBlocked();
     const risk = modelDownloadRisk(initial);
     if (risk !== "unmetered") {
       // No confirmation UI, a UI failure, or refusal: keep cloud STT, fetch nothing.
       let yes = false;
-      try { yes = (await o.confirm?.({ estimatedMb: o.estimatedMb, risk })) === true; } catch {}
+      try { yes = (await o.confirm?.({ estimatedMb, risk })) === true; } catch {}
       if (!yes) throw new ModelDownloadBlocked();
     }
     changed();
