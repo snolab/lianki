@@ -995,4 +995,138 @@ describe("ORT runtime: pinned, guarded, verified, handed over as bytes", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(eng.unloads).toBe(1);
   });
+
+  test("cancel, retry, retry ready, then the old load ends: the ready engine is untouched", async () => {
+    const finishers: (() => void)[] = [];
+    const eng = fakeEngine();
+    eng.load = () =>
+      new Promise<void>((res) => {
+        eng.loads++;
+        finishers.push(res);
+      });
+    const mgr = managerWith({
+      engine: eng,
+      fetch: withOrt(async () => new Response(new Uint8Array([1]))),
+    });
+    const first = mgr.ensureReady();
+    await new Promise((r) => setTimeout(r, 10));
+    mgr.cancelDownload();
+    expect(await first).toBe(false);
+    expect(eng.unloads).toBe(1);
+
+    const retry = mgr.ensureReady();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(eng.loads).toBe(2);
+    finishers[1]!();
+    expect(await retry).toBe(true);
+    expect(mgr.status()).toBe("ready");
+
+    // The cancelled first load ends only now: nothing unloads the retry's engine.
+    finishers[0]!();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(eng.unloads).toBe(1);
+    expect(mgr.status()).toBe("ready");
+  });
+
+  // A real engine over a fake ORT whose session creation the test controls.
+  const controlledOrt = () => {
+    const sessions: { tag: string; released: boolean }[] = [];
+    const pending: { resolve: () => void; reject: (e: Error) => void; tag: string }[] = [];
+    const ort: OrtLike = {
+      Tensor: class {} as unknown as OrtLike["Tensor"],
+      InferenceSession: {
+        create(buf: Uint8Array) {
+          const tag = `${String.fromCharCode(buf[0]!)}${pending.length}`;
+          return new Promise((resolve, reject) => {
+            pending.push({
+              tag,
+              reject,
+              resolve: () => {
+                const s = { tag, released: false };
+                sessions.push(s);
+                resolve({
+                  inputNames: [],
+                  outputNames: [],
+                  async run() {
+                    return {};
+                  },
+                  release() {
+                    s.released = true;
+                  },
+                });
+              },
+            });
+          });
+        },
+      },
+    };
+    return { ort, sessions, pending };
+  };
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const bundleOf = (c: string) => ({
+    encoder: new TextEncoder().encode(`${c}e`),
+    decoder: new TextEncoder().encode(`${c}d`),
+  });
+
+  test("a superseded engine load releases only its own sessions, never the newer ones", async () => {
+    const c = controlledOrt();
+    const engine = createDefaultWebGpuEngine({ importOrt: async () => c.ort });
+    const old = engine.load("m", bundleOf("o"));
+    await tick();
+    c.pending[0]!.resolve(); // old encoder built
+    await tick();
+    await engine.unload?.(); // cancelled while its decoder is still being built
+    const retry = engine.load("m", bundleOf("n"));
+    await tick();
+    c.pending[2]!.resolve(); // retry encoder
+    await tick();
+    c.pending[3]!.resolve(); // retry decoder
+    await retry;
+    c.pending[1]!.resolve(); // old decoder ends last
+    await expect(old).rejects.toThrow("webgpu-load-superseded");
+    const byTag = Object.fromEntries(c.sessions.map((s) => [s.tag, s.released]));
+    expect(byTag).toEqual({ o0: true, o1: true, n2: false, n3: false });
+    // The retry's sessions are the live ones.
+    await expect(engine.final(1, new Float32Array(160))).resolves.toBeDefined();
+  });
+
+  test("by default the verified glue is a blob URL, revoked once the sessions exist", async () => {
+    const env: { wasm: { wasmPaths?: unknown } } = { wasm: {} };
+    const c = controlledOrt();
+    const engine = createDefaultWebGpuEngine({ importOrt: async () => ({ ...c.ort, env }) });
+    const p = engine.load("m", { ...bundleOf("g"), ortMjs: ORT_MJS, ortWasm: ORT_WASM });
+    await tick();
+    const url = (env.wasm.wasmPaths as { mjs: string }).mjs;
+    expect(url.startsWith("blob:")).toBe(true);
+    c.pending[0]!.resolve();
+    await tick();
+    c.pending[1]!.resolve();
+    await p;
+    expect(
+      await fetch(url).then(
+        () => "live",
+        () => "revoked",
+      ),
+    ).toBe("revoked");
+  });
+
+  test("a failed engine load releases its partial session and keeps the ready ones", async () => {
+    const c = controlledOrt();
+    const engine = createDefaultWebGpuEngine({ importOrt: async () => c.ort, maxTokens: 1 });
+    const first = engine.load("m", bundleOf("a"));
+    await tick();
+    c.pending[0]!.resolve();
+    await tick();
+    c.pending[1]!.resolve();
+    await first;
+    const failing = engine.load("m", bundleOf("b"));
+    await tick();
+    c.pending[2]!.resolve(); // encoder built
+    await tick();
+    c.pending[3]!.reject(new Error("decoder-failed"));
+    await expect(failing).rejects.toThrow("decoder-failed");
+    const byTag = Object.fromEntries(c.sessions.map((s) => [s.tag, s.released]));
+    expect(byTag).toEqual({ a0: false, a1: false, b2: true });
+    await expect(engine.final(1, new Float32Array(160))).resolves.toBeDefined();
+  });
 });

@@ -435,9 +435,21 @@ export function createDefaultWebGpuEngine(opts: {
   let tokenizer: WhisperTokenizer | null = null;
   let numHeads = 6;
   let headDim = 64;
+  // Each load is one generation. Only the latest may install its sessions; a
+  // load that was superseded (by unload() or a newer load) or that failed
+  // releases only the sessions it built itself.
+  let generation = 0;
+  const release = async (...xs: (OrtSessionLike | null)[]) => {
+    for (const x of xs) {
+      try {
+        await x?.release?.();
+      } catch {}
+    }
+  };
 
   return {
     async load(_modelId, input) {
+      const gen = ++generation;
       ort ??= await importOrt();
       const bundle: WhisperModelBundle =
         input instanceof Uint8Array ? { encoder: input, decoder: input } : input;
@@ -453,7 +465,9 @@ export function createDefaultWebGpuEngine(opts: {
         // Threads would spawn workers from the glue URL; one thread loads nothing else.
         ort.env.wasm.numThreads = 1;
       }
-      tokenizer = parseWhisperTokenizer(bundle.tokenizerJson, bundle.configJson);
+      const tok = parseWhisperTokenizer(bundle.tokenizerJson, bundle.configJson);
+      let heads = 6;
+      let dim = 64;
       if (bundle.configJson?.byteLength) {
         try {
           const cfg = JSON.parse(new TextDecoder().decode(bundle.configJson)) as {
@@ -461,23 +475,40 @@ export function createDefaultWebGpuEngine(opts: {
             d_model?: number;
           };
           if (typeof cfg.decoder_attention_heads === "number" && cfg.decoder_attention_heads > 0) {
-            numHeads = cfg.decoder_attention_heads;
+            heads = cfg.decoder_attention_heads;
           }
-          if (typeof cfg.d_model === "number" && numHeads > 0) {
-            headDim = Math.floor(cfg.d_model / numHeads);
+          if (typeof cfg.d_model === "number" && heads > 0) {
+            dim = Math.floor(cfg.d_model / heads);
           }
         } catch {}
       }
+      let enc: OrtSessionLike | null = null;
+      let dec: OrtSessionLike | null = null;
       try {
-        encoderSession = await ort.InferenceSession.create(bundle.encoder, {
+        enc = await ort.InferenceSession.create(bundle.encoder, {
           executionProviders: ["webgpu"],
         });
-        decoderSession = await ort.InferenceSession.create(bundle.decoder, {
+        dec = await ort.InferenceSession.create(bundle.decoder, {
           executionProviders: ["webgpu"],
         });
+      } catch (e) {
+        await release(enc);
+        throw e;
       } finally {
         glue?.revoke();
       }
+      if (gen !== generation) {
+        await release(enc, dec);
+        throw new Error("webgpu-load-superseded");
+      }
+      const prevEnc = encoderSession;
+      const prevDec = decoderSession;
+      encoderSession = enc;
+      decoderSession = dec;
+      tokenizer = tok;
+      numHeads = heads;
+      headDim = dim;
+      await release(prevEnc, prevDec);
     },
     async final(_utteranceId, pcm) {
       if (!ort || !encoderSession || !decoderSession || !tokenizer) {
@@ -553,11 +584,13 @@ export function createDefaultWebGpuEngine(opts: {
       return { text: decodeWhisperTokens(ids, tokenizer) };
     },
     async unload() {
+      // An in-flight load is superseded: it releases its own sessions when it ends.
+      generation++;
       const enc = encoderSession;
       const dec = decoderSession;
       encoderSession = null;
       decoderSession = null;
-      await Promise.all([enc?.release?.(), dec?.release?.()]);
+      await release(enc, dec);
     },
   };
 }
@@ -841,8 +874,10 @@ export function createWebGpuModelManager(deps: WebGpuManagerDeps = {}) {
         ctrl.signal.addEventListener("abort", () => res("aborted"), { once: true });
       });
       if ((await Promise.race([loading, aborted])) === "aborted") {
-        // Release whatever the load still finishes building.
-        void loading.then(() => engine.unload?.()).catch(() => {});
+        // Unload now, never later: a late unload would hit the engine a retry made
+        // ready. The superseded load releases what it still builds itself.
+        loading.catch(() => {});
+        void Promise.resolve(engine.unload?.()).catch(() => {});
         status = ctrl.signal.reason instanceof ModelDownloadBlocked ? "blocked" : "idle";
         error = status === "blocked" ? "model-download-blocked" : undefined;
         emit();
