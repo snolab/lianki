@@ -521,9 +521,13 @@ export const TOOLS = [
     description:
       "List metadata and transcripts of the user's own mic recordings, newest first (or one UTC day via `day`). " +
       "To match a spoken chat line's recording, pass `before = timing.t_uploadStart + 1` and `limit = 5`, then pick the clip whose `at` lies in `[t_speechEnd, t_uploadStart]`.",
+    metadataOnlyDescription:
+      "List metadata only (`id`, `at`, `durationMs`) of the user's own mic recordings, newest first (or one UTC day via `day`). " +
+      "To match a spoken chat line's recording, pass `before = timing.t_uploadStart + 1` and `limit = 5`, then pick the clip whose `at` lies in `[t_speechEnd, t_uploadStart]`. " +
+      "Transcripts and raw audio are withheld by default because local stdio transport does not guarantee local inference; opt in explicitly via `--allow-audio` or `LIANKI_MCP_ALLOW_AUDIO=1` (sends recordings to whatever model reads this MCP), or use `lianki recordings list` / `lianki recordings get` locally.",
     remoteDescription:
       "List metadata only (id, timestamp, durationMs) of the user's own mic recordings, newest first (or one UTC day via `day`). " +
-      "Transcripts and audio are only available locally via the CLI (or local stdio `lianki mcp`, with explicit opt-in for raw audio).",
+      "Transcripts and audio are only available locally via the CLI (or local stdio `lianki mcp` with explicit opt-in via `--allow-audio` or `LIANKI_MCP_ALLOW_AUDIO=1`).",
     input: {
       limit: z
         .number()
@@ -551,7 +555,7 @@ export const TOOLS = [
     run: async (api, a, io) => {
       const query = recordingsListQuery(a);
       const d = await api({ path: RECORDINGS_PATH, query });
-      const shape = io?.remote ? remoteClipMetadata : clipSummary;
+      const shape = !io?.remote && io?.allowAudio ? clipSummary : remoteClipMetadata;
       const clips = (Array.isArray(d.clips) ? d.clips : []).map(shape);
       return query.day ? { day: d.day ?? query.day, clips } : { clips, more: Boolean(d.more) };
     },

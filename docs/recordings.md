@@ -341,31 +341,38 @@ lianki recordings list --day 2026-11-27 --json
 lianki recordings get <id> --out /tmp/recordings --json   # downloads <id>.wav locally (flag wx; never overwrites)
 ```
 
-**Cloud disclosure boundary (CLI vs local stdio `lianki mcp` vs remote `/mcp`):**
-both remote MCP clients at `https://lianki.com/mcp` and most local stdio MCP
-clients (Claude Code, Codex, Gemini CLI) are backed by cloud models, so
-returning raw audio bytes over MCP sends recordings to the cloud. Therefore:
+**Cloud disclosure boundary (local transport ≠ local inference):**
+a **local transport (stdio)** does **not** guarantee **local inference** — most
+local stdio MCP clients (Claude Code, Codex, Gemini CLI) forward tool results
+to cloud-hosted models, just as remote MCP clients at `https://lianki.com/mcp`
+do. Returning transcripts or raw audio bytes over MCP therefore sends
+recordings to whatever model reads that MCP. Accordingly:
 
 - **Plain local CLI** (`lianki recordings list`, `lianki recordings get <id> --out <dir>`):
-  - Always allowed with `recordings:read`: downloads the clip's WAV directly to
-    a local file without sending audio to any model.
-- **Local stdio `lianki mcp`** (`recordings:read`):
-  - `lianki_recordings_list` (`{ limit?, before?, day? }`): returns full clip
-    metadata and transcripts as untrusted data. To match a spoken chat line's
-    clip, pass `before = timing.t_uploadStart + 1` and `limit = 5`, then pick
-    the clip whose `at` falls in `[t_speechEnd, t_uploadStart]`.
-  - `lianki_recordings_audio` (`{ id }`): **off by default** on local stdio MCP.
-    Enable only by explicit opt-in via `lianki mcp --allow-audio` or
-    `LIANKI_MCP_ALLOW_AUDIO=1` — **sends recordings to whatever model reads this
-    MCP**. Without that opt-in, `lianki_recordings_audio` is omitted from
-    `tools/list`, no binary audio fetcher is wired into stdio MCP, and any
-    direct call is refused (`audio_opt_in_required`) without hitting
-    `/api/my/recordings`. When opted in, it fetches the clip's WAV audio
-    (streamed with a hard `1,300,000`-byte cap) and returns an untrusted
+  - Always allowed locally with `recordings:read` and **never** requires an
+    opt-in: `recordings list` returns full metadata + transcripts locally, and
+    `recordings get` downloads the clip's WAV directly to a local file (`wx`,
+    never overwrites) without sending recordings to any model.
+- **Local stdio `lianki mcp` (default, no opt-in)** (`recordings:read`):
+  - `lianki_recordings_list` (`{ limit?, before?, day? }`): returns non-content
+    metadata only (`id`, `at`, `durationMs` — no transcripts, no `speaker` /
+    `device` / `mode` / `source`), matching remote `/mcp`. To match a spoken
+    chat line's clip, pass `before = timing.t_uploadStart + 1` and `limit = 5`,
+    then pick the clip whose `at` falls in `[t_speechEnd, t_uploadStart]`.
+  - `lianki_recordings_audio` (`{ id }`): omitted from `tools/list`, no binary
+    audio fetcher is wired into stdio MCP, and any direct call is refused
+    (`audio_opt_in_required`) before hitting `/api/my/recordings`.
+- **Local stdio `lianki mcp` with explicit opt-in** (`lianki mcp --allow-audio`
+  or `LIANKI_MCP_ALLOW_AUDIO=1` — **sends recordings to whatever model reads
+  this MCP**):
+  - `lianki_recordings_list` returns full clip metadata and transcripts as
+    untrusted data.
+  - `lianki_recordings_audio` is listed and fetches the clip's WAV audio
+    (streamed with a hard `1,300,000`-byte cap), returning an untrusted
     metadata text block plus an MCP `audio` content block (`audio/wav`, base64).
 - **Remote `https://lianki.com/mcp`** (`recordings:read`):
-  - `lianki_recordings_list` returns non-content metadata only (`id`, `at`,
-    `durationMs` — never transcripts, speaker/device details, or audio).
+  - `lianki_recordings_list` always returns non-content metadata only (`id`,
+    `at`, `durationMs` — never transcripts, speaker/device details, or audio).
   - `lianki_recordings_audio` is always omitted from `tools/list`, and any
     direct call is refused with `"audio is only available locally"` without
     fetching audio bytes from `/api/my/recordings` (the remote MCP Worker has no

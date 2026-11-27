@@ -93,7 +93,7 @@ shows each token's permissions, expiry and last use, with one-click Revoke.
 | `chat:write` | post in your own chat (`chat say`, `chat avatar`)           |
 | `chat:ask`   | post question cards in your own chat (`chat ask`)           |
 | `progress`   | report your work to the task list (`progress`); site owners' tokens only |
-| `recordings:read` | read your own mic recordings locally (`recordings list`, `recordings get`, local stdio `lianki mcp` — raw audio over stdio MCP is off by default and requires `--allow-audio` or `LIANKI_MCP_ALLOW_AUDIO=1`); remote `/mcp` exposes metadata only (`id`, `at`, `durationMs`) and refuses audio; dev accounts only |
+| `recordings:read` | read your own mic recordings locally (`recordings list`, `recordings get`, always allowed locally without opt-in); on local stdio `lianki mcp`, default is metadata only (`id`, `at`, `durationMs`) with transcripts and raw audio withheld unless opted in via `--allow-audio` or `LIANKI_MCP_ALLOW_AUDIO=1` (sends recordings to whatever model reads this MCP); remote `/mcp` is always metadata only and always refuses audio; dev accounts only |
 
 No token can run code, pair a device, answer a card or reach another
 account's chat.
@@ -169,15 +169,26 @@ lianki recordings get <id> --out /tmp/recordings --json
 ```
 
 `recordings get` downloads `<id>.wav` locally inside `--out` (default `.`) using
-`wx` and refuses to overwrite an existing file (exit 5); this plain CLI download
-to a local file is always allowed with `recordings:read`. `--day` lists one UTC
-day oldest first and cannot be combined with `--before` or `--limit`. On local
-stdio `lianki mcp`, raw audio output (`lianki_recordings_audio`) is **off by
-default** because MCP clients are usually cloud models; opt in explicitly via
-`lianki mcp --allow-audio` or `LIANKI_MCP_ALLOW_AUDIO=1` (**sends recordings to
-whatever model reads this MCP**). Remote `https://lianki.com/mcp` exposes
-recording metadata only (`id`, `at`, `durationMs`) and always refuses
-`lianki_recordings_audio` with `"audio is only available locally"`.
+`wx` and refuses to overwrite an existing file (exit 5). `--day` lists one UTC
+day oldest first and cannot be combined with `--before` or `--limit`.
+
+**Local transport (stdio) ≠ local inference:** cloud-hosted models behind MCP
+clients (Claude Code, Codex, Gemini CLI) consume stdio tool output, so MCP
+defaults to metadata only:
+
+- **Plain CLI** (`lianki recordings list`, `lianki recordings get`): always
+  allowed locally with `recordings:read` without any opt-in (full transcripts and
+  local WAV download).
+- **Local stdio `lianki mcp` (default):** `lianki_recordings_list` returns
+  metadata only (`id`, `at`, `durationMs` — no transcripts) and
+  `lianki_recordings_audio` is omitted and refused before any fetch.
+- **Local stdio `lianki mcp` with explicit opt-in** (`lianki mcp --allow-audio`
+  or `LIANKI_MCP_ALLOW_AUDIO=1`): returns transcripts on `lianki_recordings_list`
+  and exposes `lianki_recordings_audio` (**sends recordings to whatever model
+  reads this MCP**).
+- **Remote `https://lianki.com/mcp`:** always metadata only (`id`, `at`,
+  `durationMs`) and always refuses `lianki_recordings_audio` with
+  `"audio is only available locally"`.
 
 ## Settings
 
@@ -240,7 +251,7 @@ chat.
 | `lianki_chat_say`     | `chat:write` | post a line                                    |
 | `lianki_chat_avatar`  | `chat:write` | set your chat picture (`svg`, or null)         |
 | `lianki_chat_ask`     | `chat:ask`   | post a question card; only your tap answers it |
-| `lianki_recordings_list` | `recordings:read` | list mic recordings (`limit`, `before`, `day`; full metadata + transcripts locally, metadata only `id`/`at`/`durationMs` on remote `/mcp`) |
+| `lianki_recordings_list` | `recordings:read` | list mic recordings (`limit`, `before`, `day`); metadata only (`id`, `at`, `durationMs`) by default on local stdio `lianki mcp` and always on remote `/mcp`; transcripts require local stdio opt-in via `--allow-audio` or `LIANKI_MCP_ALLOW_AUDIO=1` (sends recordings to whatever model reads this MCP) |
 | `lianki_recordings_audio` | `recordings:read` | fetch one recording's WAV audio (`id`) as an audio content block (local stdio `lianki mcp` only, off by default — opt in via `--allow-audio` or `LIANKI_MCP_ALLOW_AUDIO=1`: sends recordings to whatever model reads this MCP; always omitted and refused on remote `/mcp`) |
 
 Only the tools your token allows are listed. There are no delete tools.

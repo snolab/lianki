@@ -98,7 +98,7 @@ export function buildServer(c, token, _initialScopes) {
         tools: toolsFor(identity.scopes, { allowAudio }).map((t) => ({
           name: t.name,
           title: t.title,
-          description: `${t.description} ${UNTRUSTED_NOTE}`,
+          description: `${!allowAudio && t.metadataOnlyDescription ? t.metadataOnlyDescription : t.description} ${UNTRUSTED_NOTE}`,
           inputSchema: inputJsonSchema(t),
           annotations: t.annotations,
         })),

@@ -1514,10 +1514,17 @@ function build(args, deps, box) {
               type: "boolean",
               default: false,
               describe:
-                "Allow lianki_recordings_audio over stdio MCP (sends recordings to whatever model reads this MCP)",
+                "Expose recording transcripts (lianki_recordings_list) and WAV audio (lianki_recordings_audio) over stdio MCP (sends recordings to whatever model reads this MCP)",
             })
             .epilogue(
-              "Tools for your cards and chat, only those the token allows; no deletes. Uses the token from `lianki auth login` (or LIANKI_TOKEN). Raw recording audio is off by default (opt in with --allow-audio or LIANKI_MCP_ALLOW_AUDIO=1, which sends recordings to whatever model reads this MCP). stdout is the protocol; messages go to stderr.",
+              "Tools for your cards and chat, only those the token allows; no deletes.\n" +
+                "Uses the token from `lianki auth login` (or LIANKI_TOKEN).\n" +
+                "By default, stdio `lianki mcp` exposes recording metadata only (`id`, `at`, `durationMs`)\n" +
+                "and withholds both transcripts and raw audio (local stdio transport does not\n" +
+                "guarantee local inference). Opt in with --allow-audio or LIANKI_MCP_ALLOW_AUDIO=1\n" +
+                "(sends recordings to whatever model reads this MCP).\n" +
+                "Plain `lianki recordings list` and `lianki recordings get` always work locally.\n" +
+                "stdout is the protocol; messages go to stderr.",
             ),
           [
             ["claude mcp add lianki -- npx -y lianki mcp", "Claude Code"],

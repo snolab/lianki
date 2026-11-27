@@ -1747,23 +1747,43 @@ describe("recordings", () => {
     expect(overErr.out + overErr.err).not.toContain(TOKEN);
   });
 
-  test("plain recordings get works without LIANKI_MCP_ALLOW_AUDIO and mcp --help documents --allow-audio", async () => {
+  test("plain recordings list and get work without LIANKI_MCP_ALLOW_AUDIO and mcp --help documents metadata-only default and --allow-audio", async () => {
     const noOptEnv: Record<string, string> = { ...env };
     delete noOptEnv.LIANKI_MCP_ALLOW_AUDIO;
     expect(noOptEnv.LIANKI_MCP_ALLOW_AUDIO).toBeUndefined();
     const h = harness({
       env: noOptEnv,
       server: {
-        "GET /api/my/recordings": () =>
-          new Response(SYNTH_WAV, {
-            status: 200,
-            headers: {
-              "content-type": "audio/wav",
-              "content-length": String(SYNTH_WAV.length),
-            },
-          }),
+        "GET /api/my/recordings": (c) => {
+          const p = new URLSearchParams(c.query);
+          if (p.has("clip")) {
+            return new Response(SYNTH_WAV, {
+              status: 200,
+              headers: {
+                "content-type": "audio/wav",
+                "content-length": String(SYNTH_WAV.length),
+              },
+            });
+          }
+          return json({ clips: [SAMPLE_CLIP], more: false });
+        },
       },
     });
+    const listed = await h.run("recordings", "list", "--json");
+    expect(listed.code).toBe(0);
+    expect(envelope(listed.out).data.clips[0]).toEqual({
+      id: CLIP_ID,
+      day: "2026-11-27",
+      at: SAMPLE_CLIP.at,
+      durationMs: 2400,
+      bytes: SYNTH_WAV.length,
+      mode: "active",
+      source: "local",
+      device: "mac",
+      speaker: "me",
+      text: "synthetic test transcript",
+    });
+
     const out = join(tmp(), "plain-cli-out");
     const dl = await h.run("recordings", "get", CLIP_ID, "--out", out, "--json");
     expect(dl.code).toBe(0);
@@ -1772,6 +1792,10 @@ describe("recordings", () => {
     const help = await h.run("mcp", "--help");
     expect(help.code).toBe(0);
     expect(help.out).toContain("--allow-audio");
+    expect(help.out).toContain("LIANKI_MCP_ALLOW_AUDIO=1");
+    expect(help.out).toContain("metadata only");
+    expect(help.out).toContain("transcripts");
+    expect(help.out).toContain("local inference");
     expect(help.out).toContain("sends recordings to whatever model reads this MCP");
   });
 });

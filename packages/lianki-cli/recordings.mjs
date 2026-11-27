@@ -71,7 +71,7 @@ export function clipSummary(x) {
   };
 }
 
-/** Remote MCP metadata only: never exposes transcripts, audio, or device/speaker details to cloud clients. */
+/** Metadata-only clip shape (remote /mcp and default stdio MCP): never exposes transcripts, audio, or device/speaker details without opt-in. */
 export function remoteClipMetadata(x) {
   return {
     id: x.id,
