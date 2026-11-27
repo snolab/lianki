@@ -18,6 +18,10 @@ import { isLaneId, laneOf, laneSpec } from "../../packages/debug-chat/src/voices
 import { lanesConfig } from "../../lib/lanes-config";
 import { SPEND_ALERT_LABEL } from "../../lib/payments/spend-alert-config";
 import { ownerClock, ownerTag } from "./owner-time";
+import {
+  partnerCoordination,
+  coordinationNote,
+} from "../../packages/lianki-cli/chat-coordination.mjs";
 
 /** Where a lane's token is kept on this Mac. */
 export const laneTokenDir = (env: Record<string, string | undefined> = process.env) =>
@@ -172,7 +176,7 @@ function agentFields(m: Record<string, unknown>): Partial<Line> {
   const sender = (known && laneSpec(known).name) || (known === "main" ? "Li" : "") || senderLane;
   return {
     kind: "agent",
-    text: r.text,
+    text: r.text + (partnerCoordination(m) ? coordinationNote(partnerCoordination(m)) : ""),
     ...(sender ? { sender } : {}),
     ...(senderLane ? { senderLane } : {}),
   };

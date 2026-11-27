@@ -413,6 +413,26 @@ export class ProgressHub {
 
   async fetch(req: Request): Promise<Response> {
     const path = new URL(req.url).pathname;
+    // Only the main Worker's service binding reaches this path through index.ts.
+    // The caller has already checked the verified account's dev permission.
+    if (
+      path === "/internal/partner-state" &&
+      req.method === "GET" &&
+      new URL(req.url).hostname === "lianki-push"
+    ) {
+      const entries = [...(await this.all()).values()]
+        .filter((e) => e.status !== "done")
+        .sort((a, b) => b.at - a.at)
+        .slice(0, 8)
+        .map((e) => ({
+          id: e.id,
+          task: e.task.slice(0, 120),
+          status: e.status,
+          pct: e.pct,
+          at: e.at,
+        }));
+      return json({ at: this.now(), entries });
+    }
     if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
       if (req.headers.has(PROGRESS_BOX_HEADER)) return this.connectBox(req);
       if (req.headers.get(PROGRESS_OWNER_HEADER) !== "1")

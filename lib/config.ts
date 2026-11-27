@@ -4,6 +4,10 @@ import { HUB_RPC_LIMITS } from "./hub-rpc-config";
 import {
   CAP_WINDOW_HOURS,
   CAP_WINDOW_MAX,
+  PARTNER_TURN_DELAY_MS,
+  PARTNER_TURN_DELAY_MAX,
+  PARTNER_TURN_WAIT_MS,
+  PARTNER_TURN_WAIT_MAX,
   OWNER_AGENT_NAMES,
   OWNER_DEV_WORDS,
   OWNER_LANGUAGE_INTENTS,
@@ -2239,6 +2243,26 @@ export const CONFIG = {
     audience: "server",
     description:
       "你自己的线程里，Li（模型）等多少毫秒再回复：这段时间里有开发通道回复，Li 就不说话。默认 30000 = 30 秒。开关在 /dev/flags 的 partner.owner-thread。",
+  }),
+  "partner.turnPauseMs": int({
+    default: PARTNER_TURN_DELAY_MS,
+    min: 0,
+    max: PARTNER_TURN_DELAY_MAX,
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description:
+      "统一学习伙伴流程（partner.standard-flow）：连续语音停顿多少毫秒后一起回答，默认 8000 = 8 秒。打字的完整消息立即处理；达到一轮上限则提前处理。",
+  }),
+  "partner.turnMaxWaitMs": int({
+    default: PARTNER_TURN_WAIT_MS,
+    min: 0,
+    max: PARTNER_TURN_WAIT_MAX,
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description:
+      "统一学习伙伴流程：即使一直在说话，一轮最多等待多少毫秒再处理，默认 30000 = 30 秒。设为 0 立即处理；不改变原话实时发给助手的路径。",
   }),
   "partner.ownerQuietMs": int({
     default: OWNER_QUIET_MS,

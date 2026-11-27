@@ -1,13 +1,60 @@
 # Learning Partner: AI replies for users
 
-Owner decision, 2026-11-03 22:30 JST: "做 DEEPSEEK". For every signed-in user
-**other than the owner**, the Learning Partner chat is answered server-side by
-DeepSeek on Cloudflare Workers AI. The owner's thread stays his Claude lanes;
-since 2026-11-15 the model fills the silence there too, behind its own flag
-(see "The owner's thread"). Media upload, the + menu and every other part of
-the chat are unchanged.
+The Learning Partner is answered server-side by DeepSeek on Cloudflare
+Workers AI. The shared flow below treats an account with development grants
+like any other account; the legacy owner-specific rules remain only while
+the new switch is off. Media upload and the + menu are unchanged.
 
 Ships dark behind the flag **`partner.ai-reply`** (default off, `/dev/flags`).
+
+## Shared conversation flow
+
+2026-11-27: **`partner.standard-flow`**, default off, also needs
+`partner.ai-reply`. The same `PartnerTurn` scheduler handles every account:
+typed messages start a turn immediately; speech waits for `partner.turnPauseMs`
+(default 8 seconds), bounded by 30 seconds or 12 lines. A newer line supersedes
+an unfinished model result and keeps its source references in the next batch.
+Known other/unknown voiceprint results keep their existing exclusion from
+automatic replies. This does not turn on a microphone or change permissions.
+
+**No speaker priority or waiting barrier.** The old rules that give development
+assistants priority, reject engineering questions, require Li's name or skip a
+reply because another assistant answered do not apply to this mode. Original
+messages still reach listeners immediately. Any assistant may listen, answer
+directly or remain silent; a model error, timeout, missing credits or cap never
+holds the original message back. There is no new execution queue or automatic
+tool authorization.
+
+One model call produces the visible reply and an advisory brief. A `<handoff>`
+section is parsed off before display; malformed summaries fall back to the
+original text. The hub stamps `coordination` on its own reply, with `sources`
+(original ids and bounded text), an advisory `summary`, deterministic `targets`
+from addresses in the original text, and `fromSeq`/`throughSeq` when available.
+The model cannot choose the source ids or recipients. This is a context update,
+not another user instruction; assistants compare source ids with work already
+received. The original messages remain authoritative and can be read through
+the existing token `op:read` / `lianki_chat_read` range (`afterSeq = fromSeq - 1`,
+`throughSeq`). These references cover the hub's retained history, not permanent
+retention of raw speech.
+
+The public token WebSocket, `lianki_chat_wait`, `lianki_chat_read`, and CLI
+`chat listen` expose the same metadata within the authenticated thread. The CLI
+bridge and `lane-listen --everyone` label it as an advisory context update and
+keep the original user/agent roles. No separate MCP subscription API is added.
+
+All accounts use the existing credit reservation, settlement and caps. The
+main Worker rechecks both switches; development grants no longer exclude a
+normal reply in this mode. Only an account with a current `dev` permission
+gets a bounded, read-only snapshot of active state-tree tasks. That data comes
+from the service binding after the permission check, never from a request's
+claimed role or progress field. Chat-only third-party pages do not get it.
+Failure to read the state tree leaves the reply without that context.
+
+For deployment: ship the default-off code and verify the normal gates first.
+Changing current listeners is a separate operational handover: use each
+assistant's own existing token and the standard CLI, never pairing or an eval
+grant for chat. Do not stop another assistant's running listener as part of a
+code update. The legacy flow below remains a rollback while the switch is off.
 
 ## Flow
 
@@ -67,7 +114,7 @@ no third-party API key. Non-streaming in v1.
   of the others. Metered and billed to the base account as its own thread;
   in the owner's site threads the request carries `owner: true` as in his.
 
-## The owner's thread
+## The owner's thread (legacy flow)
 
 Owner, 2026-11-15: "你把 Li 也叫上来，但是不要中断你自己的监听". With
 **`partner.owner-thread`** on (default on, `audience: "owner"`; it needs
@@ -193,7 +240,7 @@ Billing stays at the list input price for now.
 **Li's prompt in cache order (flag `partner.stable-prompt`, default on, for
 everyone; off = the old order, exactly as before).** Until 2026-11-25
 `buildMessages` put the roster, `user_data` (with `today` and due counts) and
-the page block into the one system message *before* the history, and the
+the page block into the one system message _before_ the history, and the
 history was a sliding window of current texts, so no two calls shared more
 than the rules. Now:
 
@@ -236,10 +283,10 @@ Measured (`unit/partner-stable-prompt.test.ts`, a 60-line conversation with
 Li answering 30 lines, ~120-character lines, every fifth line of his polished
 later, the page and due counts changing every call):
 
-| order | whole prompt repeated | after the rules | misses |
-| ----- | --------------------- | --------------- | ------ |
-| stable | 85% | 57% (the rest is each call's new tail) | 5 of 29: the checkpoints; 92% of each previous prefix repeated |
-| old | 60% | 0% | 29 of 29 |
+| order  | whole prompt repeated | after the rules                        | misses                                                         |
+| ------ | --------------------- | -------------------------------------- | -------------------------------------------------------------- |
+| stable | 85%                   | 57% (the rest is each call's new tail) | 5 of 29: the checkpoints; 92% of each previous prefix repeated |
+| old    | 60%                   | 0%                                     | 29 of 29                                                       |
 
 **Not built yet: the memory summary (nedb style).** Inside a checkpoint the
 summary would be an append-only log after the history, never rewritten. At a

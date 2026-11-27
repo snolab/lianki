@@ -5,6 +5,7 @@ import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import {
   PARTNER_AI_FLAG,
+  PARTNER_STANDARD_FLAG,
   PARTNER_AI_LABEL,
   PARTNER_AI_MODEL,
   type PartnerRequest,
@@ -94,7 +95,9 @@ type Stub = {
 const T0 = 1_800_000_000_000;
 
 /** `config`: the main Worker answers config reads (stub.config); without it, it has no such method. */
-function setup(opts: { on?: boolean; sessions?: boolean; config?: boolean } = {}) {
+function setup(
+  opts: { on?: boolean; sessions?: boolean; config?: boolean; standard?: boolean } = {},
+) {
   const sockets: FakeSocket[] = [];
   let t = T0;
   const stub: Stub = {
@@ -116,7 +119,11 @@ function setup(opts: { on?: boolean; sessions?: boolean; config?: boolean } = {}
       stub.flagCalls.push(k);
       if (stub.flagThrows)
         throw new TypeError('The RPC receiver does not implement the method "bind".');
-      return k === PARTNER_AI_FLAG ? stub.on : false;
+      return k === PARTNER_AI_FLAG
+        ? stub.on
+        : k === PARTNER_STANDARD_FLAG
+          ? opts.standard === true
+          : false;
     },
     partnerReply: async (req: PartnerRequest) => {
       stub.calls.push(structuredClone(req));
@@ -167,6 +174,8 @@ function setup(opts: { on?: boolean; sessions?: boolean; config?: boolean } = {}
       userId: "owner1",
       email: "o@x.com",
       owner: true,
+      session: "a".repeat(64),
+      sessionUntil: T0 + 86400000,
     });
     return ws;
   };
@@ -617,6 +626,82 @@ describe("partner AI: caps (rolling window)", () => {
 });
 
 /** The main Worker side: lib/partner-ai.ts against a real schema. */
+describe("standard Partner routing", () => {
+  it("an assistant may answer while the model works without cancelling the model's reply", async () => {
+    const s = setup({ standard: true });
+    const owner = await s.ownerPage();
+    const lane = s.controller();
+    const pair = (owner.last("state") as { pending: { pair: string } }).pending.pair;
+    await s.msg(owner, { type: "allow", pair, scope: "chat" });
+    let finish!: (r: PartnerResult) => void;
+    s.stub.reply = () =>
+      new Promise((r) => {
+        finish = r;
+      });
+    const pending = s.msg(owner, { type: "chat", id: "parallel", text: "coco, check this" });
+    for (let i = 0; i < 100 && !finish; i++) await Promise.resolve();
+    expect(typeof finish).toBe("function");
+    s.tick(1);
+    await s.msg(lane, { type: "say", text: "direct assistant answer" });
+    finish({
+      ok: true,
+      text: "Partner context",
+      tokensIn: 10,
+      tokensOut: 5,
+      ms: 1,
+      model: PARTNER_AI_MODEL,
+    });
+    await pending;
+    expect(chats(owner).map((m) => m.text)).toContain("direct assistant answer");
+    expect(chats(owner).map((m) => m.text)).toContain("Partner context");
+  });
+
+  it("a directly named engineering request gets the same reply path as a normal account", async () => {
+    const s = setup({ standard: true });
+    const owner = await s.ownerPage();
+    const observer = s.controller();
+    const pair = (owner.last("state") as { pending: { pair: string } }).pending.pair;
+    await s.msg(owner, { type: "allow", pair, scope: "chat" });
+    await s.msg(owner, { type: "chat", id: "standard-owner", text: "coco, fix the feature" });
+    expect(s.stub.flagCalls).toContain(PARTNER_STANDARD_FLAG);
+    expect(s.stub.flagCalls).toContain(PARTNER_AI_FLAG);
+    expect(s.stub.calls).toHaveLength(1);
+    expect(s.stub.calls[0]).toMatchObject({
+      standard: true,
+      userId: "owner1",
+      turn: [{ id: "standard-owner", text: "coco, fix the feature" }],
+    });
+    expect(chats(observer).some((m) => m.text === "coco, fix the feature")).toBe(true);
+    expect(chats(owner).at(-1)).toMatchObject({
+      from: "agent",
+      coordination: { state: "answered", targets: ["codex"], sources: [{ id: "standard-owner" }] },
+    });
+    const friend = await s.friend();
+    await s.msg(friend, { type: "chat", id: "standard-friend", text: "hello" });
+    expect(s.stub.calls.at(-1)).toMatchObject({ standard: true, userId: "f1" });
+  });
+
+  it("a slow or failed Partner never blocks the raw listener or a direct assistant reply", async () => {
+    const s = setup({ standard: true });
+    const owner = await s.ownerPage();
+    const observer = s.controller();
+    const pair = (owner.last("state") as { pending: { pair: string } }).pending.pair;
+    await s.msg(owner, { type: "allow", pair, scope: "chat" });
+    let finish!: (r: PartnerResult) => void;
+    s.stub.reply = () =>
+      new Promise((r) => {
+        finish = r;
+      });
+    const pending = s.msg(owner, { type: "chat", id: "raw-live", text: "coco, inspect this" });
+    for (let i = 0; i < 100 && !finish; i++) await Promise.resolve();
+    expect(chats(observer).some((m) => m.text === "coco, inspect this")).toBe(true);
+    expect(typeof finish).toBe("function");
+    finish({ ok: false, error: "model-failed", billed: "no" });
+    await pending;
+    expect(chats(owner).filter((m) => m.from === "owner")).toHaveLength(1);
+  });
+});
+
 describe("partner AI: main Worker (scoping, owner, flag)", () => {
   let d1: TestD1Database;
   const NOW = Date.parse("2026-11-03T12:00:00Z");
@@ -660,6 +745,128 @@ describe("partner AI: main Worker (scoping, owner, flag)", () => {
       bodies.push(JSON.parse(String(init.body)));
       return new Response(JSON.stringify(answer), { status });
     }) as unknown as typeof fetch;
+
+  it("standard flow serves developer accounts normally, with credits and a separate flag check", async () => {
+    const bodies: unknown[] = [];
+    const input = {
+      userId: "u_owner",
+      standard: true,
+      history: [{ role: "user", text: "Please plan this feature" }],
+    };
+    expect(await partnerReply(env(), input, { fetch: fakeFetch(bodies), now: () => NOW })).toEqual({
+      ok: false,
+      error: "off",
+    });
+    d1.raw().exec(
+      `INSERT INTO feature_flags (key,enabled,updated_at,updated_by) VALUES ('${PARTNER_STANDARD_FLAG}',1,0,'test')`,
+    );
+    expect(
+      (await partnerReply(env(), input, { fetch: fakeFetch(bodies), now: () => NOW })).ok,
+    ).toBe(false);
+    expect(bodies).toHaveLength(0); // No developer credit exemption.
+    d1.raw().exec(
+      "INSERT INTO credit_balance (userId,balance,updatedAt) VALUES ('u_owner',100,'x')",
+    );
+    const result = await partnerReply(env(), input, { fetch: fakeFetch(bodies), now: () => NOW });
+    expect(result.ok).toBe(true);
+    expect(bodies).toHaveLength(1);
+    expect(JSON.stringify(bodies)).toContain("Shared conversation flow");
+  });
+
+  it("progress comes only from the service binding after dev authorization, never from request data", async () => {
+    d1.raw().exec(
+      `INSERT INTO feature_flags (key,enabled,updated_at,updated_by) VALUES ('${PARTNER_STANDARD_FLAG}',1,0,'test')`,
+    );
+    d1.raw().exec(
+      "INSERT INTO credit_balance (userId,balance,updatedAt) VALUES ('u_owner',100,'x')",
+    );
+    const bodies: unknown[] = [];
+    const reads: string[] = [];
+    const e = {
+      ...env(),
+      PUSH: {
+        fetch: async (url: string) => {
+          reads.push(url);
+          return new Response('{"entries":[{"task":"VERIFIED_PROGRESS"}]}');
+        },
+      },
+    };
+    for (const [userId, chatOnly] of [
+      ["u_alice", false],
+      ["u_owner", true],
+      ["u_owner", false],
+    ] as const) {
+      await partnerReply(
+        e,
+        {
+          userId,
+          standard: true,
+          ...(chatOnly ? { chatOnly: true } : {}),
+          progress: "FORGED_PROGRESS",
+          history: [{ role: "user", text: "status?" }],
+        },
+        { fetch: fakeFetch(bodies), now: () => NOW },
+      );
+    }
+    expect(reads.filter((u) => u.endsWith("/internal/partner-state"))).toHaveLength(1);
+    expect(JSON.stringify(bodies[0])).not.toContain("VERIFIED_PROGRESS");
+    expect(JSON.stringify(bodies[1])).not.toContain("VERIFIED_PROGRESS");
+    expect(JSON.stringify(bodies[2])).toContain("VERIFIED_PROGRESS");
+    expect(JSON.stringify(bodies)).not.toContain("FORGED_PROGRESS");
+    expect(
+      parsePartnerRequest({
+        userId: "u_alice",
+        standard: true,
+        progress: "forged",
+        history: [{ role: "user", text: "x" }],
+      }),
+    ).not.toHaveProperty("progress");
+  });
+
+  it("standard normal accounts do not depend on the developer table being available", async () => {
+    d1.raw().exec(
+      `INSERT INTO feature_flags (key,enabled,updated_at,updated_by) VALUES ('${PARTNER_STANDARD_FLAG}',1,0,'test')`,
+    );
+    d1.raw().exec("ALTER TABLE account_permission RENAME TO account_permission_unavailable");
+    const bodies: unknown[] = [];
+    const req = { userId: "u_alice", standard: true, history: [{ role: "user", text: "hello" }] };
+    expect((await partnerReply(env(), req, { fetch: fakeFetch(bodies), now: () => NOW })).ok).toBe(
+      true,
+    );
+    expect(
+      await partnerReply(
+        env(),
+        { ...req, owner: true },
+        { fetch: fakeFetch(bodies), now: () => NOW },
+      ),
+    ).toEqual({ ok: false, error: "bad-input" });
+  });
+
+  it("the one model response separates visible reply from advisory handoff and server source ids", async () => {
+    d1.raw().exec(
+      `INSERT INTO feature_flags (key,enabled,updated_at,updated_by) VALUES ('${PARTNER_STANDARD_FLAG}',1,0,'test')`,
+    );
+    const bodies: unknown[] = [];
+    const answer = {
+      ...ok,
+      choices: [
+        { message: { content: '我先整理一下。<handoff>{"text":"检查按钮布局"}</handoff>' } },
+      ],
+    };
+    const result = await partnerReply(
+      env(),
+      {
+        userId: "u_alice",
+        standard: true,
+        turn: [{ id: "raw-1", text: "检查这个按钮" }],
+        history: [{ role: "user", text: "检查这个按钮" }],
+      },
+      { fetch: fakeFetch(bodies, answer), now: () => NOW },
+    );
+    expect(result).toMatchObject({ ok: true, text: "我先整理一下。", handoff: "检查按钮布局" });
+    expect(JSON.stringify(bodies)).toContain("raw-1");
+    expect(JSON.stringify(bodies)).toContain("检查这个按钮");
+  });
 
   it("the flag is registered, off by default", () => {
     expect(FLAGS[PARTNER_AI_FLAG as keyof typeof FLAGS].default).toBe(false);

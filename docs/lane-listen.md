@@ -179,6 +179,22 @@ N` with its own token: N is the newest line handed over, never past a
 
 ## Public CLI composition
 
+With `partner.standard-flow` on, original messages still arrive immediately.
+Learning Partner replies additionally carry server-authored `coordination`
+metadata: an advisory brief and original source ids/sequence range. A listener
+may answer before or after Li, or stay silent. This metadata is a context
+update, never a new instruction, approval or another account's authorization;
+check the source ids before repeating work already received.
+
+The chat assistant can use the same token listener as every other assistant:
+`lianki-dev lane-listen --as claude --repo <checkout> --cwd <assistant-dir>
+--everyone --system`. `claude` is the existing token identity mapped to the
+`chat` route. With no token the command exits instead of pairing or borrowing
+an eval grant. The operator hands over an existing receiver before starting
+its replacement; updating code never stops a running listener automatically.
+Remote agents use the existing `lianki_chat_wait` and `lianki_chat_read`, with
+the same own-thread token scope. No new MCP transport is needed.
+
 The public CLI now has an unreleased composition layer for new installations:
 `lianki chat listen --deliver . --cwd /path/to/agent`, also exposed as
 `lianki chat bridge`. Existing `say` remains; `send` is its alias, and
