@@ -14,7 +14,7 @@
 // @grant       GM_info
 // @grant       unsafeWindow
 // @grant       GM_registerMenuCommand
-// @version     2.24.76
+// @version     2.24.77
 // @author      lianki.com
 // @description LiCards by Lianki: turn any web page into a spaced-repetition card and review it right on the page (Alt+F). Offline-first with IndexedDB sync. Press , or . (or media keys) to control video speed with difficulty markers.
 // @description:zh    链卡（Lianki）：把任意网页变成间隔重复卡片，直接在网页上复习（Alt+F）。离线优先，IndexedDB 同步。按 , 或 .（或媒体键）调节视频速度，并标记难度。
@@ -4428,13 +4428,22 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
         return;
       }
       const p = store.read();
+      d.doc.documentElement.setAttribute(
+        "data-lk-portable-consent",
+        `${p.consent}:${p.principal ? "bound" : "unbound"}:${p.consentStamp ? "stamped" : "unstamped"}`,
+      );
       if (
         panel &&
         panelConsent &&
         (panelConsent.principal !== p.principal || panelConsent.consentStamp !== p.consentStamp)
       )
         close();
-      if (!flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null))) {
+      if (
+        !flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null)) ||
+        p.consent !== "unknown" ||
+        !host ||
+        chatSiteExcluded(p, host)
+      ) {
         promptClose?.();
         promptClose = undefined;
       }
@@ -4505,6 +4514,7 @@ button{font:inherit;cursor:pointer;min-height:40px;border:0;border-radius:999px;
     const destroy = () => {
       destroyed = true;
       close();
+      d.doc.documentElement.removeAttribute("data-lk-portable-consent");
       languageObserver?.disconnect();
       d.doc.removeEventListener(PORTABLE_SETTINGS_REQUEST, onSettings);
       d.doc.removeEventListener("visibilitychange", visible);

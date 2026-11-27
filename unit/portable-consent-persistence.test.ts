@@ -151,3 +151,22 @@ test("same-install consent and its stamp survive teardown and a new page instanc
     next.finish();
   }
 });
+
+test("approval or refusal received from another tab dismisses an already-open consent prompt", async () => {
+  for (const decision of ["all", "off"] as const) {
+    const f = fixture(new Map([[PILLCHAT_ON_KEY, JSON.stringify({ on: true })]]));
+    try {
+      await turn();
+      expect(f.win.document.querySelector("lianki-portable-consent")).not.toBeNull();
+      f.store.consent(decision, "account_a");
+      await turn();
+      expect(f.win.document.querySelector("lianki-portable-consent")).toBeNull();
+      expect(f.mounts).toHaveLength(decision === "all" ? 1 : 0);
+      const diagnosis = f.win.document.documentElement.getAttribute("data-lk-portable-consent");
+      expect(diagnosis).toBe(`${decision}:bound:stamped`);
+      expect(diagnosis).not.toContain("account_a");
+    } finally {
+      f.finish();
+    }
+  }
+});

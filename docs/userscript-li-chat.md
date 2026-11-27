@@ -18,6 +18,10 @@ existing `data-lk-portable` diagnostics use only reason codes such as
 `consent:connection-ended`, never an account id, consent stamp or credential.
 Separate userscript installations still have separate GM storage; this does not
 copy approval between production and development installations.
+An approval or refusal observed from another tab dismisses an old prompt. The
+`data-lk-portable-consent` QA marker contains only the decision and whether a
+binding and stamp exist; it exposes neither value and is not an authorization
+signal.
 
 Tree: /ext/li-chat
 

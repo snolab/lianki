@@ -376,13 +376,23 @@ export function startPortableLi(d: {
       return;
     }
     const p = store.read();
+    // QA state only: never expose an account id or the consent stamp itself.
+    d.doc.documentElement.setAttribute(
+      "data-lk-portable-consent",
+      `${p.consent}:${p.principal ? "bound" : "unbound"}:${p.consentStamp ? "stamped" : "unstamped"}`,
+    );
     if (
       panel &&
       panelConsent &&
       (panelConsent.principal !== p.principal || panelConsent.consentStamp !== p.consentStamp)
     )
       close();
-    if (!flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null))) {
+    if (
+      !flagMirrorOn(d.gm.getValue(PILLCHAT_ON_KEY, null)) ||
+      p.consent !== "unknown" ||
+      !host ||
+      chatSiteExcluded(p, host)
+    ) {
       promptClose?.();
       promptClose = undefined;
     }
@@ -449,6 +459,7 @@ export function startPortableLi(d: {
   const destroy = () => {
     destroyed = true;
     close();
+    d.doc.documentElement.removeAttribute("data-lk-portable-consent");
     languageObserver?.disconnect();
     d.doc.removeEventListener(PORTABLE_SETTINGS_REQUEST, onSettings);
     d.doc.removeEventListener("visibilitychange", visible);
