@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { NoObjectGeneratedError } from "ai";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
@@ -234,5 +234,22 @@ describe("matchExamDecks: the wish names an exam deck of the catalogue", () => {
 
   it("links to the deck on /words", () => {
     expect(deckHref("ja-jlpt-n1")).toBe("/words?deck=ja-jlpt-n1");
+  });
+});
+
+describe("default logs: one JSON line each, without the provider's text in the answer", () => {
+  const spies: { mockRestore: () => void }[] = [];
+  afterEach(() => spies.splice(0).forEach((s) => s.mockRestore()));
+
+  it("logs the retry and the failure to the console", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    spies.push(warn, error);
+    const err = await generateWithRetry(scripted([noObject(), noObject()]), price).catch((e) => e);
+    expect(warn).toHaveBeenCalledTimes(ATTEMPTS);
+    expect(generateFailedResponse(err).status).toBe(502);
+    expect(JSON.parse(String(error.mock.calls[0][0]))).toMatchObject({
+      event: "roadmap.generate.failed",
+    });
   });
 });
