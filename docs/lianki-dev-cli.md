@@ -18,7 +18,8 @@ JSON envelope, so an agent reads both the same way.
 | `edit`        | `eval.ts edit`: polish any of his lines (unrestricted, owner 2026-11-14), `--merge <ids> --text` a run of them into one passage, `--unmerge <id>`, `--summary` | saved grant, network         |
 | `inbox`       | `eval.ts inbox list\|get\|done`                                                                                                                                | saved grant, network         |
 | `listen`      | `eval.ts chat` (one JSON line an event)                                                                                                                        | saved grant, network         |
-| `lane-listen` | `lane-listen.ts`: the owner lines addressed to this lane, to its agent ([lane-listen.md](lane-listen.md))                                                      | the lane's token, network    |
+| `read`        | `lianki chat read --json`: the latest lines of his thread (a digest's raw lines, by id)                                                                        | the lane's token, network    |
+| `lane-listen` | `lane-listen.ts`: his lines as digests (to the chat lane, and to a lane named in one), to its agent ([lane-listen.md](lane-listen.md), "Digest mode")          | the lane's token, network    |
 | `lanes`       | `lanes-manager.ts`: every agent on Lianki and its repos joins the chat as its own lane (全员入群, [lane-listen.md](lane-listen.md), "Every agent joins")       | `ay`, lane tokens, network   |
 | `serve`       | `eval.ts serve`                                                                                                                                                | saved eval grant, network    |
 | `ui`          | `eval.ts ui fullscreen on\|off`: `ui fullscreen --on\|--off` opens his chat's menu, pulses the Full screen row (0.6 s), then flips it and closes the menu      | saved grant, network         |

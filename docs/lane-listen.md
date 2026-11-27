@@ -115,6 +115,69 @@ It reconnects with backoff when the socket drops, and stops (exit 2) when the
 token is refused: revoked or expired. `--dry-run` prints the hand-offs instead
 of sending them.
 
+## Digest mode: one digest instead of line by line (default, 2026-11-28)
+
+Owner, 2026-11-28 ("go with 1"): his real-time voice lines used to reach each
+lane one line at a time, and an `--all` / `--answer-unnamed` lane heard every
+ambient line. Now each `lane-listen` buffers his consecutive lines in his own
+thread and hands them over as **one digest**; the chat lane (小克) is the
+summarizing layer and answers it once.
+
+- **Buffer and flush** (`makeDigester`, `scripts/dev/lane-digest-lib.ts`).
+  Every owner line of his thread (not another's voice, not a test or a
+  state-tree line, which go as before) goes into the buffer. It flushes after
+  `lanes.digestPauseSec` (8 s) with no new line, at the latest
+  `lanes.digestMaxSec` (60 s) after its first line, and at once on a **typed**
+  line (source not `stt`) or a line ending in a final word (`完毕`, `说完了`,
+  `就这些`, `over`; env `LIANKI_LANES_DIGEST_FINAL_WORDS`), that line included.
+- **One digest** = the polished text plus every original message id (and its
+  seq). Polish reuses the hub's own path ("Automatic polish",
+  docs/dev-debug-widget.md): its polish and merged passages reach the listener
+  as `edited` events and replace the buffered line's text, a passage covering
+  the lines it joined (the 8 s pause outlasts the hub's 1.5 s tail and its
+  model call). On top, `tidy` drops hesitations (嗯, 呃, um, uh), fillers
+  followed by a mark (那个，, 就是，), stutters, and a fragment the next line
+  repeats; no model call of its own. Meaning is never changed.
+- **Who gets it** (`digestRoute`):
+  - the **chat lane** (`--as claude`, route `chat`): every digest, as one
+    hand-off marked `摘要`, with the note "answer once, with the status from
+    the state tree and the plan; the lanes named in it have theirs". Its
+    `--skip-owner` drops his raw lines only, not the digest: the digest is the
+    小克 feed.
+  - a lane **named** in it (its name, an alias, a heard spelling, `@name`,
+    全体; `lib/lane-route.ts` on each line as heard and as polished): the same
+    digest, marked `摘要·点名你` / `摘要·全体`, urgent (`alt-m`).
+  - any other lane: **nothing**. A digest that names nobody reaches only the
+    chat lane, so unnamed ambient lines never reach codex, agy, mimiai or coco.
+    `--all` and `--answer-unnamed` no longer apply to his lines (they still
+    shape agent and system lines with `--everyone` / `--system`).
+- **Ids.** The hand-off lists every id (`[3 行 · ids a,b,c]`) and, when they
+  fit (`DIGEST_RAW_BUDGET`), the raw lines under it. The lane reads the raw
+  lines from the chat history with its own token:
+  `lianki-dev read --as <lane> --limit 30` (`lianki chat read --json`).
+- **Bypass.** A typed line that starts with an explicit `@name` for a lane
+  ("@codex 先停一下") goes to that lane at once, on its own, as before; the
+  digest it flushes does not count it again for that lane. The chat lane takes
+  no bypass (a typed line flushes its digest at once anyway).
+- **Cursor and receipts.** A buffered line holds the delivered cursor until its
+  digest is handed over; a digest not for this lane passes its lines, as a
+  line for another lane always did. A listener that stops with lines buffered
+  hands them over after the restart (recovery reads them again).
+
+Switches. On by default: `lanes.digest` (true). Off: `lane-listen --no-digest`,
+or env `LIANKI_LISTEN_DIGEST=0` (or `LIANKI_LANES_DIGEST=false`) for the
+listener; `--digest` forces it on. Timing: `--digest-pause <s>` /
+`--digest-max <s>`, else env `LIANKI_LANES_DIGEST_PAUSE_SEC` /
+`LIANKI_LANES_DIGEST_MAX_SEC`, else 8 / 60. Each listener logs
+`{"type":"digest-mode",…}` at start and `{"type":"digest","ids",…,"to"}` per
+digest (`to`: `chat`, `named` or null). Tests: `unit/lane-digest.test.ts`.
+
+Switching a running listener over: it reads the mode when it starts, so a
+restart from a checkout that has this change is the cutover (the lanes
+manager's listeners and the oxmgr ones alike; nothing else changes on the
+command line). To keep a lane on the old line-by-line behaviour, add
+`--no-digest` to its command.
+
 ## The lane token
 
 Each listening lane needs its own token, made by the owner (agents never make

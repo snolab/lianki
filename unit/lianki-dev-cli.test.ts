@@ -444,6 +444,24 @@ describe("lianki-dev say against a stub hub", () => {
   }, 20_000);
 });
 
+describe("lane token: read (a digest's raw lines by id)", () => {
+  it("maps to lianki chat read --json, --limit 30 by default; numbers only", () => {
+    expect(chatArgv("read", [])).toEqual(["chat", "read", "--json", "--limit", "30"]);
+    expect(chatArgv("read", ["--limit", "5", "--after-seq", "10"])).toEqual([
+      "chat",
+      "read",
+      "--json",
+      "--limit",
+      "5",
+      "--after-seq",
+      "10",
+    ]);
+    expect(chatArgv("read", ["--limit", "x"])).toBeInstanceOf(Error);
+    expect(chatArgv("read", ["--through-seq", "3"])).toBeInstanceOf(Error);
+    expect(chatArgv("read", ["--to", "bob"])).toBeInstanceOf(Error);
+  });
+});
+
 describe("lane token: say/ask/listen through lianki chat", () => {
   it("say sends the text on stdin; flags of the grant path are refused", () => {
     const a = chatArgv("say", ["--quiet", "-x looks like a flag"]);

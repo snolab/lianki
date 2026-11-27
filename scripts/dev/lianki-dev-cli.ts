@@ -50,6 +50,7 @@ export const SUBCOMMANDS = [
   "edit",
   "inbox",
   "listen",
+  "read",
   "lane-listen",
   "lanes",
   "serve",
@@ -77,6 +78,7 @@ export const USAGE: Record<Sub | "main", string> = {
   edit      polish his voice line, merge a run of them into one passage, or undo a merge
   inbox     the chat inbox: list | get <id> [--out <dir>] | done <id>
   listen    listen to the chat (eval.ts chat), one JSON line per event
+  read      the latest lines of his thread with the lane's token (a digest's raw lines, by id)
   lane-listen  a lane's own listener: the owner lines addressed to it, handed to its agent
   lanes     the lanes manager: every agent on Lianki and its repos joins the chat (全员入群)
   serve     hold an eval session (eval.ts serve)
@@ -169,12 +171,23 @@ ${EXITS}`,
   pairs unless --pair (a human, no --as).
 ${GLOBAL}
 ${EXITS}`,
-  "lane-listen": `usage: lianki-dev lane-listen --as codex|agy (--cwd <lane dir> | --deliver <ay keyword>) [--tests] [--dry-run]
+  read: `usage: lianki-dev read --as <lane> [--limit N] [--after-seq N [--through-seq N]]
+  The latest lines of the owner's thread (\`lianki chat read --json\`) with the
+  lane's token (LIANKI_TOKEN, else ~/.config/lianki/lanes/<lane>.token; never
+  printed). For a digest's raw lines: find its ids in the output. --limit 1–100
+  (default 30). Token path only.
+${GLOBAL}
+${EXITS}`,
+  "lane-listen": `usage: lianki-dev lane-listen --as codex|agy (--cwd <lane dir> | --deliver <ay keyword>) [--tests] [--dry-run] [--no-digest] [--digest-pause <s>] [--digest-max <s>]
   The lane's own chat listener (scripts/dev/lane-listen.ts, docs/lane-listen.md):
   listens with the lane's token, keeps the owner lines addressed to this lane
   ("codex, …", "agy, …": lib/lane-route.ts) and hands each to the lane's agent
   with \`ay send\` (from --cwd: \`ay send .\`). The lane answers with
   \`lianki-dev say --as <lane>\`. --tests: also "[lane-test] …" agent lines.
+  Digest mode (default; --no-digest or LIANKI_LISTEN_DIGEST=0 turns it off):
+  his consecutive lines go as ONE digest after a pause (--digest-pause, 8 s),
+  at most --digest-max (60 s), at once on a typed line or a final word; to the
+  chat lane always, to this lane only when it is named in it.
   Token: LIANKI_TOKEN, else ~/.config/lianki/lanes/<lane>.token (exit 2 without).
 ${GLOBAL}
 ${EXITS}`,
@@ -501,6 +514,26 @@ export function chatArgv(
       "--json",
       ...(rest.includes("--everyone") ? ["--everyone"] : []),
       ...(rest.includes("--system") ? ["--system"] : []),
+    ];
+  }
+  if (sub === "read") {
+    const out: string[] = [];
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i]!;
+      if (a === "--limit" || a === "--after-seq" || a === "--through-seq") {
+        const v = rest[++i];
+        if (v === undefined || !/^\d+$/.test(v)) return new Error(`read: ${a} needs a number`);
+        out.push(a, v);
+      } else return new Error(`read: unknown argument ${a}`);
+    }
+    if (out.includes("--through-seq") && !out.includes("--after-seq"))
+      return new Error("read: --through-seq needs --after-seq");
+    return [
+      "chat",
+      "read",
+      "--json",
+      ...(out.includes("--limit") ? [] : ["--limit", "30"]),
+      ...out,
     ];
   }
   return new Error(`${sub} has no lane-token path`);

@@ -200,13 +200,16 @@ async function runChat(
   const cli = join(repo, "packages", "lianki-cli", "lianki.mjs");
   // An ask on a node reads the answer back as JSON (askAnswer).
   const asJson = json || !!seen;
-  const child = Bun.spawn([process.execPath, cli, ...argv, ...(asJson ? ["--json"] : [])], {
-    cwd: repo,
-    env: { ...process.env, LIANKI_URL: HUB },
-    stdin: argv.stdin !== undefined ? new TextEncoder().encode(argv.stdin) : "inherit",
-    stdout: seen ? "pipe" : "inherit",
-    stderr: "inherit",
-  });
+  const child = Bun.spawn(
+    [process.execPath, cli, ...argv, ...(asJson && !argv.includes("--json") ? ["--json"] : [])],
+    {
+      cwd: repo,
+      env: { ...process.env, LIANKI_URL: HUB },
+      stdin: argv.stdin !== undefined ? new TextEncoder().encode(argv.stdin) : "inherit",
+      stdout: seen ? "pipe" : "inherit",
+      stderr: "inherit",
+    },
+  );
   for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => child.kill(sig));
   const out = seen
     ? await drain(child.stdout as ReadableStream<Uint8Array>, process.stdout, false)
@@ -442,7 +445,7 @@ async function main(): Promise<number> {
     !process.env.LIANKI_TOKEN &&
     g.lane &&
     !g.pair &&
-    (sub === "say" || sub === "ask" || sub === "listen")
+    (sub === "say" || sub === "ask" || sub === "listen" || sub === "read")
   ) {
     const t = laneToken(g.lane);
     if (t.token) process.env.LIANKI_TOKEN = t.token;
@@ -477,6 +480,15 @@ async function main(): Promise<number> {
   // No grant, no pairing; without a token the grant path below is unchanged.
   if (process.env.LIANKI_TOKEN && !g.pair && (sub === "say" || sub === "ask" || sub === "listen"))
     return runChat(sub, repo, rest, stdin, seen);
+  // read (a digest's raw lines, docs/lane-listen.md "Digest mode"): the token path only.
+  if (sub === "read") {
+    if (!process.env.LIANKI_TOKEN || g.pair)
+      fail(
+        EXIT.notReady,
+        `read needs a lane token: --as <lane> with ~/.config/lianki/lanes/<lane>.token, or LIANKI_TOKEN`,
+      );
+    return runChat(sub, repo, rest);
+  }
   const argv = evalArgv(sub, askAt ? [...rest, "--task-path", askAt] : rest, g, stdin);
   if (argv instanceof Error) fail(EXIT.usage, `${argv.message}\n${json ? "" : USAGE[sub]}`.trim());
   // Nothing to send with: say so before eval.ts opens a socket (lanes never pair).
