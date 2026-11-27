@@ -71,6 +71,15 @@ export function clipSummary(x) {
   };
 }
 
+/** Remote MCP metadata only: never exposes transcripts, audio, or device/speaker details to cloud clients. */
+export function remoteClipMetadata(x) {
+  return {
+    id: x.id,
+    at: x.at,
+    durationMs: x.durationMs,
+  };
+}
+
 /** Pure JS chunked base64 encoding (8192-byte slices, no node: imports). */
 export function bytesToBase64(bytes) {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);

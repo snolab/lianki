@@ -3,6 +3,7 @@
 // the JSON envelope and exit codes, and that no command ever prints the token.
 import { afterAll, describe, expect, test } from "bun:test";
 import {
+  existsSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -18,6 +19,8 @@ import { PREF_KEYS as SERVER_PREF_KEYS } from "@/lib/prefs/schema";
 import { s256 as serverS256 } from "@/lib/cli-login";
 import * as cliMod from "../packages/lianki-cli/cli.mjs";
 import * as authMod from "../packages/lianki-cli/auth.mjs";
+import { MAX_ERROR_BYTES } from "../packages/lianki-cli/api.mjs";
+import { RECORDING_MAX_BYTES } from "../packages/lianki-cli/recordings.mjs";
 
 // Plain ESM with inferred types: the suite drives it with fakes, so loosely typed.
 const cli: any = cliMod;
@@ -1492,5 +1495,152 @@ describe("recordings", () => {
     const empty = await http.run("recordings", "get", "empty_audio_00000001", "--json");
     expect(empty.code).toBe(4);
     expect(envelope(empty.err).error.code).toBe("server");
+  });
+
+  test("callBytes aborts an endless stream at maxBytes without buffering or writing a file", async () => {
+    const CHUNK = 200_000;
+    let pulls = 0;
+    let canceled = false;
+    let signal: AbortSignal | undefined;
+    const h = harness({
+      env,
+      server: {
+        "GET /api/my/recordings": () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              pull(controller) {
+                pulls += 1;
+                controller.enqueue(new Uint8Array(CHUNK));
+              },
+              cancel() {
+                canceled = true;
+              },
+            }),
+            { status: 200, headers: { "content-type": "audio/wav" } },
+          ),
+      },
+    });
+    const inner = h.deps.fetch;
+    h.deps.fetch = async (u: URL, init: any = {}) => {
+      signal = init.signal;
+      return inner(u, init);
+    };
+
+    const out = join(tmp(), "endless-out");
+    const r = await h.run("recordings", "get", "endless_stream_00001", "--out", out, "--json");
+    expect(r.code).toBe(4);
+    expect(envelope(r.err).error.code).toBe("server");
+    expect(envelope(r.err).error.message).toContain(String(RECORDING_MAX_BYTES));
+    expect(canceled).toBe(true);
+    expect(signal?.aborted).toBe(true);
+    expect(pulls).toBeLessThanOrEqual(Math.ceil(RECORDING_MAX_BYTES / CHUNK) + 1);
+    expect(existsSync(join(out, "endless_stream_00001.wav"))).toBe(false);
+    expect(r.out + r.err).not.toContain(TOKEN);
+  });
+
+  test("callBytes caps and trims endless or oversized error bodies and handles multi-chunk and non-stream responses", async () => {
+    const ERR_CHUNK = 5_000;
+    let errPulls = 0;
+    let errCanceled = false;
+    let errSignal: AbortSignal | undefined;
+    let fallbackSignal: AbortSignal | undefined;
+    const h = harness({
+      env,
+      server: {
+        "GET /api/my/recordings": (c) => {
+          const clip = new URLSearchParams(c.query).get("clip");
+          if (clip === "huge_error_body_0001") {
+            return new Response(
+              new ReadableStream<Uint8Array>({
+                pull(controller) {
+                  errPulls += 1;
+                  const text =
+                    errPulls === 1
+                      ? `   <html>  502 Bad Gateway   ${"x".repeat(ERR_CHUNK)}`
+                      : "y".repeat(ERR_CHUNK);
+                  controller.enqueue(new TextEncoder().encode(text.slice(0, ERR_CHUNK)));
+                },
+                cancel() {
+                  errCanceled = true;
+                },
+              }),
+              { status: 502, headers: { "content-type": "text/html" } },
+            );
+          }
+          if (clip === "multi_chunk_wav_0001") {
+            return new Response(
+              new ReadableStream<Uint8Array>({
+                start(controller) {
+                  controller.enqueue(new Uint8Array(0));
+                  controller.enqueue(SYNTH_WAV.subarray(0, 20));
+                  controller.enqueue(SYNTH_WAV.subarray(20));
+                  controller.close();
+                },
+              }),
+              { status: 200, headers: { "content-type": "audio/wav" } },
+            );
+          }
+          if (clip === "fallback_big_ok_0001") {
+            return {
+              status: 200,
+              headers: new Headers({ "content-type": "audio/wav" }),
+              body: null,
+              arrayBuffer: async () => new Uint8Array(RECORDING_MAX_BYTES + 1).buffer,
+            } as unknown as Response;
+          }
+          return {
+            status: 500,
+            headers: new Headers({ "content-type": "text/plain" }),
+            body: null,
+            arrayBuffer: async () =>
+              new TextEncoder().encode(`   <err>boom</err>  ${"z".repeat(MAX_ERROR_BYTES + 200)}`)
+                .buffer,
+          } as unknown as Response;
+        },
+      },
+    });
+    const inner = h.deps.fetch;
+    h.deps.fetch = async (u: URL, init: any = {}) => {
+      const clip = new URL(String(u)).searchParams.get("clip");
+      if (clip === "huge_error_body_0001") errSignal = init.signal;
+      if (clip === "fallback_big_ok_0001") fallbackSignal = init.signal;
+      return inner(u, init);
+    };
+
+    const bigErr = await h.run("recordings", "get", "huge_error_body_0001", "--json");
+    expect(bigErr.code).toBe(4);
+    expect(envelope(bigErr.err).error.code).toBe("server");
+    const errMsg: string = envelope(bigErr.err).error.message;
+    expect(errMsg).toContain("502 Bad Gateway");
+    expect(errMsg).not.toMatch(/[<>]/);
+    expect(errMsg.length).toBeLessThanOrEqual(240);
+    expect(errCanceled).toBe(true);
+    expect(errSignal?.aborted).toBe(true);
+    expect(errPulls).toBeLessThanOrEqual(Math.ceil(MAX_ERROR_BYTES / ERR_CHUNK) + 2);
+    expect(bigErr.out + bigErr.err).not.toContain(TOKEN);
+
+    const out = join(tmp(), "chunked-out");
+    const okChunked = await h.run(
+      "recordings",
+      "get",
+      "multi_chunk_wav_0001",
+      "--out",
+      out,
+      "--json",
+    );
+    expect(okChunked.code).toBe(0);
+    expect(new Uint8Array(readFileSync(join(out, "multi_chunk_wav_0001.wav")))).toEqual(SYNTH_WAV);
+
+    const fbBig = await h.run("recordings", "get", "fallback_big_ok_0001", "--json");
+    expect(fbBig.code).toBe(4);
+    expect(envelope(fbBig.err).error.message).toContain(String(RECORDING_MAX_BYTES));
+    expect(fallbackSignal?.aborted).toBe(true);
+
+    const fbErr = await h.run("recordings", "get", "fallback_big_err_001", "--json");
+    expect(fbErr.code).toBe(4);
+    const fbErrMsg: string = envelope(fbErr.err).error.message;
+    expect(fbErrMsg).toContain("boom");
+    expect(fbErrMsg).not.toMatch(/[<>]/);
+    expect(fbErrMsg.length).toBeLessThanOrEqual(240);
   });
 });

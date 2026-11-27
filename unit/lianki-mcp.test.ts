@@ -878,6 +878,29 @@ describe("lianki mcp: recordings tools", () => {
       more: false,
     });
 
+    const dayRes: any = await c.callTool({
+      name: "lianki_recordings_list",
+      arguments: { day: "2026-11-27" },
+    });
+    expect(dayRes.isError).toBeUndefined();
+    expect(dataOf(dayRes)).toEqual({
+      day: "2026-11-27",
+      clips: [
+        {
+          id: CLIP_ID,
+          day: "2026-11-27",
+          at: 1700000000500,
+          durationMs: 1200,
+          bytes: SYNTH_WAV.length,
+          mode: "active",
+          source: "local",
+          device: "mac",
+          speaker: "me",
+          text: "day clip",
+        },
+      ],
+    });
+
     const audioRes: any = await c.callTool({
       name: "lianki_recordings_audio",
       arguments: { id: CLIP_ID },
@@ -898,19 +921,39 @@ describe("lianki mcp: recordings tools", () => {
     });
 
     const recCalls = h.seen.filter((s) => s.path === "/api/my/recordings");
-    expect(recCalls).toHaveLength(2);
+    expect(recCalls).toHaveLength(3);
     expect(recCalls[0]).toMatchObject({
       query: "?before=1700000001001&limit=5",
       headers: { "x-lianki-client": "mcp/0.4.0 tool=lianki_recordings_list" },
     });
     expect(recCalls[1]).toMatchObject({
+      query: "?day=2026-11-27",
+      headers: { "x-lianki-client": "mcp/0.4.0 tool=lianki_recordings_list" },
+    });
+    expect(recCalls[2]).toMatchObject({
       query: `?clip=${CLIP_ID}`,
       headers: {
         accept: "audio/wav",
         "x-lianki-client": "mcp/0.4.0 tool=lianki_recordings_audio",
       },
     });
-    expect(JSON.stringify({ listRes, audioRes, err: h.err })).not.toContain(TOKEN.slice(3));
+    expect(JSON.stringify({ listRes, dayRes, audioRes, err: h.err })).not.toContain(TOKEN.slice(3));
     await h.close();
+  });
+
+  test("lianki_recordings_audio returns clear errors when fetchBytes is absent or audio is empty", async () => {
+    const audioTool = mcp.TOOLS.find((t: any) => t.name === "lianki_recordings_audio");
+    const noIo = await mcp.runTool(audioTool, async () => ({}), { id: CLIP_ID }, {});
+    expect(noIo.isError).toBe(true);
+    expect(noIo._meta.code).toBe("unavailable");
+
+    const empty = await mcp.runTool(
+      audioTool,
+      async () => ({}),
+      { id: CLIP_ID },
+      { fetchBytes: async () => ({ bytes: new Uint8Array(0), contentType: "audio/wav" }) },
+    );
+    expect(empty.isError).toBe(true);
+    expect(empty._meta.code).toBe("server");
   });
 });

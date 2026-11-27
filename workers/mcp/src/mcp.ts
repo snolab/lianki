@@ -22,9 +22,11 @@
  * secret and no data, and never logs a token or a tool's arguments.
  *
  * Tools: the table of `lianki mcp` (packages/lianki-cli/mcp-tools.mjs) with
- * its API calls (packages/lianki-cli/api.mjs `call`), so both servers offer
- * the same tools with the same results. tools/list shows only what the
- * token's permissions allow (GET /api/cli-login/token, as the CLI asks).
+ * its API calls (packages/lianki-cli/api.mjs `call`), so both servers share
+ * one table, except local-only tools (such as raw recording audio, which are
+ * omitted from tools/list and refused here so recordings never go to cloud
+ * MCP clients). tools/list shows only what the token's permissions allow
+ * (GET /api/cli-login/token, as the CLI asks).
  * Every call names itself `x-lianki-client: mcp-remote/<version> tool=<name>`
  * for the account's audit log (lib/api-token-client.ts).
  *
@@ -34,7 +36,7 @@
  * Types are declared here rather than taken from @cloudflare/workers-types:
  * the repo's root tsconfig type-checks this folder with the DOM lib.
  */
-import { CliError, EXIT, call, callBytes } from "../../../packages/lianki-cli/api.mjs";
+import { CliError, EXIT, call } from "../../../packages/lianki-cli/api.mjs";
 import {
   CHAT_PATH,
   CLIENT_HEADER,
@@ -190,31 +192,22 @@ type WorkerSocket = {
 };
 
 /**
- * Tool runtime IO: `openChat` opens the token chat WebSocket through PUSH
- * (lianki-push owns /api/version/chat; the token goes in its first message,
- * never a header) and `fetchBytes` fetches binary account endpoints (such as
- * mic recording audio) through `callBytes` with the MCP client audit header.
+ * The chat socket for lianki_chat_wait, through the PUSH binding (lianki-push
+ * owns /api/version/chat). The token goes in its first message, never a header.
+ * Remote /mcp intentionally has no binary audio fetcher and sets `remote: true`
+ * so recordings stay metadata-only and raw audio is never sent to cloud clients.
  */
-function toolIo(c: Ctx, env: Env, token: string, tool: string) {
-  const client = `mcp-remote/${SERVER_VERSION} tool=${tool}`;
+function chatIo(env: Env, token: string, tool: string) {
   return {
     token,
+    remote: true,
     observeWait: env.observeWait,
-    fetchBytes: (req: Record<string, unknown>) => {
-      const headers = {
-        ...(req.headers && typeof req.headers === "object"
-          ? (req.headers as Record<string, string>)
-          : {}),
-        [CLIENT_HEADER]: client,
-      };
-      return callBytes(c, token, { ...req, headers } as Parameters<typeof callBytes>[2]);
-    },
     openChat: async () => {
       const res = await env.PUSH.fetch(
         new Request(new URL(CHAT_PATH, SITE), {
           headers: {
             upgrade: "websocket",
-            [CLIENT_HEADER]: client,
+            [CLIENT_HEADER]: `mcp-remote/${SERVER_VERSION} tool=${tool}`,
           },
         }),
       );
@@ -238,10 +231,14 @@ async function identityOf(c: Ctx, token: string): Promise<{ id: string; scopes: 
 }
 
 function listed(t: (typeof TOOLS)[number]) {
+  const description =
+    "remoteDescription" in t && typeof t.remoteDescription === "string"
+      ? t.remoteDescription
+      : t.description;
   return {
     name: t.name,
     title: t.title,
-    description: `${t.description} ${UNTRUSTED_NOTE}`,
+    description: `${description} ${UNTRUSTED_NOTE}`,
     inputSchema: inputJsonSchema(t),
     annotations: t.annotations,
   };
@@ -283,7 +280,11 @@ async function dispatch(
       return { jsonrpc: "2.0", id, result: {} };
     case "tools/list": {
       const { scopes } = await identityOf(c, token);
-      return { jsonrpc: "2.0", id, result: { tools: toolsFor(scopes).map(listed) } };
+      return {
+        jsonrpc: "2.0",
+        id,
+        result: { tools: toolsFor(scopes, { remote: true }).map(listed) },
+      };
     }
     case "tools/call": {
       const t = TOOLS.find((x) => x.name === params.name);
@@ -311,7 +312,7 @@ async function dispatch(
         t,
         api as never,
         parsed.args as never,
-        toolIo(c, env, token, t.name),
+        chatIo(env, token, t.name),
       );
       // The token itself refused (unknown, expired, revoked): the client should sign in again.
       if (seen.unauthorized) throw new Unauthorized();

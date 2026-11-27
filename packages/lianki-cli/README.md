@@ -93,7 +93,7 @@ shows each token's permissions, expiry and last use, with one-click Revoke.
 | `chat:write` | post in your own chat (`chat say`, `chat avatar`)           |
 | `chat:ask`   | post question cards in your own chat (`chat ask`)           |
 | `progress`   | report your work to the task list (`progress`); site owners' tokens only |
-| `recordings:read` | read your own mic recordings (`recordings list`, `recordings get`); dev accounts only |
+| `recordings:read` | read your own mic recordings locally (`recordings list`, `recordings get`, local stdio `lianki mcp`); remote `/mcp` exposes metadata only (`id`, `at`, `durationMs`) and refuses audio; dev accounts only |
 
 No token can run code, pair a device, answer a card or reach another
 account's chat.
@@ -170,7 +170,11 @@ lianki recordings get <id> --out /tmp/recordings --json
 
 `recordings get` saves `<id>.wav` inside `--out` (default `.`) using `wx` and
 refuses to overwrite an existing file (exit 5). `--day` lists one UTC day oldest
-first and cannot be combined with `--before` or `--limit`.
+first and cannot be combined with `--before` or `--limit`. Raw audio and
+transcripts are local-only (CLI and local stdio `lianki mcp`); remote
+`https://lianki.com/mcp` exposes recording metadata only (`id`, `at`,
+`durationMs`) and refuses `lianki_recordings_audio` so recordings are never sent
+to cloud MCP clients.
 
 ## Settings
 
@@ -233,8 +237,8 @@ chat.
 | `lianki_chat_say`     | `chat:write` | post a line                                    |
 | `lianki_chat_avatar`  | `chat:write` | set your chat picture (`svg`, or null)         |
 | `lianki_chat_ask`     | `chat:ask`   | post a question card; only your tap answers it |
-| `lianki_recordings_list` | `recordings:read` | list mic recordings metadata and transcripts (`limit`, `before`, `day`) |
-| `lianki_recordings_audio` | `recordings:read` | fetch one recording's WAV audio (`id`) as an audio content block |
+| `lianki_recordings_list` | `recordings:read` | list mic recordings (`limit`, `before`, `day`; full metadata + transcripts locally, metadata only `id`/`at`/`durationMs` on remote `/mcp`) |
+| `lianki_recordings_audio` | `recordings:read` | fetch one recording's WAV audio (`id`) as an audio content block (local stdio `lianki mcp` only; omitted and refused on remote `/mcp`) |
 
 Only the tools your token allows are listed. There are no delete tools.
 Results are marked as untrusted data (page titles and chat lines can be

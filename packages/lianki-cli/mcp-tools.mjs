@@ -23,6 +23,7 @@ import {
   bytesToBase64,
   clipSummary,
   recordingsListQuery,
+  remoteClipMetadata,
   validateRecordingId,
 } from "./recordings.mjs";
 
@@ -520,6 +521,9 @@ export const TOOLS = [
     description:
       "List metadata and transcripts of the user's own mic recordings, newest first (or one UTC day via `day`). " +
       "To match a spoken chat line's recording, pass `before = timing.t_uploadStart + 1` and `limit = 5`, then pick the clip whose `at` lies in `[t_speechEnd, t_uploadStart]`.",
+    remoteDescription:
+      "List metadata only (id, timestamp, durationMs) of the user's own mic recordings, newest first (or one UTC day via `day`). " +
+      "Transcripts and audio are only available locally via the CLI or local stdio `lianki mcp`.",
     input: {
       limit: z
         .number()
@@ -544,19 +548,21 @@ export const TOOLS = [
         .describe("One UTC calendar day YYYY-MM-DD (oldest first; cannot be combined with before or limit)"),
     },
     annotations: READ,
-    run: async (api, a) => {
+    run: async (api, a, io) => {
       const query = recordingsListQuery(a);
       const d = await api({ path: RECORDINGS_PATH, query });
-      const clips = (Array.isArray(d.clips) ? d.clips : []).map(clipSummary);
+      const shape = io?.remote ? remoteClipMetadata : clipSummary;
+      const clips = (Array.isArray(d.clips) ? d.clips : []).map(shape);
       return query.day ? { day: d.day ?? query.day, clips } : { clips, more: Boolean(d.more) };
     },
   },
   {
     name: "lianki_recordings_audio",
     scope: "recordings:read",
+    localOnly: true,
     title: "Fetch mic recording audio",
     description:
-      "Fetch one mic recording's WAV audio by its clip id (from lianki_recordings_list). Returns metadata as untrusted data plus an audio content block.",
+      "Fetch one mic recording's WAV audio by its clip id (from lianki_recordings_list). Local stdio MCP only; returns metadata as untrusted data plus an audio content block.",
     input: {
       id: z
         .string()
@@ -565,6 +571,12 @@ export const TOOLS = [
     },
     annotations: READ,
     run: async (_api, a, io) => {
+      if (io?.remote)
+        throw new CliError(
+          "local_only",
+          EXIT.refused,
+          "Recording audio is only available locally (use `lianki recordings get` or local `lianki mcp` over stdio; remote /mcp never sends recording audio to cloud clients).",
+        );
       validateRecordingId(a.id);
       if (!io?.fetchBytes)
         throw new CliError(
@@ -762,10 +774,11 @@ export function waitChat(io, { after, timeoutSec } = {}) {
   );
 }
 
-/** The tools a token holding `scopes` may use. */
+/** The tools a token holding `scopes` may use (`remote: true` omits local-only tools). */
 export const missingToolScope = (tool, scopes) =>
   (tool.requires ?? [tool.scope]).find((scope) => !scopes.includes(scope));
-export const toolsFor = (scopes) => TOOLS.filter((t) => !missingToolScope(t, scopes));
+export const toolsFor = (scopes, { remote = false } = {}) =>
+  TOOLS.filter((t) => (!remote || !t.localOnly) && !missingToolScope(t, scopes));
 
 /**
  * A tool's result as text: the data between tags, with every `<` escaped so
