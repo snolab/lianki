@@ -52,7 +52,14 @@ export default function PermissionsHistory({ version }: { version: number }) {
 
   const action = (a: Row["action"]) =>
     a === "grant" ? c.actGrant.value : a === "revoke" ? c.actRevoke.value : c.actRegrant.value;
-  const perm = (p: string) => (p === "admin" ? c.admin.value : p === "dev" ? c.dev.value : p);
+  const perm = (p: string) =>
+    p === "admin"
+      ? c.admin.value
+      : p === "dev"
+        ? c.dev.value
+        : p === "insider"
+          ? c.insider.value
+          : p;
 
   return (
     <section className="space-y-2">

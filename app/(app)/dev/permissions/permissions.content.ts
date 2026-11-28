@@ -3,7 +3,7 @@ import { describeKeys } from "@/lib/i18n-context";
 
 /**
  * /dev/permissions (app/(app)/dev/permissions): the admin page that grants and
- * revokes the two account permissions, `admin` and `dev`
+ * revokes the account permissions, `admin`, `dev` and `insider`
  * (lib/permissions.ts), plus the small "who can see this page" line every /dev
  * page shows (app/(app)/dev/PageAccess.tsx). Internal pages, read by the site's
  * administrators only.
@@ -118,6 +118,42 @@ const dictionary = {
       sw: "Zana za usanidi, na vipengele ambavyo bado havijatolewa.",
       mr: "डेव्हलपमेंट साधने, आणि अजून प्रसिद्ध न झालेली वैशिष्ट्ये.",
       ko: "개발 도구와 아직 공개되지 않은 기능.",
+    }),
+    insider: t({
+      en: "Insider",
+      zh: "内测用户",
+      hi: "इनसाइडर",
+      es: "Insider",
+      fr: "Initié",
+      ar: "مختبر داخلي",
+      bn: "ইনসাইডার",
+      pt: "Insider",
+      ru: "Инсайдер",
+      ur: "اندرونی صارف",
+      id: "Insider",
+      de: "Insider",
+      ja: "インサイダー",
+      sw: "Mjaribu wa mapema",
+      mr: "इनसायडर",
+      ko: "내부 테스터",
+    }),
+    insiderHint: t({
+      en: "New features before everyone else. Admins always count as insiders.",
+      zh: "比所有人更早用到新功能。管理员始终算作内测用户。",
+      hi: "नए फ़ीचर बाकी सबसे पहले। एडमिन हमेशा इनसाइडर गिने जाते हैं।",
+      es: "Funciones nuevas antes que nadie. Los admins siempre cuentan como insiders.",
+      fr: "Les nouvelles fonctions avant tout le monde. Les admins comptent toujours comme initiés.",
+      ar: "الميزات الجديدة قبل الجميع. المسؤولون يُعدّون دائمًا مختبرين داخليين.",
+      bn: "নতুন ফিচার সবার আগে। অ্যাডমিনরা সবসময় ইনসাইডার হিসেবে গণ্য।",
+      pt: "Recursos novos antes de todo mundo. Admins sempre contam como insiders.",
+      ru: "Новые функции раньше всех. Администраторы всегда считаются инсайдерами.",
+      ur: "نئے فیچرز سب سے پہلے۔ ایڈمن ہمیشہ اندرونی صارف شمار ہوتے ہیں۔",
+      id: "Fitur baru lebih dulu dari yang lain. Admin selalu dihitung sebagai insider.",
+      de: "Neue Funktionen vor allen anderen. Admins zählen immer als Insider.",
+      ja: "新機能を誰よりも先に。管理者は常にインサイダーとして扱われます。",
+      sw: "Vipengele vipya kabla ya wengine wote. Wasimamizi huhesabiwa kila mara kuwa wajaribu wa mapema.",
+      mr: "नवी वैशिष्ट्ये सर्वांच्या आधी. अॅडमिन नेहमी इनसायडर मानले जातात.",
+      ko: "새 기능을 누구보다 먼저. 관리자는 항상 내부 테스터로 칩니다.",
     }),
     holders: t({
       en: "Current grants",
@@ -638,6 +674,10 @@ const context: Record<keyof typeof dictionary.content, string> = {
   dev: "Name of the 'dev' permission, shown as a checkbox label and in the grants list: a short noun for a developer of the site.",
   devHint:
     "Short explanation next to the dev checkbox: what holding the dev permission lets an account see. A noun phrase, no verb needed.",
+  insider:
+    "Name of the 'insider' permission, shown as a checkbox label and in the grants list: a short noun for a person who gets new features early, before they reach every user (an early-access tester, like 'Insider' in Windows Insider). Not an employee or someone with inside information.",
+  insiderHint:
+    "Short explanation next to the insider checkbox: holding the insider permission gives an account new features before every other user gets them; site admins count as insiders without it. Two short sentences, no subject in the first.",
   holders:
     "Section heading above the list of email addresses that currently hold a permission. A noun phrase.",
   none: "Shown in place of the list when no address holds any permission yet. A short full sentence.",
@@ -651,7 +691,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   grant:
     "Submit button of the grant form: gives the checked permissions to the typed address, after a confirm dialog. Imperative verb, one word if possible.",
   confirmGrant:
-    "Question in the in-app confirm dialog before a permission is given. {permission} is the translated permission name (Admin or Dev), {email} an address; keep both placeholders.",
+    "Question in the in-app confirm dialog before a permission is given. {permission} is the translated permission name (Admin, Dev or Insider, several joined with ' + '), {email} an address; keep both placeholders.",
   confirmRevoke:
     "Question in the in-app confirm dialog before a permission is taken away. {permission} is the permission name, {email} an address, {seconds} a number of seconds; keep all three.",
   confirmSelf:
@@ -695,9 +735,9 @@ const context: Record<keyof typeof dictionary.content, string> = {
 
 export default {
   ...dictionary,
-  title: "/dev/permissions — granting the admin and dev permissions",
+  title: "/dev/permissions — granting the admin, dev and insider permissions",
   description: describeKeys(
-    "The internal admin page for the two account permissions (admin, dev): list, grant and revoke with an in-app confirm dialog, plus the 'who can see this page' line on every /dev page. Read by site administrators only; plain and short.",
+    "The internal admin page for the account permissions (admin, dev, insider = early access to new features): list, grant and revoke with an in-app confirm dialog, plus the 'who can see this page' line on every /dev page. Read by site administrators only; plain and short.",
     context,
   ),
 } satisfies DeclarationContent;

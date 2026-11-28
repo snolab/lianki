@@ -6,19 +6,19 @@ import PermissionsHistory from "./PermissionsHistory";
 import { SealSwitch } from "@/app/components/SealSwitch";
 import { DevToast, type DevToastMsg } from "../DevToast";
 
-type Permission = "admin" | "dev";
+type Permission = "admin" | "dev" | "insider";
 type Row = { email: string; permission: Permission; granted_by: string; granted_at: number };
 type Pending =
   | { op: "grant"; email: string; permissions: Permission[] }
   | { op: "revoke"; email: string; permissions: [Permission] };
 
-const PERMS: Permission[] = ["admin", "dev"];
+const PERMS: Permission[] = ["admin", "dev", "insider"];
 const fmt = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const fill = (s: string, vars: Record<string, string | number>) =>
   s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 
 /**
- * List, grant and revoke the admin and dev permissions. Every change goes
+ * List, grant and revoke the admin, dev and insider permissions. Every change goes
  * through an in-app confirm dialog first; /api/dev/permissions checks
  * everything again on the server.
  */
@@ -29,14 +29,21 @@ export default function PermissionsAdmin({ self, seconds }: { self: string; seco
   const closeToast = useCallback(() => setToast(null), []);
   const [rows, setRows] = useState<Row[]>([]);
   const [email, setEmail] = useState("");
-  const [want, setWant] = useState<Record<Permission, boolean>>({ admin: false, dev: true });
+  const [want, setWant] = useState<Record<Permission, boolean>>({
+    admin: false,
+    dev: true,
+    insider: false,
+  });
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const [version, setVersion] = useState(0);
   const dialog = useRef<HTMLDialogElement>(null);
 
-  const name = (p: Permission) => (p === "admin" ? c.admin.value : c.dev.value);
+  const name = (p: Permission) =>
+    p === "admin" ? c.admin.value : p === "insider" ? c.insider.value : c.dev.value;
+  const hint = (p: Permission) =>
+    p === "admin" ? c.adminHint : p === "insider" ? c.insiderHint : c.devHint;
 
   const apply = useCallback(
     async (r: Response) => {
@@ -190,7 +197,7 @@ export default function PermissionsAdmin({ self, seconds }: { self: string; seco
             />
             <span id={`perm-${p}`}>
               <span className="font-medium">{name(p)}</span> —{" "}
-              <span className="opacity-80">{p === "admin" ? c.adminHint : c.devHint}</span>
+              <span className="opacity-80">{hint(p)}</span>
             </span>
           </div>
         ))}

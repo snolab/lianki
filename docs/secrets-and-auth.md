@@ -244,7 +244,7 @@ Keep the same value as `PROGRESS_TOKEN=…` in `.dev.vars` (or export
 the owner's tree shows the hand-edited outline only. Rotating it invalidates
 every scoped token at once.
 
-## Permissions (`admin`, `dev`)
+## Permissions (`admin`, `dev`, `insider`)
 
 **Every owner/dev/admin gate is a permission check** (owner's standing rule,
 2026-11-09): `isAdmin(email)` or `isDev(email)` from `lib/permissions.ts`, never
@@ -273,7 +273,18 @@ these rows newest first, 50 a page, with the time in JST, the actor's address
   `lib/dev-eval.ts`): every `dev` holder's pages and chat tokens join it
   (`threadFor`). No path checks the owner's address; the inventory is
   [owner-paths-audit-2026-11-15.md](owner-paths-audit-2026-11-15.md).
-- Neither implies the other; each is its own grant. Which permission a `/dev`
+- **`insider`** — early access: features shipped to insiders first, behind a flag
+  with `audience: "insider"` and read with `flagOnFor` (`lib/flag-audience.ts`;
+  [feature-flags.md](feature-flags.md), "Insiders first"). No `/dev` page, no
+  tools, nobody else's data. `isInsider(email)` is the `insider` grant **or
+  `admin`**, so whoever runs the site always sees insider features; `dev` alone
+  is not an insider. Grant it at `/dev/permissions` (the Insider / 内测用户
+  checkbox) or, break-glass, `scripts/dev/permission.ts grant <address> insider`.
+  Added by `db/migrations/0091_insider_permission.sql` (the table's CHECK now
+  allows it). The `/dev` layout never sends the list of insiders to anyone. Like
+  every grant it goes by the exact address, so its holder's email change is
+  refused like an admin's or dev's ("Changing the email").
+- `admin` and `dev` do not imply each other; each is its own grant. Which permission a `/dev`
   page checks is listed in `lib/dev-page-permissions.ts` (a unit test keeps it
   in step with the pages), and the `/dev` layout prints a small "who can see
   this page" line under each page for viewers who hold that permission.

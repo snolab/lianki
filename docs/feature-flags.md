@@ -17,7 +17,9 @@ with no deploy and no secret change.
 One compact row per flag: name, state and the switch, which is one tap as ever
 (a payment flag still asks before turning on). Tapping the name unfolds the
 description and the last change. A prerequisite's reason and the money note
-stay on the folded row, because they say why the switch does nothing.
+stay on the folded row, because they say why the switch does nothing. A flag
+with an `audience` carries its badge beside the name (仅开发者, 仅名单内,
+仅内测用户; `AUDIENCE_LABELS` in `lib/flags.ts`).
 
 - **Sections come from the registry.** A flag's `group`, else its key's prefix.
   A group with one flag goes to 其他, so a new prefix adds no heading until it
@@ -183,8 +185,9 @@ Turning a payment flag off is the kill switch: no new payment starts within
 1. Add the key to `FLAGS` in `lib/flags.ts`: `"<area>.<feature>"`, a
    description in the owner's language (Chinese; what turning it on does), and
    `default: false`. Nothing else: no migration, no secret. Add `audience` if it
-   will not reach every user once on, and `group` if its prefix reads badly on
-   the page ("The page", above).
+   will not reach every user once on (`"insider"` to ship to insiders first:
+   "Insiders first", below), and `group` if its prefix reads badly on the page
+   ("The page", above).
 2. Gate the feature on the server:
 
    ```ts
@@ -206,6 +209,43 @@ Turning a payment flag off is the kill switch: no new payment starts within
    `/dev/flags` when ready (for a check first, the owner can gate on
    `isOwner` as well inside the feature).
 5. Unit-test both sides of the flag.
+
+## Insiders first
+
+The `insider` permission (`lib/permissions.ts`, `isInsider`;
+[secrets-and-auth.md](secrets-and-auth.md), "Permissions") is a group of
+accounts that get new features before everyone. `isInsider` is the `insider`
+grant **or `admin`**, so whoever runs the site always sees what insiders see;
+`dev` alone is not an insider. People join and leave at **/dev/permissions**
+(the Insider / 内测用户 checkbox), no deploy.
+
+1. Add the flag with `audience: "insider"` (and `default: true` or `false` as
+   usual). /dev/flags shows the row with the badge **仅内测用户**, the saved toast
+   says "for insiders only", and the 已全面打开 view does not count it as shipped.
+2. Gate the feature with `flagOnFor`, which checks the switch **and** the
+   audience:
+
+   ```ts
+   import { readFlags } from "@/lib/flags-store";
+   import { flagOnFor } from "@/lib/flag-audience";
+
+   const flags = await readFlags();
+   if (!flagOnFor(flags, "words.new-thing", user?.email)) return notFound();
+   ```
+
+   Call it after the session was read (that refreshes the permission
+   snapshot). It fails closed: no snapshot, no insider. On a client it always
+   answers false, so pass the server's answer down as a prop.
+3. **Going to everyone:** delete the `audience: "insider"` line and deploy. The
+   same `flagOnFor` call now answers by the switch alone (no audience = every
+   user), the badge goes, and the row counts as shipped once on. Later, when it
+   has been on for good, remove the flag ("Removing a flag").
+
+The switch stays a kill switch throughout: off is off for insiders too.
+`flagOnFor` also knows `"owner"` (= `isDev`, as those call sites check by hand)
+and answers false for `"allowlist"` (only the feature knows its list). Every
+audience shows its badge on /dev/flags: 仅开发者 (`owner`), 仅名单内
+(`allowlist`), 仅内测用户 (`insider`).
 
 ## Renaming a flag
 

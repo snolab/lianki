@@ -1,4 +1,4 @@
-import { FLAGS, type FlagDef } from "@/lib/flags";
+import { AUDIENCE_LABELS, FLAGS, type FlagDef } from "@/lib/flags";
 import type { FlagRow } from "@/lib/flags-store";
 import type { PrereqFailure } from "@/lib/flag-prereqs";
 import { SealSwitch } from "@/app/components/SealSwitch";
@@ -73,6 +73,8 @@ export function FlagCard({
   const blocked = failed.length > 0;
   const locked = blocked && !f.enabled;
   const money = (FLAGS[f.key] as FlagDef).money === true;
+  // Who it reaches once on: a badge, so an insider-first rollout reads at a glance.
+  const audience = (FLAGS[f.key] as FlagDef).audience;
   return (
     <section
       id={f.key}
@@ -91,6 +93,14 @@ export function FlagCard({
         >
           <Chevron open={expanded} />
           <code className="font-mono text-sm break-all">{f.key}</code>
+          {audience && (
+            <span
+              data-audience={audience}
+              className="shrink-0 rounded border border-current px-1 text-xs opacity-70"
+            >
+              {AUDIENCE_LABELS[audience].zh}
+            </span>
+          )}
         </button>
         <SealSwitch
           data-flag-state={f.enabled ? "on" : "off"}

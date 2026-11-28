@@ -101,9 +101,40 @@ export interface FlagDef {
   /**
    * Who it reaches once ON, when that is not every user. /dev/flags only counts
    * a flag as shipped (on for everyone) without this. Default: every user.
+   * - "owner": `dev` holders; each call site checks `isDev` itself.
+   * - "allowlist": the flag's own list (a /dev page); the call site checks it.
+   * - "insider": `isInsider` (the `insider` grant, or `admin`). Read it with
+   *   flagOnFor (lib/flag-audience.ts), which applies the audience for you.
+   *   Insiders first: ship with `audience: "insider"`, then delete the line to
+   *   reach everyone (docs/feature-flags.md, "Insiders first").
    */
-  audience?: "owner" | "allowlist";
+  audience?: FlagAudience;
 }
+
+export type FlagAudience = "owner" | "allowlist" | "insider";
+
+/**
+ * The audience badge on each /dev/flags row (owner-only and Chinese only, like
+ * the rest of that page), with a context line so it is never translated or
+ * reworded on its own (docs/i18n.md). A flag without `audience` has no badge.
+ */
+export const AUDIENCE_LABELS = {
+  owner: {
+    zh: "仅开发者",
+    context:
+      "Small badge beside a switch's name on the owner's /dev/flags page: once on, the switch reaches only accounts holding the dev permission, not every user.",
+  },
+  allowlist: {
+    zh: "仅名单内",
+    context:
+      "Small badge beside a switch's name on the owner's /dev/flags page: once on, the switch reaches only the accounts on that switch's own allow list.",
+  },
+  insider: {
+    zh: "仅内测用户",
+    context:
+      "Small badge beside a switch's name on the owner's /dev/flags page: once on, the switch reaches only insiders (accounts given the insider permission at /dev/permissions, plus admins) — a feature shipped to insiders first.",
+  },
+} as const satisfies Record<FlagAudience, { zh: string; context: string }>;
 
 export const FLAGS = {
   "partner.standard-flow": {
