@@ -22,7 +22,7 @@ const locales = [
 ].sort();
 test("Live PCM panel labels carry their whole local-only context in all16locales", () => {
   const context = keyContext(dictionary.description);
-  expect(Object.keys(dictionary.content).length).toBe(26);
+  expect(Object.keys(dictionary.content).length).toBe(38);
   for (const [key, value] of Object.entries(dictionary.content)) {
     const translation = (value as { translation: Record<string, string> }).translation;
     expect(Object.keys(translation).sort()).toEqual(locales);

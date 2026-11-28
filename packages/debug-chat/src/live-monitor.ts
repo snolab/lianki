@@ -40,13 +40,17 @@ export function createLiveMonitor(d: MonitorDeps) {
     },
     sync,
     async consume(pcm: ArrayBuffer, format: LivePcmFormat, signal: AbortSignal) {
-      if (signal.aborted || !sync() || !owner.claim()) return;
+      if (signal.aborted || !sync()) return;
+      const samples = decodeLivePcm(pcm);
+      // Silent frames must neither hold the mic nor interrupt another audio owner.
+      if (samples.every((sample) => sample === 0)) return;
+      if (!owner.claim()) return;
       let playback: Playback | undefined;
       const stop = () => {
         if (playback) stopPlayback(playback);
       };
       try {
-        playback = d.play(decodeLivePcm(pcm), format);
+        playback = d.play(samples, format);
         playing.add(playback);
         signal.addEventListener("abort", stop, { once: true });
         if (signal.aborted) stop();

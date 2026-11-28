@@ -1,4 +1,5 @@
 "use client";
+import { requestVoicePair, type VoicePairState, type ApprovedVoiceChat } from "./voice-pair";
 import { SealSwitch } from "@/app/components/SealSwitch";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -34,10 +35,19 @@ const ZERO = { inputFrames: 0, outputFrames: 0, clipped: 0 };
 export default function LiveAudioPanel({
   labels: t,
   settings,
+  pairingBase,
 }: {
   labels: Record<string, string>;
   settings: Settings;
+  /** Isolated gateway verification; never read from location or local storage. */
+  pairingBase?: string;
 }) {
+  const [pairState, setPairState] = useState<VoicePairState | "idle">("idle");
+  const [approvalUrl, setApprovalUrl] = useState("");
+  const [chat, setChat] = useState<ApprovedVoiceChat | null>(null);
+  const [inCall, setInCall] = useState(false);
+  const pairing = useRef<ReturnType<typeof requestVoicePair> | null>(null);
+  const normalFlow = useRef(false);
   const [ticket, setTicket] = useState<LiveTicket | null>(null),
     [route, setRoute] = useState({ source: "", target: "" });
   const [state, setState] = useState<LiveState>("closed"),
@@ -74,6 +84,9 @@ export default function LiveAudioPanel({
   };
   const dispose = () => {
     generation.current++;
+    pairing.current?.cancel();
+    pairing.current = null;
+    normalFlow.current = false;
     removeMic.current?.();
     removeMic.current = null;
     micFrames.current.clear();
@@ -88,6 +101,10 @@ export default function LiveAudioPanel({
   const stop = () => {
     dispose();
     setState("closed");
+    setPairState("idle");
+    setApprovalUrl("");
+    setChat(null);
+    setInCall(false);
     setMonitorOn(false);
     setStats({ ...totals.current });
   };
@@ -101,6 +118,10 @@ export default function LiveAudioPanel({
     const unwatch = pageAudio().subscribe(syncMic);
     const leave = () => {
       dispose();
+      setPairState("idle");
+      setApprovalUrl("");
+      setChat(null);
+      setInCall(false);
       setMonitorOn(false);
       setState("closed");
     };
@@ -124,9 +145,11 @@ export default function LiveAudioPanel({
     try {
       if (on) monitor.current = browserLiveMonitor();
       setMonitorOn(on);
+      return true;
     } catch {
       setMonitorOn(false);
       setError(true);
+      return false;
     }
   };
   const busy = state !== "closed";
@@ -147,12 +170,12 @@ export default function LiveAudioPanel({
       }
     }
   };
-  const start = async () => {
-    if (!ticket || connection.current) return;
+  const start = async (provided: LiveTicket | null = ticket): Promise<boolean> => {
+    if (!provided || connection.current) return false;
     const mine = ++generation.current;
     let current: LiveConnection;
     try {
-      const opened = liveTicket(ticket, location.origin);
+      const opened = liveTicket(provided, location.origin);
       setTicket(null);
       setError(false);
       setState("connecting");
@@ -196,6 +219,14 @@ export default function LiveAudioPanel({
           if (next === "draining" || next === "closed") clearInput();
           if (next === "closed") {
             clearStats();
+            if (normalFlow.current) {
+              setInCall(false);
+              setChat(null);
+              setPairState("unavailable");
+              pairing.current?.cancel();
+              pairing.current = null;
+              normalFlow.current = false;
+            }
             removeMic.current?.();
             removeMic.current = null;
             micFrames.current.clear();
@@ -212,7 +243,7 @@ export default function LiveAudioPanel({
       await current.ready;
       if (mine !== generation.current || current.state() !== "ready") {
         current.cancel();
-        return;
+        return false;
       }
       const finishInput = () => {
         if (current.state() === "ready") current.endInput();
@@ -297,24 +328,123 @@ export default function LiveAudioPanel({
       };
       inputTimer.current = setInterval(() => void tick(), opened.frameMs);
       void tick();
+      return true;
     } catch {
       if (mine === generation.current) {
+        const wasNormal = normalFlow.current;
         dispose();
+        if (wasNormal) {
+          setChat(null);
+          setPairState("unavailable");
+        }
         setState("closed");
         setError(true);
       }
+      return false;
     }
+  };
+  const connect = () => {
+    stop();
+    normalFlow.current = true;
+    change({ a: false, b: false, mic: false });
+    const mine = generation.current;
+    const session = requestVoicePair({
+      origin: location.origin,
+      base: pairingBase,
+      sourceId: "li-" + crypto.randomUUID(),
+      changed(next, url) {
+        if (mine !== generation.current) return;
+        setPairState(next);
+        if (url) setApprovalUrl(url);
+      },
+    });
+    pairing.current = session;
+    void session.ready
+      .then(async (approved) => {
+        if (mine !== generation.current || pairing.current !== session) {
+          session.cancel();
+          return;
+        }
+        setChat(approved.chat);
+        if (!(await start(approved.ticket))) {
+          session.cancel();
+          if (pairing.current === session) {
+            setChat(null);
+            setPairState("unavailable");
+          }
+        }
+      })
+      .catch(() => {
+        if (mine === generation.current && pairing.current === session) {
+          pairing.current = null;
+          normalFlow.current = false;
+          setApprovalUrl("");
+        }
+      }); // State callback supplies the plain-language reason.
+  };
+  const paired = !!chat && (state === "ready" || state === "input-ended");
+  const pairPending =
+    pairState === "requesting" || pairState === "pending" || state === "connecting";
+  const beginCall = () => {
+    if (!paired || !pageAudio().mic()) return;
+    if (!toggleMonitor(true)) return;
+    change({ mic: true, a: false, b: false });
+    setInCall(true);
   };
   return (
     <section data-testid="live-audio-panel" className="space-y-4">
-      <div role="status" className="space-y-2">
-        <h2>{t.unavailableTitle}</h2>
-        <p>{t.unavailableBody}</p>
+      <div role="status" className="space-y-3">
+        <p>{t.connectIntro}</p>
+        {paired ? (
+          <>
+            <p data-testid="voice-chat-name">{chat.title}</p>
+            {inCall ? (
+              <p>{t.inCall}</p>
+            ) : (
+              <>
+                <button data-testid="voice-begin" disabled={!micOn} onClick={beginCall}>
+                  {t.beginCall}
+                </button>
+                {!micOn && <p>{t.micOff}</p>}
+              </>
+            )}
+            <button data-testid="voice-disconnect" onClick={stop}>
+              {t.disconnect}
+            </button>
+          </>
+        ) : pairPending ? (
+          <>
+            <p>{pairState === "pending" ? t.waitingApproval : t.connecting}</p>
+            {pairState === "pending" && approvalUrl && (
+              <a
+                data-testid="voice-approve"
+                data-lk-ext-ok
+                href={approvalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t.chooseChat}
+              </a>
+            )}
+            <button data-testid="voice-cancel" onClick={stop}>
+              {t.cancelConnection}
+            </button>
+          </>
+        ) : (
+          <>
+            {pairState === "unavailable" && <p>{t.connectionUnavailable}</p>}
+            {pairState === "denied" && <p>{t.connectionDenied}</p>}
+            {pairState === "expired" && <p>{t.connectionExpired}</p>}
+            <button data-testid="voice-connect" onClick={connect}>
+              {t.connect}
+            </button>
+          </>
+        )}
       </div>
       <details
         data-testid="live-advanced"
         onToggle={(event) => {
-          if (!event.currentTarget.open) {
+          if (!event.currentTarget.open && !normalFlow.current) {
             stop();
             setTicket(null);
           }
@@ -329,7 +459,7 @@ export default function LiveAudioPanel({
               data-testid="live-ticket"
               type="file"
               accept="application/json,.json"
-              disabled={busy}
+              disabled={busy || pairPending}
               onChange={(e) => {
                 void importTicket(e.target.files?.[0]);
                 e.target.value = "";
@@ -360,7 +490,9 @@ export default function LiveAudioPanel({
               data-testid="live-monitor"
               checked={monitorOn}
               disabled={state !== "ready" && state !== "input-ended"}
-              onClick={() => toggleMonitor(!monitorOn)}
+              onClick={() => {
+                toggleMonitor(!monitorOn);
+              }}
             />
             {t.monitor}
           </label>
@@ -393,7 +525,7 @@ export default function LiveAudioPanel({
           <div className="flex gap-3">
             <button
               data-testid="live-start"
-              disabled={!ticket || busy}
+              disabled={!ticket || busy || pairPending}
               onClick={() => void start()}
             >
               {t.start}

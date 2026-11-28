@@ -206,11 +206,19 @@ test("monitor setup/decode failures release priority and disposed monitors remai
   ).rejects.toThrow();
   expect(holding).toBe(false);
   await expect(
-    monitor.consume(new ArrayBuffer(640), format, new AbortController().signal),
+    monitor.consume(
+      encodeLivePcm(new Float32Array(320).fill(0.5)),
+      format,
+      new AbortController().signal,
+    ),
   ).rejects.toThrow("output refused");
   expect(holding).toBe(false);
   monitor.dispose();
-  await monitor.consume(new ArrayBuffer(640), format, new AbortController().signal);
+  await monitor.consume(
+    encodeLivePcm(new Float32Array(320).fill(0.5)),
+    format,
+    new AbortController().signal,
+  );
   expect(holding).toBe(false);
 });
 
@@ -257,7 +265,11 @@ test("browser monitor refuses failed resume/closed context and stops on page hid
   let monitor = setup();
   try {
     await expect(
-      monitor.consume(new ArrayBuffer(640), format, new AbortController().signal),
+      monitor.consume(
+        encodeLivePcm(new Float32Array(320).fill(0.5)),
+        format,
+        new AbortController().signal,
+      ),
     ).rejects.toThrow("resume refused");
   } finally {
     monitor.dispose();
@@ -268,7 +280,11 @@ test("browser monitor refuses failed resume/closed context and stops on page hid
   monitor = setup();
   try {
     await expect(
-      monitor.consume(new ArrayBuffer(640), format, new AbortController().signal),
+      monitor.consume(
+        encodeLivePcm(new Float32Array(320).fill(0.5)),
+        format,
+        new AbortController().signal,
+      ),
     ).rejects.toThrow("audio-not-running");
   } finally {
     monitor.dispose();
@@ -279,10 +295,18 @@ test("browser monitor refuses failed resume/closed context and stops on page hid
   const higher = audioOwner({ target, id: "test-higher", prio: 99 });
   try {
     higher.claim();
-    await monitor.consume(new ArrayBuffer(640), format, new AbortController().signal);
+    await monitor.consume(
+      encodeLivePcm(new Float32Array(320).fill(0.5)),
+      format,
+      new AbortController().signal,
+    );
     expect(nodes).toBe(0);
     higher.release();
-    const playing = monitor.consume(new ArrayBuffer(640), format, new AbortController().signal);
+    const playing = monitor.consume(
+      encodeLivePcm(new Float32Array(320).fill(0.5)),
+      format,
+      new AbortController().signal,
+    );
     await Promise.resolve();
     await Promise.resolve();
     expect(nodes).toBe(1);
@@ -290,14 +314,77 @@ test("browser monitor refuses failed resume/closed context and stops on page hid
     page.dispatchEvent(new Event("visibilitychange"));
     await playing;
     expect(stops).toBe(1);
-    await monitor.consume(new ArrayBuffer(640), format, new AbortController().signal);
+    await monitor.consume(
+      encodeLivePcm(new Float32Array(320).fill(0.5)),
+      format,
+      new AbortController().signal,
+    );
     expect(nodes).toBe(1);
     page.visibilityState = "visible";
     readable = false;
-    await monitor.consume(new ArrayBuffer(640), format, new AbortController().signal);
+    await monitor.consume(
+      encodeLivePcm(new Float32Array(320).fill(0.5)),
+      format,
+      new AbortController().signal,
+    );
     expect(nodes).toBe(1);
   } finally {
     higher.dispose();
     monitor.dispose();
+  }
+});
+
+test("streamed silence never starts playback or holds a half-duplex microphone", async () => {
+  const r = monitorRig();
+  r.monitor.enable(true);
+  await r.monitor.consume(
+    new ArrayBuffer(640),
+    { sampleRate: 16000, channels: 1, format: "s16le" },
+    r.signal.signal,
+  );
+  expect(r.counts()).toEqual({ played: 0, stopped: 0, holding: false });
+  r.monitor.dispose();
+});
+
+test("silent frames never interrupt another audio owner; positive and negative one-LSB frames still play", async () => {
+  const target = new EventTarget();
+  let yielded = 0,
+    played = 0;
+  const reader = audioOwner({
+    target,
+    id: "reader",
+    prio: 1,
+    onYield: () => {
+      yielded++;
+    },
+  });
+  const monitor = createLiveMonitor({
+    allowed: () => true,
+    owner: (onYield) => audioOwner({ target, id: "monitor", prio: 2, onYield }),
+    play(samples) {
+      expect(samples[0]).not.toBe(0);
+      played++;
+      return { done: Promise.resolve(), stop() {} };
+    },
+  });
+  const format = { sampleRate: 16000 as const, channels: 1 as const, format: "s16le" as const };
+  try {
+    reader.claim();
+    monitor.enable(true);
+    await monitor.consume(new ArrayBuffer(640), format, new AbortController().signal);
+    expect(yielded).toBe(0);
+    expect(played).toBe(0);
+    expect(reader.state()).toBe("holding");
+    for (const sample of [1, -1]) {
+      const frame = new ArrayBuffer(640);
+      new DataView(frame).setInt16(0, sample, true);
+      await monitor.consume(frame, format, new AbortController().signal);
+    }
+    expect(played).toBe(2);
+    expect(yielded).toBe(2);
+    expect(reader.state()).toBe("holding");
+  } finally {
+    monitor.dispose();
+    reader.dispose();
   }
 });
