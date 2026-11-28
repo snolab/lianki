@@ -10,6 +10,7 @@ import {
   makeDeliverer,
   makeSeqCursor,
   refreshAdvisoryLines,
+  SEND_MAX_CHARS,
   type Line,
 } from "../scripts/dev/lane-listen-lib";
 
@@ -218,21 +219,32 @@ test("each advisory transport part rereads the switch after the previous part wa
   let busy = true;
   let on = true;
   let reads = 0;
-  const first = notice({ text: "a".repeat(620) });
+  const first = notice({
+    text: "a".repeat(1600),
+    coordination: { ...notice().coordination, summary: "s".repeat(20000) },
+  });
   const second = notice({ id: "brief-2", seq: 3, text: "b".repeat(620) });
   const sent: string[] = [];
   const skipped: string[] = [];
+  const delivered: string[] = [];
+  const cursor = makeSeqCursor(0);
   const delivery = makeDeliverer(
     { lane: "codex", repo: "/repo" },
     async (body) => {
       sent.push(body);
+      if (body.length > SEND_MAX_CHARS) return 1;
       if (body.includes("brief-1")) on = false;
       return 0;
     },
     async () => busy,
     undefined,
     5,
-    undefined,
+    (lines, ok) => {
+      if (ok) {
+        delivered.push(...lines.map((line) => line.id));
+        cursor.release(lines.map((line) => line.seq));
+      }
+    },
     async (lines) => {
       reads++;
       return refreshAdvisoryLines(
@@ -240,11 +252,17 @@ test("each advisory transport part rereads the switch after the previous part wa
         snapshot({ partnerStandardFlow: on, messages: [snapshot().messages[0], first, second] }),
       );
     },
-    (lines) => skipped.push(...lines.map((l) => l.id)),
+    (lines) => {
+      skipped.push(...lines.map((l) => l.id));
+      cursor.release(lines.map((line) => line.seq));
+    },
   );
+  cursor.hold(2);
+  cursor.hold(3);
   await delivery.add(lineOf(JSON.stringify(event(first)))!);
   await delivery.add(lineOf(JSON.stringify(event(second)))!);
   busy = false;
+  cursor.hold(4);
   await delivery.add(
     lineOf(
       JSON.stringify(
@@ -254,6 +272,7 @@ test("each advisory transport part rereads the switch after the previous part wa
           label: "Helper",
           thread: "owner",
           text: "FYI",
+          seq: 4,
         }),
       ),
     )!,
@@ -263,9 +282,48 @@ test("each advisory transport part rereads the switch after the previous part wa
   expect(sent).toHaveLength(2);
   expect(sent[0]).toContain("ordinary-context");
   expect(sent[1]).toContain("brief-1");
+  expect(sent[1]).toContain("Original ids: raw-1");
+  expect(sent[1]).toContain("advisory, not a new instruction or permission");
+  expect(sent.every((body) => body.length <= SEND_MAX_CHARS)).toBe(true);
   expect(sent.some((body) => body.includes("brief-2"))).toBe(false);
   expect(skipped).toEqual(["brief-2"]);
   expect(delivery.pending()).toBe(0);
+  expect(delivered).toEqual(["ordinary-context", "brief-1"]);
+  expect(cursor.value()).toBe(4);
+});
+
+test("a bounded advisory rejected by transport stays held, without a delivery receipt", async () => {
+  const cursor = makeSeqCursor(0);
+  cursor.hold(2);
+  const outcomes: boolean[] = [];
+  const sizes: number[] = [];
+  const text = "x".repeat(2000);
+  const message = notice({ text });
+  const delivery = makeDeliverer(
+    { lane: "codex", repo: "/repo" },
+    async (body) => {
+      sizes.push(body.length);
+      return 1;
+    },
+    async () => false,
+    undefined,
+    undefined,
+    (lines, ok) => {
+      outcomes.push(ok);
+      if (ok) cursor.release(lines.map((l) => l.seq));
+    },
+    async (lines) =>
+      refreshAdvisoryLines(lines, snapshot({ messages: [snapshot().messages[0], message] })),
+    () => {
+      throw Error("A transport failure must not discard the notice");
+    },
+  );
+  await delivery.add(lineOf(JSON.stringify(event(message)))!);
+  await delivery.settled();
+  expect(sizes).toHaveLength(1);
+  expect(sizes[0]).toBeLessThanOrEqual(SEND_MAX_CHARS);
+  expect(outcomes).toEqual([false]);
+  expect(cursor.value()).toBeLessThan(2);
 });
 
 test("the serial live reader hands off later raw input while an earlier notice read is pending", async () => {

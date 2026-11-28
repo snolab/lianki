@@ -69,6 +69,8 @@ passing its cursor without claiming it was delivered.
 If the target becomes busy during that read, the notice waits locally and
 reads again after the wait. A previous transport part's successful check is
 never reused for a later part.
+The advisory label and original IDs precede optional body text. Display text is
+bounded after the live read, including the transport header and rule lines.
 Original messages and direct assistant replies are sent first, without waiting
 for that check. Already-handed-over external messages cannot be recalled.
 

@@ -510,7 +510,7 @@ export function refreshAdvisoryLines(lines: Line[], snapshot: unknown): Line[] {
     if (!line.advisory) return [line];
     const { advisory, ...plain } = line;
     const c = currentPartnerCoordination(advisory.message, snapshot);
-    return c ? [{ ...plain, text: advisory.text + coordinationNote(c) }] : [];
+    return c ? [{ ...plain, text: coordinationNote(c).trimStart() + "\n" + advisory.text }] : [];
   });
 }
 /** A batch cut into parts whose bullets (and their batch note) stay under SEND_MAX_CHARS (`_o` is kept for callers; the text no longer depends on it); one bullet too long on its own is cut with "…". */
@@ -564,7 +564,12 @@ export function makeDeliverer(
     let code: number | undefined;
     const room = SEND_MAX_CHARS - (first ? firstLines(o.lane, o.repo, o).join("\n").length + 1 : 0);
     const unnamed = { answerUnnamed: o.answerUnnamed };
-    for (const part of chunkLines(o.lane, lines, room, unnamed)) {
+    // An advisory is one independently rechecked notice. Keep its full source
+    // until that check finishes; only the final displayed text is truncated.
+    const parts = recheckAdvisory
+      ? lines.map((line) => [line])
+      : chunkLines(o.lane, lines, room, unnamed);
+    for (const part of parts) {
       let ready = part;
       if (recheckAdvisory && prepare) {
         // Each part waits locally. A previous AY hand-over can itself take
@@ -576,6 +581,9 @@ export function makeDeliverer(
           } catch {
             ready = refreshAdvisoryLines(part, undefined);
           }
+          // prepare refreshes this notice, never authorizes unrelated lines.
+          const updated = ready.find((line) => line.id === part[0]?.id);
+          ready = updated ? [updated] : [];
           if (!ready.length || !(await busy())) break;
         }
         const kept = new Set(ready.map((l) => l.id));
@@ -585,6 +593,24 @@ export function makeDeliverer(
           discarded(skipped);
         }
         if (!ready.length) continue;
+        // Budget the actual envelope too (header, bullet, rule lines), after
+        // refresh rebuilt the full text. One notice is one transport part.
+        const line = ready[0]!;
+        const overhead = handoffBrief(
+          o.lane,
+          [{ ...line, text: "" }],
+          o.repo,
+          first,
+          unnamed,
+        ).length;
+        const available = SEND_MAX_CHARS - overhead;
+        if (available < 1) {
+          log({ type: "advisory-skipped", lane: o.lane, ids: [line.id], reason: "header-budget" });
+          discarded(ready);
+          continue;
+        }
+        if (line.text.length > available)
+          ready = [{ ...line, text: line.text.slice(0, available - 1) + "…" }];
       }
       const withRules = first;
       // Reserve the first header before yielding: a raw send may run while
