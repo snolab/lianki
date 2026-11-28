@@ -14,19 +14,19 @@ cursor), `lib/chat-wake/core.ts` (record and `wake()`),
 `lib/chat-wake/pull.ts` (the pull adapter), `lib/chat-wake/principal.ts`;
 the ChatGPT push adapter in `lib/mcp-events/*`; `app/api/mcp-events/route.ts`,
 `workers/mcp/src/mcp.ts` (forwarding), `worker.ts` `DebugSessions.chatLog` (the
-trigger), `db/migrations/0085_mcp_events.sql`, `0087_chat_wake.sql`. Tests:
+trigger), `db/migrations/0089_mcp_events.sql`, `0090_chat_wake.sql`. Tests:
 `unit/mcp-events.test.ts`, `unit/chat-wake.test.ts`.
 
 ## Adapters
 
-| agent                         | how it is woken                                                                        | adapter                                 | status                            |
-| ----------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------- | --------------------------------- |
-| ChatGPT (Work chats, dots)    | **push**: MCP Events webhook, signed POST to ChatGPT's callback                        | `chatgpt-webhook` (`lib/mcp-events`)    | built (flag `mcp.events`)         |
-| Gemini app                    | **scheduled pull**: a scheduled action "check Lianki mentions" calls the tool          | `chat.wake.pull`                        | built (flag `chat.wake.pull`)     |
-| Any MCP client, local agents  | **pull**: `lianki_chat_mentions_since` or SEP-3415 `events/poll`                        | `chat.wake.pull`                        | built                             |
-| Claude Code                   | **push**: Routines (a scheduled or triggered cloud run) or Channels                    | a push adapter                          | planned                           |
-| Local CLIs (Claude Code, Codex, Gemini CLI, opencode) | **listener**: `ay send` into the already-running session                   | `ay` (a pull client on the owner's Mac) | planned (see below)               |
-| DeepSeek and others           | **hosted BYOK reply**: Lianki calls the user's own model and posts its answer          | a push adapter                          | planned (docs/byok.md)            |
+| agent                                                 | how it is woken                                                               | adapter                                 | status                        |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------- | ----------------------------- |
+| ChatGPT (Work chats, dots)                            | **push**: MCP Events webhook, signed POST to ChatGPT's callback               | `chatgpt-webhook` (`lib/mcp-events`)    | built (flag `mcp.events`)     |
+| Gemini app                                            | **scheduled pull**: a scheduled action "check Lianki mentions" calls the tool | `chat.wake.pull`                        | built (flag `chat.wake.pull`) |
+| Any MCP client, local agents                          | **pull**: `lianki_chat_mentions_since` or SEP-3415 `events/poll`              | `chat.wake.pull`                        | built                         |
+| Claude Code                                           | **push**: Routines (a scheduled or triggered cloud run) or Channels           | a push adapter                          | planned                       |
+| Local CLIs (Claude Code, Codex, Gemini CLI, opencode) | **listener**: `ay send` into the already-running session                      | `ay` (a pull client on the owner's Mac) | planned (see below)           |
+| DeepSeek and others                                   | **hosted BYOK reply**: Lianki calls the user's own model and posts its answer | a push adapter                          | planned (docs/byok.md)        |
 
 ### The adapter interface
 
@@ -51,7 +51,7 @@ into an already-running CLI session (Claude Code, Codex, Gemini CLI, opencode)
 instead of starting a new one-shot run. It needs **no server push**, so it fits
 as a pull client, not a new server route:
 
-1. A listener on the owner's Mac holds a map *token → ay agent id* (one lane
+1. A listener on the owner's Mac holds a map _token → ay agent id_ (one lane
    token per agent, as lane-listen does now).
 2. For each token it calls `lianki_chat_mentions_since` (or `events/poll`)
    with that token and its stored cursor. It can wait on the token chat socket
@@ -93,7 +93,7 @@ When the hub puts new lines of a thread (`DebugSessions.chatLog`, below):
    when the table has rows.
 
 **Retention is enforced opportunistically, not on a clock.**
-`chat.wakeRetentionDays` is the age after which a row *may* be deleted. It is
+`chat.wakeRetentionDays` is the age after which a row _may_ be deleted. It is
 not a promise that the row is gone by then. The bounded purge runs only when
 there is activity: chat writes (any put to any thread) and polls (the tool and
 `events/poll`). On a site with ordinary traffic, an expired row is usually
@@ -101,30 +101,29 @@ removed within minutes of the next activity. While the whole site is idle (no
 chat line and no poll anywhere), nothing runs, so there is no bound on when an
 expired row is deleted. A large backlog drains `chat.wakePurgeBatch` rows per
 write (sweeps at most once a minute per isolate). Revocation is different: a
-revoked token's rows go at once, through the D1 trigger.
-6. **`wake(target, events)`**: the events, deduped on their id, go to every
-   enabled adapter. If one adapter throws, the others still run.
+revoked token's rows go at once, through the D1 trigger. 6. **`wake(target, events)`**: the events, deduped on their id, go to every
+enabled adapter. If one adapter throws, the others still run.
 
 The ChatGPT adapter ignores `fresh`. As before the refactor, a line put again is
 POSTed again with the same `eventId`, and ChatGPT dedupes on `webhook-id`.
 
-### D1 `chat_mention` (migration 0087)
+### D1 `chat_mention` (migration 0090)
 
-| column       | meaning                                                         |
-| ------------ | --------------------------------------------------------------- |
-| `seq`        | AUTOINCREMENT, never reused: the tie-break in the cursor order  |
-| `id`         | the event id `men_…`, unique                                    |
-| `token_id`   | the API token's public id (`api_tokens.token_hash`)             |
-| `thread`     | the token's own thread when it was named                        |
-| `line_id`    | the chat line's id                                              |
-| `text`       | the line's text (at most 4000 characters)                       |
-| `author`     | `owner` or `friend`                                             |
-| `created_at` | ms                                                              |
+| column       | meaning                                                        |
+| ------------ | -------------------------------------------------------------- |
+| `seq`        | AUTOINCREMENT, never reused: the tie-break in the cursor order |
+| `id`         | the event id `men_…`, unique                                   |
+| `token_id`   | the API token's public id (`api_tokens.token_hash`)            |
+| `thread`     | the token's own thread when it was named                       |
+| `line_id`    | the chat line's id                                             |
+| `text`       | the line's text (at most 4000 characters)                      |
+| `author`     | `owner` or `friend`                                            |
+| `created_at` | ms                                                             |
 
 When a token row is deleted, or its OAuth grant is, a trigger deletes that
 token's rows in the same statement. Indexes: `(token_id, created_at, seq)` for
 paging, and `(created_at)` for the purge across tokens. Not applied anywhere
-yet: apply it with 0085 before turning the flags on.
+yet: apply it with 0089 before turning the flags on.
 
 ## Pull: `lianki_chat_mentions_since` and `events/poll`
 
@@ -140,7 +139,7 @@ no arguments for naming another thread or token.
   `packages/lianki-cli/mcp-tools.mjs`, so the remote `/mcp` and the local
   `lianki mcp` both offer it). It calls `POST /api/mcp-events`
   `{method: "chat/mentions"}` and returns `{mentions: [{id, lineId, text,
-  author, at}], cursor, hasMore, truncated}`, oldest first. Without a cursor it
+author, at}], cursor, hasMore, truncated}`, oldest first. Without a cursor it
   returns the last `chat.wakePullTtlMin`, which is what a Gemini scheduled
   action needs ("check Lianki mentions" once an hour). With a cursor it returns
   only newer rows. `limit` defaults to `chat.wakePullLimit`, at most 100.
@@ -148,14 +147,14 @@ no arguments for naming another thread or token.
   `/mcp` endpoint and forwarded like the other `events/*`:
   `{name: "chat.mention", arguments: {}, cursor, maxAgeMs?, maxEvents?}` →
   `{resultType: "complete", events: [{eventId, name, timestamp, data: {id,
-  text, author}}], cursor, truncated, hasMore, nextPollMs}`. There is no
+text, author}}], cursor, truncated, hasMore, nextPollMs}`. There is no
   subscribe step: a `null` cursor bootstraps "from now" and returns no events.
   `maxAgeMs` is a floor (capped at `chat.wakePullTtlMin`). `nextPollMs` is
   `chat.wakeNextPollMs`. `data` is the webhook's payload.
 - **Cursor**: an opaque, stable position, `w2.<created_at>.<seq>`, holding
   the last row seen. Rows are ordered by `(created_at, seq)`, and the next page
   starts strictly after that position (`created_at > at OR (created_at = at AND
-  seq > seq)`). It is a value, not a row, so rows deleted before or at it never
+seq > seq)`). It is a value, not a row, so rows deleted before or at it never
   shift a page or skip a row that is still kept. `seq` 0 names no row ("up to
   `at`"): a bootstrap, or a token with nothing yet.
 - **`truncated`**: retention and the cap delete oldest first. So rows after a
@@ -180,17 +179,17 @@ used either. We keep the codes the webhook already answers (-32602, -32005,
 
 ### Config keys (lib/config.ts, group `chat`, /dev/config)
 
-| key                      | default | meaning                                                  |
-| ------------------------ | ------- | -------------------------------------------------------- |
+| key                      | default | meaning                                                                |
+| ------------------------ | ------- | ---------------------------------------------------------------------- |
 | `chat.wakeRetentionDays` | 7       | age after which a row may be purged (on activity; no bound while idle) |
-| `chat.wakePerMinute`     | 10      | new rows per token per minute                            |
-| `chat.wakeMaxPerToken`   | 500     | rows kept per token at most (oldest dropped)             |
-| `chat.wakePurgeBatch`    | 100     | expired rows of any token deleted per new row or sweep   |
-| `chat.wakeMaxTokens`     | 50      | the thread's own tokens compared per line                |
-| `chat.wakePullTtlMin`    | 1440    | the tool's window without a cursor; `maxAgeMs` cap       |
-| `chat.wakePullLimit`     | 20      | rows per pull by default (at most 100)                   |
-| `chat.wakePullPerMinute` | 30      | pull calls per token per minute                          |
-| `chat.wakeNextPollMs`    | 60000   | `nextPollMs` in an `events/poll` answer                  |
+| `chat.wakePerMinute`     | 10      | new rows per token per minute                                          |
+| `chat.wakeMaxPerToken`   | 500     | rows kept per token at most (oldest dropped)                           |
+| `chat.wakePurgeBatch`    | 100     | expired rows of any token deleted per new row or sweep                 |
+| `chat.wakeMaxTokens`     | 50      | the thread's own tokens compared per line                              |
+| `chat.wakePullTtlMin`    | 1440    | the tool's window without a cursor; `maxAgeMs` cap                     |
+| `chat.wakePullLimit`     | 20      | rows per pull by default (at most 100)                                 |
+| `chat.wakePullPerMinute` | 30      | pull calls per token per minute                                        |
+| `chat.wakeNextPollMs`    | 60000   | `nextPollMs` in an `events/poll` answer                                |
 
 # Push: ChatGPT through MCP Events
 
@@ -292,7 +291,7 @@ to the main Worker over `SESSIONS.chatLog` (`op: "put"`, lib/chat-log.ts), with
 as before, then runs `mentionEvents` in `waitUntil`, so the hub's answer is
 never held up.
 
-## Storage: D1 `mcp_event_subscription` (migration 0085)
+## Storage: D1 `mcp_event_subscription` (migration 0089)
 
 | column                                | meaning                                                                                                                                              |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -305,7 +304,7 @@ never held up.
 | `expires_at_ms`, `verified_at_ms`     | lifetime; when the callback last proved itself                                                                                                       |
 | `last_event_at_ms`, `failures`        | delivery bookkeeping                                                                                                                                 |
 
-The next migration number was 0085 (prod had 0084_mcp_oauth). Not applied
+Migration 0089 (0085–0088 are taken on prod and in open PRs). Not applied
 anywhere yet. It is applied with the usual D1 migration step before the flag
 is turned on.
 
@@ -513,7 +512,7 @@ live, so a rename takes effect at the next line.
 
 ## Rollout
 
-1. Apply migrations 0085 and 0087 to D1 (0086 is the costs branch) (owner step; not done).
+1. Apply migrations 0089 and 0090 to D1 (owner step; not done).
 2. Deploy main and lianki-mcp.
 3. Turn `mcp.events` on at https://lianki.com/dev/flags#mcp.events. Check
    `mcp.eventsCallbackHosts` at /dev/config.
