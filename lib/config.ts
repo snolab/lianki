@@ -379,6 +379,117 @@ export const CONFIG = {
     audience: "server",
     description: "同一 IP 每分钟最多请求几次 OAuth 换令牌/续期/撤销。",
   }),
+  // MCP Events (docs/mcp-events.md): a ChatGPT session woken by @its-name in its token's thread.
+  "mcp.eventsSubscribePerHour": int({
+    default: 30,
+    min: 1,
+    max: 1000,
+    unit: "per hour",
+    group: "mcp",
+    audience: "server",
+    description:
+      "同一个令牌每小时最多订阅/续订几次 MCP 事件（ChatGPT 被 @ 名字唤醒；每次订阅都要先回呼验证对方地址）。",
+  }),
+  // The callback allowlist is the control against SSRF (docs/mcp-events.md,
+  // "Callback addresses"): only hosts listed here are ever POSTed to.
+  "mcp.eventsCallbackHosts": {
+    default: ["connectors.api.openai.com"] as string[],
+    schema: z
+      .array(
+        z
+          .string()
+          .regex(
+            /^\.?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/,
+            "a lower-case host name, or .suffix for its subdomains",
+          ),
+      )
+      .max(20),
+    group: "mcp",
+    audience: "server",
+    description:
+      "MCP 事件只往这些主机发回呼（验证和每次通知都检查）：JSON 数组。写 host 只匹配这个主机本身；以点开头（.example.com）匹配它的所有子域名，不含它本身。空数组 = 一个都不发。默认是 ChatGPT 实际用的回呼主机 connectors.api.openai.com（OpenAI 文档没写明，是观察到的）；ChatGPT 订阅被拒、原因 host_not_allowed 时，在这里加上它用的主机。",
+  },
+  "mcp.eventsMaxPerToken": int({
+    default: 3,
+    min: 1,
+    max: 20,
+    unit: "subscriptions",
+    group: "mcp",
+    audience: "server",
+    description: "同一个令牌最多同时有几个 MCP 事件订阅（不同的回呼地址各算一个）。",
+  }),
+  "mcp.eventsPerMinute": int({
+    default: 10,
+    min: 1,
+    max: 600,
+    unit: "per min",
+    group: "mcp",
+    audience: "server",
+    description: "同一个订阅每分钟最多被唤醒几次（每次 @ 名字一次；超出的这一分钟内不再发送）。",
+  }),
+  "mcp.eventsTtlMin": int({
+    default: 1440,
+    min: 5,
+    max: 43200,
+    unit: "min",
+    group: "mcp",
+    audience: "server",
+    description: "ChatGPT 没指定时，MCP 事件订阅多久后到期（分钟）；到期前它会自动续订。",
+  }),
+  "mcp.eventsMaxTtlMin": int({
+    default: 10080,
+    min: 5,
+    max: 43200,
+    unit: "min",
+    group: "mcp",
+    audience: "server",
+    description: "MCP 事件订阅最长能有多久（分钟）；要求更久或永不过期时，按这个值给。",
+  }),
+  "mcp.eventsTimeoutMs": int({
+    default: 6000,
+    min: 1000,
+    max: 10000,
+    unit: "ms",
+    group: "mcp",
+    audience: "server",
+    description: "向 ChatGPT 回呼地址发一次事件或验证请求，最多等多久（毫秒）。",
+  }),
+  "mcp.eventsRetries": int({
+    default: 2,
+    min: 0,
+    max: 3,
+    unit: "retries",
+    group: "mcp",
+    audience: "server",
+    description: "一次事件发送失败（超时、5xx、429）后最多重试几次，间隔按倍数增长。",
+  }),
+  "mcp.eventsRetryBaseMs": int({
+    default: 1000,
+    min: 100,
+    max: 5000,
+    unit: "ms",
+    group: "mcp",
+    audience: "server",
+    description: "事件重试的第一次间隔（毫秒），之后每次翻倍。",
+  }),
+  "mcp.eventsVerifyCacheMin": int({
+    default: 60,
+    min: 0,
+    max: 1440,
+    unit: "min",
+    group: "mcp",
+    audience: "server",
+    description: "同一个令牌、同一个回呼地址验证成功后，多久内续订不再重新验证（分钟）。",
+  }),
+  "mcp.eventsRotationOverlapMin": int({
+    default: 60,
+    min: 0,
+    max: 1440,
+    unit: "min",
+    group: "mcp",
+    audience: "server",
+    description: "ChatGPT 更换签名密钥后，旧密钥和新密钥一起签名多久（分钟）。",
+  }),
   "chat.cacheLines": int({
     default: 40,
     min: 0,

@@ -188,6 +188,7 @@ that are expensive to rediscover.
 | The debug chat widget (packages/debug-chat), hot-loading                   | [docs/dev-debug-widget.md](docs/dev-debug-widget.md)                           |
 | Mini apps: /m/<slug>, sandboxed one-file apps, `window.lianki` SDK         | [docs/mini-apps.md](docs/mini-apps.md)                                         |
 | Users' own AI assistants: the token prompt, /api/agent-guide               | [docs/api-for-agents.md](docs/api-for-agents.md)                               |
+| MCP Events: ChatGPT woken by @its-name (chat.mention webhooks)             | [docs/mcp-events.md](docs/mcp-events.md)                                       |
 | ChatGPT / Claude.ai connecting to /mcp by OAuth (flag `mcp.oauth`)         | [docs/mcp-oauth.md](docs/mcp-oauth.md)                                         |
 | `lianki-dev`, the agent lanes' CLI: say, ask, progress, doctor             | [docs/lianki-dev-cli.md](docs/lianki-dev-cli.md)                               |
 | Which lane answers him ("codex, …"), codex/agy listeners                   | [docs/lane-listen.md](docs/lane-listen.md)                                     |

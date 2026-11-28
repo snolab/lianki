@@ -405,6 +405,13 @@ export const FLAGS = {
     default: false,
     group: "mcp",
   },
+  "mcp.events": {
+    description:
+      "MCP 事件（docs/mcp-events.md）：连上 https://lianki.com/mcp 的 ChatGPT 会话可以订阅「被 @ 名字」事件——你在这个令牌所在的聊天里写一行带 @令牌名（不分大小写）的话，Lianki 就向 ChatGPT 的回呼地址发一条签名通知，只带这一行的 id、文字和作者，不带历史。代理自己的行永远不会触发。打开后：只有你本人（有 dev 权限的账号）的令牌能订阅。关闭（默认）：不再宣告事件能力，订阅被拒绝，任何通知都不发（已有订阅留着，重新打开即恢复；令牌被撤销时订阅自动删除）。",
+    default: false,
+    group: "mcp",
+    audience: "owner",
+  },
   levels: {
     description:
       "学习等级（种子→莲 / 炼气→炼虚）：所有用户都能看到自己的等级（未注册 / 免费 / 付费，付费后按累计有效学习天数升：100、365、1000 天）——登录后导航栏头像旁有一个小徽章，/my/profile 上有等级卡片（徽章、等级名、学习天数、离下一级还差几天；未注册的访客在 /my/profile 也能看到自己的等级和注册提示）。学习天数不论开关都在记录。关闭（默认）= 只有你本人能看到。",
