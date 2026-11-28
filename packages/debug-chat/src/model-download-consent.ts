@@ -18,6 +18,16 @@ const MODAL_STYLE = `
   background: oklch(from var(--background, oklch(0.98 0.005 85)) l c h / 0.88);
   border: 1px solid oklch(0.2 0.01 80 / 0.14);
   border: 1px solid oklch(from var(--foreground, oklch(0.2 0.01 80)) l c h / 0.14);
+  /* Never taller than the viewport (short screens, large text): the copy scrolls, the buttons stay. */
+  max-height: calc(100vh - 32px);
+  max-height: min(100%, calc(100dvh - 32px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+[data-testid="model-download-scroll"] {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 [data-testid="model-download-cancel"] {
   background: oklch(0.5 0.01 80 / 0.12);
@@ -114,6 +124,8 @@ function openGlassConfirmModal(
     "display: flex",
     "flex-direction: column",
     "gap: 14px",
+    "min-height: 0",
+    "overflow-y: auto",
     "background: oklch(from var(--background, oklch(0.98 0.005 85)) l c h / 0.88)",
     "backdrop-filter: blur(16px) saturate(1.4)",
     "-webkit-backdrop-filter: blur(16px) saturate(1.4)",
@@ -145,8 +157,21 @@ function openGlassConfirmModal(
     "opacity: 0.92",
   ].join("; ");
 
+  const scroll = doc.createElement("div");
+  scroll.setAttribute("data-testid", "model-download-scroll");
+  scroll.style.cssText = [
+    "display: flex",
+    "flex-direction: column",
+    "gap: 14px",
+    "flex: 1 1 auto",
+    "min-height: 0",
+    "overflow-y: auto",
+  ].join("; ");
+
   const actions = doc.createElement("div");
+  actions.setAttribute("data-testid", "model-download-actions");
   actions.style.cssText = [
+    "flex: 0 0 auto",
     "display: flex",
     "flex-wrap: wrap",
     "justify-content: flex-end",
@@ -190,8 +215,9 @@ function openGlassConfirmModal(
 
   actions.appendChild(cancelBtn);
   actions.appendChild(allowBtn);
-  panel.appendChild(heading);
-  panel.appendChild(body);
+  scroll.appendChild(heading);
+  scroll.appendChild(body);
+  panel.appendChild(scroll);
   panel.appendChild(actions);
   backdrop.appendChild(panel);
   doc.body.appendChild(backdrop);

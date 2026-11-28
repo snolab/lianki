@@ -461,6 +461,55 @@ describe("in-app glass model download confirmation modal", () => {
     });
   });
 
+  test("panel fits short viewports and large text: copy scrolls, Download/Cancel stay reachable", async () => {
+    await withDom("en", async ({ win, q, btn }) => {
+      // Short landscape phone with very large text
+      win.happyDOM.setViewport({ width: 640, height: 280 });
+      win.document.documentElement.style.fontSize = "32px";
+      const p = confirmBrowserModelDownload({ estimatedMb: 70, kind: "stt" });
+      await flush();
+      const overlay = q('[data-testid="model-download-modal"]')!;
+      const panel = q('[data-testid="model-download-panel"]')!;
+      const scroll = q('[data-testid="model-download-scroll"]')!;
+      const actions = q('[data-testid="model-download-actions"]')!;
+      const styleText = overlay.querySelector("style")?.textContent ?? "";
+      const panelRule =
+        styleText.match(/\[data-testid="model-download-panel"\]\s*\{[^}]*\}/)?.[0] ?? "";
+
+      // Panel is capped to the viewport (dvh with vh fallback) and can scroll itself as a last resort
+      expect(panelRule).toContain("max-height: calc(100vh - 32px)");
+      expect(panelRule).toContain("max-height: min(100%, calc(100dvh - 32px))");
+      expect(panelRule).toContain("overflow-y: auto");
+      expect(panel.style.overflowY).toBe("auto");
+      expect(panel.style.minHeight).toBe("0");
+      expect(panel.style.flexDirection).toBe("column");
+
+      // Title and body live in a shrinkable scroll region; the button row never shrinks
+      expect(scroll.contains(q('[data-testid="model-download-title"]') as unknown as Node)).toBe(
+        true,
+      );
+      expect(scroll.contains(q('[data-testid="model-download-body"]') as unknown as Node)).toBe(
+        true,
+      );
+      expect(scroll.style.overflowY).toBe("auto");
+      expect(scroll.style.minHeight).toBe("0");
+      expect(scroll.style.flexShrink).toBe("1");
+      expect(actions.parentElement as unknown).toBe(panel);
+      expect(panel.lastElementChild as unknown).toBe(actions);
+      expect(actions.style.flexShrink).toBe("0");
+      expect(actions.contains(btn('[data-testid="model-download-allow"]') as unknown as Node)).toBe(
+        true,
+      );
+      expect(
+        actions.contains(btn('[data-testid="model-download-cancel"]') as unknown as Node),
+      ).toBe(true);
+
+      // Still operable in this layout
+      btn('[data-testid="model-download-allow"]').click();
+      expect(await p).toBe(true);
+    });
+  });
+
   test("dismisses cleanly on backdrop click, Escape, visibilitychange, pagehide, and signal abort", async () => {
     await withDom("en", async ({ win, q, setVisibility }) => {
       // Backdrop click
