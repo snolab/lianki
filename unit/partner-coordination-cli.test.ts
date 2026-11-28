@@ -166,6 +166,108 @@ test("a failed live advisory read discards only that optional notice", async () 
   expect(delivery.pending()).toBe(0);
 });
 
+test("a target becoming busy during the advisory read requires another live read before delivery", async () => {
+  let busy = false;
+  let on = true;
+  let reads = 0;
+  let started!: () => void;
+  const reading = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const sent: string[] = [];
+  const skipped: string[] = [];
+  const delivery = makeDeliverer(
+    { lane: "codex", repo: "/repo" },
+    async (body) => {
+      sent.push(body);
+      return 0;
+    },
+    async () => busy,
+    undefined,
+    5,
+    undefined,
+    async (lines) => {
+      reads++;
+      const result = refreshAdvisoryLines(lines, snapshot({ partnerStandardFlow: on }));
+      if (reads === 1) {
+        busy = true;
+        started();
+      }
+      return result;
+    },
+    (lines) => skipped.push(...lines.map((l) => l.id)),
+  );
+  try {
+    await delivery.add(lineOf(JSON.stringify(event(notice())))!);
+    await reading;
+    await delivery.add({ id: "urgent-raw", from: "owner", thread: "owner", text: "@coco next" });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toContain("urgent-raw");
+    expect(sent[0]).not.toContain("Learning Partner context update");
+  } finally {
+    on = false;
+    busy = false;
+    await delivery.settled();
+  }
+  expect(reads).toBe(2);
+  expect(skipped).toEqual(["brief-1"]);
+  expect(sent).toHaveLength(1);
+});
+
+test("each advisory transport part rereads the switch after the previous part was handed over", async () => {
+  let busy = true;
+  let on = true;
+  let reads = 0;
+  const first = notice({ text: "a".repeat(620) });
+  const second = notice({ id: "brief-2", seq: 3, text: "b".repeat(620) });
+  const sent: string[] = [];
+  const skipped: string[] = [];
+  const delivery = makeDeliverer(
+    { lane: "codex", repo: "/repo" },
+    async (body) => {
+      sent.push(body);
+      if (body.includes("brief-1")) on = false;
+      return 0;
+    },
+    async () => busy,
+    undefined,
+    5,
+    undefined,
+    async (lines) => {
+      reads++;
+      return refreshAdvisoryLines(
+        lines,
+        snapshot({ partnerStandardFlow: on, messages: [snapshot().messages[0], first, second] }),
+      );
+    },
+    (lines) => skipped.push(...lines.map((l) => l.id)),
+  );
+  await delivery.add(lineOf(JSON.stringify(event(first)))!);
+  await delivery.add(lineOf(JSON.stringify(event(second)))!);
+  busy = false;
+  await delivery.add(
+    lineOf(
+      JSON.stringify(
+        event({
+          id: "ordinary-context",
+          from: "agent",
+          label: "Helper",
+          thread: "owner",
+          text: "FYI",
+        }),
+      ),
+    )!,
+  );
+  await delivery.settled();
+  expect(reads).toBe(2);
+  expect(sent).toHaveLength(2);
+  expect(sent[0]).toContain("ordinary-context");
+  expect(sent[1]).toContain("brief-1");
+  expect(sent.some((body) => body.includes("brief-2"))).toBe(false);
+  expect(skipped).toEqual(["brief-2"]);
+  expect(delivery.pending()).toBe(0);
+});
+
 test("the serial live reader hands off later raw input while an earlier notice read is pending", async () => {
   const cursor = makeSeqCursor(0);
   const sent: string[] = [];

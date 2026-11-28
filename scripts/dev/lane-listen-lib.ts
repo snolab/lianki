@@ -560,24 +560,45 @@ export function makeDeliverer(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let advisoryTail = Promise.resolve();
   let advisoryPending = 0;
-  const sendParts = async (lines: Line[], interrupt: boolean) => {
+  const sendParts = async (lines: Line[], interrupt: boolean, recheckAdvisory = false) => {
     let code: number | undefined;
     const room = SEND_MAX_CHARS - (first ? firstLines(o.lane, o.repo, o).join("\n").length + 1 : 0);
     const unnamed = { answerUnnamed: o.answerUnnamed };
     for (const part of chunkLines(o.lane, lines, room, unnamed)) {
+      let ready = part;
+      if (recheckAdvisory && prepare) {
+        // Each part waits locally. A previous AY hand-over can itself take
+        // time, or start a new turn: never reuse its earlier flag/history read.
+        for (;;) {
+          while (await busy()) await new Promise<void>((r) => setTimeout(r, recheckMs));
+          try {
+            ready = await prepare(part);
+          } catch {
+            ready = refreshAdvisoryLines(part, undefined);
+          }
+          if (!ready.length || !(await busy())) break;
+        }
+        const kept = new Set(ready.map((l) => l.id));
+        const skipped = part.filter((l) => !kept.has(l.id));
+        if (skipped.length) {
+          log({ type: "advisory-skipped", lane: o.lane, ids: skipped.map((l) => l.id) });
+          discarded(skipped);
+        }
+        if (!ready.length) continue;
+      }
       const withRules = first;
       // Reserve the first header before yielding: a raw send may run while
       // the independent advisory queue is finishing its live read.
       first = false;
       try {
-        code = await send(handoffBrief(o.lane, part, o.repo, withRules, unnamed), interrupt);
+        code = await send(handoffBrief(o.lane, ready, o.repo, withRules, unnamed), interrupt);
       } catch {
         code = 1;
       }
-      log({ type: "delivered", lane: o.lane, ids: part.map((l) => l.id), interrupt, ay: code });
+      log({ type: "delivered", lane: o.lane, ids: ready.map((l) => l.id), interrupt, ay: code });
       const ok = code === 0 || code === 4;
-      if (!ok) log({ type: "lost", lane: o.lane, ids: part.map((l) => l.id), ay: code });
-      sent(part, ok);
+      if (!ok) log({ type: "lost", lane: o.lane, ids: ready.map((l) => l.id), ay: code });
+      sent(ready, ok);
     }
     return code;
   };
@@ -586,19 +607,7 @@ export function makeDeliverer(
     advisoryPending += group.length;
     advisoryTail = advisoryTail
       .then(async () => {
-        let ready: Line[];
-        try {
-          ready = await prepare(group);
-        } catch {
-          ready = refreshAdvisoryLines(group, undefined);
-        }
-        const kept = new Set(ready.map((l) => l.id));
-        const skipped = group.filter((l) => !kept.has(l.id));
-        if (skipped.length) {
-          log({ type: "advisory-skipped", lane: o.lane, ids: skipped.map((l) => l.id) });
-          discarded(skipped);
-        }
-        await sendParts(ready, false);
+        await sendParts(group, false, true);
       })
       .catch(() => {
         // Keep failed work held for normal recovery. Do not turn an optional

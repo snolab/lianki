@@ -2562,7 +2562,7 @@ export const CONFIG = {
     group: "chat",
     audience: "server",
     description:
-      "麦克风转写默认须点名才由 Li 回答。统一流程须先确认声纹为本人，再接受 Li（partner.liNames）或其他助手的点名；停顿窗口内确认是本人的后续语音一起合并。声纹缺失、unknown/other，或证明未通过验证时始终不答。设为 false 时，确认是本人的语音可不点名。旧流程只认 Li 的名字。打字不受影响。",
+      "麦克风转写默认须点名才由 Li 回答。统一流程接受 Li（partner.liNames）或其他助手的点名，随后停顿窗口内的后续语音一起合并；声纹为 unknown/other 时始终不答。设为 false 时，声纹确认是本人也可不点名；没有声纹的环境语音仍不能自行开一轮。旧流程只认 Li 的名字。打字不受影响。",
   },
   "partner.laneActiveMs": int({
     default: OWNER_LANE_ACTIVE_MS,
