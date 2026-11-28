@@ -3,6 +3,7 @@
 // the JSON envelope and exit codes, and that no command ever prints the token.
 import { afterAll, describe, expect, test } from "bun:test";
 import {
+  existsSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -18,6 +19,8 @@ import { PREF_KEYS as SERVER_PREF_KEYS } from "@/lib/prefs/schema";
 import { s256 as serverS256 } from "@/lib/cli-login";
 import * as cliMod from "../packages/lianki-cli/cli.mjs";
 import * as authMod from "../packages/lianki-cli/auth.mjs";
+import { MAX_ERROR_BYTES } from "../packages/lianki-cli/api.mjs";
+import { RECORDING_MAX_BYTES } from "../packages/lianki-cli/recordings.mjs";
 
 // Plain ESM with inferred types: the suite drives it with fakes, so loosely typed.
 const cli: any = cliMod;
@@ -1237,5 +1240,562 @@ describe("chat attachment get", () => {
     expect((await h.run("chat", "attachment", "get", "../x")).code).not.toBe(0);
     expect(h.calls).toHaveLength(0);
     expect((await h.run("chat", "attachment", "get", ID)).code).not.toBe(0);
+  });
+});
+
+describe("recordings", () => {
+  const CLIP_ID = "rec_clip_0123456789ab";
+  // Synthetic 48-byte RIFF/WAVE header + 4 zero PCM bytes (no mic, no playback).
+  const SYNTH_WAV = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0x28, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45, 0x66, 0x6d, 0x74, 0x20,
+    0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x80, 0x3e, 0x00, 0x00, 0x00, 0x7d, 0x00, 0x00,
+    0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  ]);
+  const SAMPLE_CLIP = {
+    id: CLIP_ID,
+    day: "2026-11-27",
+    at: Date.parse("2026-11-27T12:00:00Z"),
+    durationMs: 2400,
+    bytes: SYNTH_WAV.length,
+    mode: "active",
+    source: "local",
+    device: "mac",
+    speaker: "me",
+    text: "synthetic test transcript",
+    extraServerField: "dropped",
+  };
+
+  test("list supports default limit, --limit/--before, --day and human output", async () => {
+    const h = harness({
+      env,
+      server: {
+        "GET /api/my/recordings": (c) => {
+          const p = new URLSearchParams(c.query);
+          if (p.has("day")) return json({ day: p.get("day"), clips: [SAMPLE_CLIP] });
+          return json({ clips: [SAMPLE_CLIP], more: true });
+        },
+      },
+    });
+    const def = await h.run("recordings", "list", "--json");
+    expect(def.code).toBe(0);
+    expect(h.calls.at(-1)).toMatchObject({
+      method: "GET",
+      path: "/api/my/recordings",
+      query: "?limit=20",
+      auth: `Bearer ${TOKEN}`,
+    });
+    expect(envelope(def.out)).toEqual({
+      v: 1,
+      ok: true,
+      command: "recordings list",
+      data: {
+        clips: [
+          {
+            id: CLIP_ID,
+            day: "2026-11-27",
+            at: SAMPLE_CLIP.at,
+            durationMs: 2400,
+            bytes: SYNTH_WAV.length,
+            mode: "active",
+            source: "local",
+            device: "mac",
+            speaker: "me",
+            text: "synthetic test transcript",
+          },
+        ],
+        more: true,
+      },
+    });
+
+    const paged = await h.run(
+      "recordings",
+      "list",
+      "--limit",
+      "5",
+      "--before",
+      "1700000000000",
+      "--json",
+    );
+    expect(paged.code).toBe(0);
+    expect(h.calls.at(-1)?.query).toBe("?before=1700000000000&limit=5");
+
+    const byDay = await h.run("recordings", "list", "--day", "2026-11-27", "--json");
+    expect(byDay.code).toBe(0);
+    expect(h.calls.at(-1)?.query).toBe("?day=2026-11-27");
+    expect(envelope(byDay.out).data).toMatchObject({ day: "2026-11-27" });
+    expect(envelope(byDay.out).data.more).toBeUndefined();
+
+    const human = await h.run("recordings", "list");
+    expect(human.code).toBe(0);
+    expect(human.out).toContain(CLIP_ID);
+    expect(human.out).toContain("[me]");
+    expect(human.out).toContain("synthetic test transcript");
+    expect(def.out + paged.out + byDay.out + human.out).not.toContain(TOKEN);
+  });
+
+  test("list rejects invalid --day or combining --day with --limit/--before (exit 1, no request)", async () => {
+    const h = harness({
+      env,
+      server: { "GET /api/my/recordings": () => json({ clips: [], more: false }) },
+    });
+    for (const args of [
+      ["recordings", "list", "--day", "2026-02-30", "--json"],
+      ["recordings", "list", "--day", "not-a-day", "--json"],
+      ["recordings", "list", "--day", "2026-11-27", "--limit", "5", "--json"],
+      ["recordings", "list", "--day", "2026-11-27", "--before", "1000", "--json"],
+      ["recordings", "list", "--limit", "0", "--json"],
+      ["recordings", "list", "--limit", "201", "--json"],
+      ["recordings", "list", "--before", "-1", "--json"],
+    ]) {
+      const r = await h.run(...args);
+      expect(r.code).toBe(1);
+      expect(envelope(r.err).error.code).toBe("usage");
+    }
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("get fetches synthetic WAV with accept: audio/wav, writes with wx, refuses EEXIST (exit 5), never leaks token", async () => {
+    const sentHeaders: Record<string, string>[] = [];
+    const h = harness({
+      env,
+      server: {
+        "GET /api/my/recordings": (c) => {
+          const p = new URLSearchParams(c.query);
+          if (p.get("clip") !== CLIP_ID) return json({ error: "not-found" }, 404);
+          return new Response(SYNTH_WAV, {
+            status: 200,
+            headers: {
+              "content-type": "audio/wav; charset=binary",
+              "content-length": String(SYNTH_WAV.length),
+            },
+          });
+        },
+      },
+    });
+    const inner = h.deps.fetch;
+    h.deps.fetch = async (u: URL, init: any = {}) => {
+      sentHeaders.push(init.headers ?? {});
+      return inner(u, init);
+    };
+
+    const out = join(tmp(), "recs");
+    const first = await h.run("recordings", "get", CLIP_ID, "--out", out, "--json");
+    expect(first.code).toBe(0);
+    expect(sentHeaders[0]).toMatchObject({
+      accept: "audio/wav",
+      authorization: `Bearer ${TOKEN}`,
+    });
+    const file = join(out, `${CLIP_ID}.wav`);
+    expect(envelope(first.out)).toEqual({
+      v: 1,
+      ok: true,
+      command: "recordings get",
+      data: { id: CLIP_ID, mimeType: "audio/wav", bytes: SYNTH_WAV.length, file },
+    });
+    expect(new Uint8Array(readFileSync(file))).toEqual(SYNTH_WAV);
+    expect(first.out + first.err).not.toContain(TOKEN);
+
+    // Existing file is never overwritten (flag: "wx" -> EEXIST -> exit 5).
+    writeFileSync(file, "KEEP");
+    const second = await h.run("recordings", "get", CLIP_ID, "--out", out, "--json");
+    expect(second.code).toBe(5);
+    expect(envelope(second.err).error.code).toBe("exists");
+    expect(readFileSync(file, "utf8")).toBe("KEEP");
+    expect(second.out + second.err).not.toContain(TOKEN);
+  });
+
+  test("get rejects bad id (exit 1) and oversized responses (> 1,300,000 bytes)", async () => {
+    let bodyRead = false;
+    const h = harness({
+      env,
+      server: {
+        "GET /api/my/recordings": (c) => {
+          const clip = new URLSearchParams(c.query).get("clip");
+          if (clip === "header_too_large_0001") {
+            return {
+              status: 200,
+              headers: new Headers({
+                "content-type": "audio/wav",
+                "content-length": "1300001",
+              }),
+              body: {
+                cancel: async () => {
+                  throw new Error("cancel failed");
+                },
+              },
+              arrayBuffer: async () => {
+                bodyRead = true;
+                return new ArrayBuffer(0);
+              },
+            } as unknown as Response;
+          }
+          return new Response(new Uint8Array(1_300_001), {
+            status: 200,
+            headers: { "content-type": "audio/wav" },
+          });
+        },
+      },
+    });
+    const bad = await h.run("recordings", "get", "../bad-id", "--json");
+    expect(bad.code).toBe(1);
+    expect(envelope(bad.err).error.code).toBe("usage");
+    expect(h.calls).toHaveLength(0);
+
+    const byHeader = await h.run("recordings", "get", "header_too_large_0001", "--json");
+    expect(byHeader.code).toBe(4);
+    expect(bodyRead).toBe(false);
+    expect(byHeader.out + byHeader.err).not.toContain(TOKEN);
+
+    const byBody = await h.run("recordings", "get", "body_too_large_000001", "--json");
+    expect(byBody.code).toBe(4);
+    expect(byBody.out + byBody.err).not.toContain(TOKEN);
+  });
+
+  test("get maps network errors, non-JSON HTTP errors, 404, malformed scope URLs and empty audio", async () => {
+    const net = harness({ env });
+    net.deps.fetch = async () => {
+      throw new Error("offline");
+    };
+    const netRes = await net.run("recordings", "get", CLIP_ID, "--json");
+    expect(netRes.code).toBe(4);
+    expect(envelope(netRes.err).error.code).toBe("network");
+
+    const http = harness({
+      env,
+      server: {
+        "GET /api/my/recordings": (c) => {
+          const clip = new URLSearchParams(c.query).get("clip");
+          if (clip === "plain_502_0000000001") return new Response("bad gateway", { status: 502 });
+          if (clip === "missing_clip_0000001") return json({ error: "not-found" }, 404);
+          if (clip === "bad_scope_url_000001")
+            return json(
+              { error: "scope", needScope: "recordings:read", requestUrl: "not-a-valid-url" },
+              403,
+            );
+          return new Response(new Uint8Array(0), {
+            status: 200,
+            headers: { "content-type": "audio/wav" },
+          });
+        },
+      },
+    });
+    const err502 = await http.run("recordings", "get", "plain_502_0000000001", "--json");
+    expect(err502.code).toBe(4);
+    expect(envelope(err502.err).error.code).toBe("server");
+
+    const err404 = await http.run("recordings", "get", "missing_clip_0000001", "--json");
+    expect(err404.code).toBe(3);
+    expect(envelope(err404.err).error.code).toBe("not_found");
+
+    const errScope = await http.run("recordings", "get", "bad_scope_url_000001", "--json");
+    expect(errScope.code).toBe(2);
+    expect(envelope(errScope.err).error.code).toBe("auth_refused");
+    expect(envelope(errScope.err).error.requestUrl).toBeUndefined();
+
+    const empty = await http.run("recordings", "get", "empty_audio_00000001", "--json");
+    expect(empty.code).toBe(4);
+    expect(envelope(empty.err).error.code).toBe("server");
+  });
+
+  test("callBytes aborts an endless stream at maxBytes without buffering or writing a file", async () => {
+    const CHUNK = 200_000;
+    let pulls = 0;
+    let canceled = false;
+    let signal: AbortSignal | undefined;
+    const h = harness({
+      env,
+      server: {
+        "GET /api/my/recordings": () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              pull(controller) {
+                pulls += 1;
+                controller.enqueue(new Uint8Array(CHUNK));
+              },
+              cancel() {
+                canceled = true;
+              },
+            }),
+            { status: 200, headers: { "content-type": "audio/wav" } },
+          ),
+      },
+    });
+    const inner = h.deps.fetch;
+    h.deps.fetch = async (u: URL, init: any = {}) => {
+      signal = init.signal;
+      return inner(u, init);
+    };
+
+    const out = join(tmp(), "endless-out");
+    const r = await h.run("recordings", "get", "endless_stream_00001", "--out", out, "--json");
+    expect(r.code).toBe(4);
+    expect(envelope(r.err).error.code).toBe("server");
+    expect(envelope(r.err).error.message).toContain(String(RECORDING_MAX_BYTES));
+    expect(canceled).toBe(true);
+    expect(signal?.aborted).toBe(true);
+    expect(pulls).toBeLessThanOrEqual(Math.ceil(RECORDING_MAX_BYTES / CHUNK) + 1);
+    expect(existsSync(join(out, "endless_stream_00001.wav"))).toBe(false);
+    expect(r.out + r.err).not.toContain(TOKEN);
+  });
+
+  test("callBytes caps and trims endless or oversized error bodies and handles multi-chunk and non-stream responses", async () => {
+    const ERR_CHUNK = 5_000;
+    let errPulls = 0;
+    let errCanceled = false;
+    let errSignal: AbortSignal | undefined;
+    let fallbackSignal: AbortSignal | undefined;
+    const h = harness({
+      env,
+      server: {
+        "GET /api/my/recordings": (c) => {
+          const clip = new URLSearchParams(c.query).get("clip");
+          if (clip === "huge_error_body_0001") {
+            return new Response(
+              new ReadableStream<Uint8Array>({
+                pull(controller) {
+                  errPulls += 1;
+                  const text =
+                    errPulls === 1
+                      ? `   <html>  502 Bad Gateway   ${"x".repeat(ERR_CHUNK)}`
+                      : "y".repeat(ERR_CHUNK);
+                  controller.enqueue(new TextEncoder().encode(text.slice(0, ERR_CHUNK)));
+                },
+                cancel() {
+                  errCanceled = true;
+                },
+              }),
+              { status: 502, headers: { "content-type": "text/html" } },
+            );
+          }
+          if (clip === "multi_chunk_wav_0001") {
+            return new Response(
+              new ReadableStream<Uint8Array>({
+                start(controller) {
+                  controller.enqueue(new Uint8Array(0));
+                  controller.enqueue(SYNTH_WAV.subarray(0, 20));
+                  controller.enqueue(SYNTH_WAV.subarray(20));
+                  controller.close();
+                },
+              }),
+              { status: 200, headers: { "content-type": "audio/wav" } },
+            );
+          }
+          if (clip === "fallback_big_ok_0001") {
+            return {
+              status: 200,
+              headers: new Headers({ "content-type": "audio/wav" }),
+              body: null,
+              arrayBuffer: async () => new Uint8Array(RECORDING_MAX_BYTES + 1).buffer,
+            } as unknown as Response;
+          }
+          return {
+            status: 500,
+            headers: new Headers({ "content-type": "text/plain" }),
+            body: null,
+            arrayBuffer: async () =>
+              new TextEncoder().encode(`   <err>boom</err>  ${"z".repeat(MAX_ERROR_BYTES + 200)}`)
+                .buffer,
+          } as unknown as Response;
+        },
+      },
+    });
+    const inner = h.deps.fetch;
+    h.deps.fetch = async (u: URL, init: any = {}) => {
+      const clip = new URL(String(u)).searchParams.get("clip");
+      if (clip === "huge_error_body_0001") errSignal = init.signal;
+      if (clip === "fallback_big_ok_0001") fallbackSignal = init.signal;
+      return inner(u, init);
+    };
+
+    const bigErr = await h.run("recordings", "get", "huge_error_body_0001", "--json");
+    expect(bigErr.code).toBe(4);
+    expect(envelope(bigErr.err).error.code).toBe("server");
+    const errMsg: string = envelope(bigErr.err).error.message;
+    expect(errMsg).toContain("502 Bad Gateway");
+    expect(errMsg).not.toMatch(/[<>]/);
+    expect(errMsg.length).toBeLessThanOrEqual(240);
+    expect(errCanceled).toBe(true);
+    expect(errSignal?.aborted).toBe(true);
+    expect(errPulls).toBeLessThanOrEqual(Math.ceil(MAX_ERROR_BYTES / ERR_CHUNK) + 2);
+    expect(bigErr.out + bigErr.err).not.toContain(TOKEN);
+
+    const out = join(tmp(), "chunked-out");
+    const okChunked = await h.run(
+      "recordings",
+      "get",
+      "multi_chunk_wav_0001",
+      "--out",
+      out,
+      "--json",
+    );
+    expect(okChunked.code).toBe(0);
+    expect(new Uint8Array(readFileSync(join(out, "multi_chunk_wav_0001.wav")))).toEqual(SYNTH_WAV);
+
+    const fbBig = await h.run("recordings", "get", "fallback_big_ok_0001", "--json");
+    expect(fbBig.code).toBe(4);
+    expect(envelope(fbBig.err).error.message).toContain(String(RECORDING_MAX_BYTES));
+    expect(fallbackSignal?.aborted).toBe(true);
+
+    const fbErr = await h.run("recordings", "get", "fallback_big_err_001", "--json");
+    expect(fbErr.code).toBe(4);
+    const fbErrMsg: string = envelope(fbErr.err).error.message;
+    expect(fbErrMsg).toContain("boom");
+    expect(fbErrMsg).not.toMatch(/[<>]/);
+    expect(fbErrMsg.length).toBeLessThanOrEqual(240);
+  });
+
+  test("callBytes aborts immediately before cancel() and never awaits a never-resolving cancel()", async () => {
+    const CHUNK = 500_000;
+    const ERR_CHUNK = 10_000;
+    const streamEvents: string[] = [];
+    const errEvents: string[] = [];
+    const headerEvents: string[] = [];
+    let headerBodyRead = false;
+    const h = harness({
+      env,
+      server: {
+        "GET /api/my/recordings": (c) => {
+          const clip = new URLSearchParams(c.query).get("clip");
+          if (clip === "hung_cancel_hdr_0001") {
+            return {
+              status: 200,
+              headers: new Headers({
+                "content-type": "audio/wav",
+                "content-length": String(RECORDING_MAX_BYTES + 1),
+              }),
+              body: {
+                cancel: () => {
+                  headerEvents.push("cancel");
+                  return new Promise(() => {});
+                },
+              },
+              arrayBuffer: async () => {
+                headerBodyRead = true;
+                return new ArrayBuffer(0);
+              },
+            } as unknown as Response;
+          }
+          if (clip === "hung_cancel_err_0001") {
+            return new Response(
+              new ReadableStream<Uint8Array>({
+                pull(controller) {
+                  controller.enqueue(new TextEncoder().encode(`502 ${"e".repeat(ERR_CHUNK)}`));
+                },
+                cancel() {
+                  errEvents.push("cancel");
+                  return new Promise(() => {});
+                },
+              }),
+              { status: 502, headers: { "content-type": "text/plain" } },
+            );
+          }
+          return new Response(
+            new ReadableStream<Uint8Array>({
+              pull(controller) {
+                controller.enqueue(new Uint8Array(CHUNK));
+              },
+              cancel() {
+                streamEvents.push("cancel");
+                return new Promise(() => {});
+              },
+            }),
+            { status: 200, headers: { "content-type": "audio/wav" } },
+          );
+        },
+      },
+    });
+    const inner = h.deps.fetch;
+    h.deps.fetch = async (u: URL, init: any = {}) => {
+      const clip = new URL(String(u)).searchParams.get("clip");
+      const target =
+        clip === "hung_cancel_hdr_0001"
+          ? headerEvents
+          : clip === "hung_cancel_err_0001"
+            ? errEvents
+            : streamEvents;
+      init.signal?.addEventListener("abort", () => target.push("abort"));
+      return inner(u, init);
+    };
+
+    const out = join(tmp(), "hung-cancel-out");
+    const overStream = await h.run(
+      "recordings",
+      "get",
+      "hung_cancel_stream_01",
+      "--out",
+      out,
+      "--json",
+    );
+    expect(overStream.code).toBe(4);
+    expect(envelope(overStream.err).error.code).toBe("server");
+    expect(streamEvents).toEqual(["abort", "cancel"]);
+    expect(existsSync(join(out, "hung_cancel_stream_01.wav"))).toBe(false);
+    expect(overStream.out + overStream.err).not.toContain(TOKEN);
+
+    const overHeader = await h.run("recordings", "get", "hung_cancel_hdr_0001", "--json");
+    expect(overHeader.code).toBe(4);
+    expect(envelope(overHeader.err).error.code).toBe("server");
+    expect(headerEvents).toEqual(["abort", "cancel"]);
+    expect(headerBodyRead).toBe(false);
+    expect(overHeader.out + overHeader.err).not.toContain(TOKEN);
+
+    const overErr = await h.run("recordings", "get", "hung_cancel_err_0001", "--json");
+    expect(overErr.code).toBe(4);
+    expect(envelope(overErr.err).error.code).toBe("server");
+    expect(envelope(overErr.err).error.message).toContain("502");
+    expect(errEvents).toEqual(["abort", "cancel"]);
+    expect(overErr.out + overErr.err).not.toContain(TOKEN);
+  });
+
+  test("plain recordings list and get work without LIANKI_MCP_ALLOW_AUDIO and mcp --help documents metadata-only default and --allow-audio", async () => {
+    const noOptEnv: Record<string, string> = { ...env };
+    delete noOptEnv.LIANKI_MCP_ALLOW_AUDIO;
+    expect(noOptEnv.LIANKI_MCP_ALLOW_AUDIO).toBeUndefined();
+    const h = harness({
+      env: noOptEnv,
+      server: {
+        "GET /api/my/recordings": (c) => {
+          const p = new URLSearchParams(c.query);
+          if (p.has("clip")) {
+            return new Response(SYNTH_WAV, {
+              status: 200,
+              headers: {
+                "content-type": "audio/wav",
+                "content-length": String(SYNTH_WAV.length),
+              },
+            });
+          }
+          return json({ clips: [SAMPLE_CLIP], more: false });
+        },
+      },
+    });
+    const listed = await h.run("recordings", "list", "--json");
+    expect(listed.code).toBe(0);
+    expect(envelope(listed.out).data.clips[0]).toEqual({
+      id: CLIP_ID,
+      day: "2026-11-27",
+      at: SAMPLE_CLIP.at,
+      durationMs: 2400,
+      bytes: SYNTH_WAV.length,
+      mode: "active",
+      source: "local",
+      device: "mac",
+      speaker: "me",
+      text: "synthetic test transcript",
+    });
+
+    const out = join(tmp(), "plain-cli-out");
+    const dl = await h.run("recordings", "get", CLIP_ID, "--out", out, "--json");
+    expect(dl.code).toBe(0);
+    expect(new Uint8Array(readFileSync(join(out, `${CLIP_ID}.wav`)))).toEqual(SYNTH_WAV);
+
+    const help = await h.run("mcp", "--help");
+    expect(help.code).toBe(0);
+    expect(help.out).toContain("--allow-audio");
+    expect(help.out).toContain("LIANKI_MCP_ALLOW_AUDIO=1");
+    expect(help.out).toContain("metadata only");
+    expect(help.out).toContain("transcripts");
+    expect(help.out).toContain("local inference");
+    expect(help.out).toContain("sends recordings to whatever model reads this MCP");
   });
 });

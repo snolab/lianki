@@ -4,6 +4,7 @@
 // cli.mjs re-exports everything here.
 
 export const EXIT = { ok: 0, usage: 1, auth: 2, notFound: 3, server: 4, refused: 5 };
+export const MAX_ERROR_BYTES = 16_384;
 
 /**
  * The settings that follow the account, as lib/prefs/schema.ts listed them
@@ -60,33 +61,18 @@ export const LOGIN_HINT ="lianki auth login   (agents: set LIANKI_TOKEN=lk_… o
 export const SCOPE_HINT =
   "the token lacks that permission: make one that has it at lianki.com/my/preferences → API tokens, or lianki auth login again";
 
-export async function call(c, token, { method = "GET", path, query, body, headers: extra }) {
+function buildUrl(c, path, query) {
   const url = new URL(path, c.base + "/");
   for (const [k, v] of Object.entries(query ?? {}))
     if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
-  const headers = { accept: "application/json", ...extra };
-  if (token) headers.authorization = `Bearer ${token}`;
-  if (body !== undefined) headers["content-type"] = "application/json";
-  let r;
-  try {
-    r = await c.deps.fetch(url, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      redirect: "manual",
-    });
-  } catch (e) {
-    throw new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`);
-  }
-  const text = await r.text();
-  let data = null;
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {}
-  if (r.status >= 200 && r.status < 300 && data !== null) return { status: r.status, data };
-  const said = (data && typeof data.error === "string" && data.error) || text.slice(0, 200);
+  return url;
+}
+
+/** @returns {never} */
+function throwHttpError(c, r, text, data) {
+  const said = (data && typeof data.error === "string" && data.error) || text;
   // Angle brackets dropped, so no markup survives (CodeQL: a tag regex alone is incomplete).
-  const detail = said.replace(/[<>]/g, " ").replace(/\s+/g, " ").trim();
+  const detail = said.replace(/[<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200).trim();
   if (r.status === 401 || r.status === 403) {
     const error = new CliError(
       "auth_refused",
@@ -154,4 +140,139 @@ export async function call(c, token, { method = "GET", path, query, body, header
     EXIT.refused,
     `${c.site} refused it (${r.status})${detail ? `: ${detail}` : ""}`,
   );
+}
+
+export async function call(c, token, { method = "GET", path, query, body, headers: extra }) {
+  const url = buildUrl(c, path, query);
+  const headers = { accept: "application/json", ...extra };
+  if (token) headers.authorization = `Bearer ${token}`;
+  if (body !== undefined) headers["content-type"] = "application/json";
+  let r;
+  try {
+    r = await c.deps.fetch(url, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      redirect: "manual",
+    });
+  } catch (e) {
+    throw new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`);
+  }
+  const text = await r.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {}
+  if (r.status >= 200 && r.status < 300 && data !== null) return { status: r.status, data };
+  throw throwHttpError(c, r, text, data);
+}
+
+function noop() {}
+
+function abortAndCancel(controller, target) {
+  try {
+    controller?.abort();
+  } catch {}
+  try {
+    const p = target?.cancel?.();
+    if (p && typeof p.then === "function") p.then(noop, noop);
+  } catch {}
+}
+
+async function readStreamCapped(c, r, maxBytes, { onExceed, controller }) {
+  const hasLimit = typeof maxBytes === "number" && maxBytes > 0;
+  if (r.body && typeof r.body.getReader === "function") {
+    const reader = r.body.getReader();
+    const chunks = [];
+    let total = 0;
+    let truncated = false;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
+        if (!chunk.byteLength) continue;
+        if (hasLimit && total + chunk.byteLength > maxBytes) {
+          abortAndCancel(controller, reader);
+          if (onExceed === "throw")
+            throw new CliError(
+              "server",
+              EXIT.server,
+              `${c.site} returned more than ${maxBytes} bytes`,
+            );
+          const keep = maxBytes - total;
+          if (keep > 0) {
+            chunks.push(chunk.subarray(0, keep));
+            total += keep;
+          }
+          truncated = true;
+          break;
+        }
+        chunks.push(chunk);
+        total += chunk.byteLength;
+      }
+    } finally {
+      try {
+        reader.releaseLock?.();
+      } catch {}
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return { bytes, truncated };
+  }
+  const raw = new Uint8Array(await r.arrayBuffer());
+  if (hasLimit && raw.byteLength > maxBytes) {
+    abortAndCancel(controller, null);
+    if (onExceed === "throw")
+      throw new CliError("server", EXIT.server, `${c.site} returned more than ${maxBytes} bytes`);
+    return { bytes: raw.subarray(0, maxBytes), truncated: true };
+  }
+  return { bytes: raw, truncated: false };
+}
+
+export async function callBytes(
+  c,
+  token,
+  { method = "GET", path, query, accept = "*/*", headers: extra, maxBytes },
+) {
+  const url = buildUrl(c, path, query);
+  const headers = { accept, ...extra };
+  if (token) headers.authorization = `Bearer ${token}`;
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  let r;
+  try {
+    r = await c.deps.fetch(url, {
+      method,
+      headers,
+      redirect: "manual",
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+  } catch (e) {
+    throw new CliError("network", EXIT.server, `cannot reach ${c.site}: ${e?.message ?? e}`);
+  }
+  if (r.status < 200 || r.status >= 300) {
+    const { bytes, truncated } = await readStreamCapped(c, r, MAX_ERROR_BYTES, {
+      onExceed: "truncate",
+      controller,
+    });
+    const text = new TextDecoder().decode(bytes).trim();
+    let data = null;
+    if (!truncated) {
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {}
+    }
+    throw throwHttpError(c, r, text, data);
+  }
+  const len = Number(r.headers?.get?.("content-length"));
+  if (maxBytes && Number.isFinite(len) && len > maxBytes) {
+    abortAndCancel(controller, r.body);
+    throw new CliError("server", EXIT.server, `${c.site} returned more than ${maxBytes} bytes`);
+  }
+  const { bytes } = await readStreamCapped(c, r, maxBytes, { onExceed: "throw", controller });
+  return { status: r.status, bytes, contentType: r.headers?.get?.("content-type") ?? "" };
 }

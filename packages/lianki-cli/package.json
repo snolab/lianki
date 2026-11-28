@@ -18,6 +18,7 @@
     "mcp.mjs",
     "mcp-tools.mjs",
     "progress.mjs",
+    "recordings.mjs",
     "api.mjs",
     "README.md",
     "LICENSE",
