@@ -3,7 +3,7 @@ import { metered, refusal } from "@/lib/payments/metered";
 import { MAX_OUT } from "@/lib/payments/paid-calls";
 import { textHoldUsd, textUsd } from "@/lib/payments/prices";
 import { walletDb, walletUserId } from "@/lib/payments/wallet-db";
-import { textModel, workersAiProvider } from "@/lib/workers-ai";
+import { textModel, workersAiStructuredModel } from "@/lib/workers-ai";
 import { NextRequest, NextResponse } from "next/server";
 import { authEmailOrToken } from "@/lib/authEmailOrToken";
 import { cappedJsonError, readJsonCapped, tooMany } from "@/lib/security/route-guard";
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
         generateWithRetry(
           async () => {
             const r = await generateObject({
-              model: workersAiProvider()(model),
+              model: workersAiStructuredModel(model),
               schema: LooseRoadmapSchema,
               maxOutputTokens: maxOut,
               prompt,
