@@ -15,6 +15,7 @@ import { FLAGS } from "../lib/flags";
 import { eventsLimits } from "../lib/mcp-events/rules";
 import { eventsRpc, mentionEvents, type EventsDeps } from "../lib/mcp-events/server";
 import { wake, wakeOnPut } from "../lib/chat-wake/core";
+import { pullAdapter, pullRpc } from "../lib/chat-wake/pull";
 import {
   WAKE_PULL_FLAG,
   cursorTruncated,
@@ -453,6 +454,27 @@ describe("pull: SEP-3415 events/poll", () => {
     expect((await poll(null, { name: "chat.other" })).error?.code).toBe(-32602);
     expect((await poll(null, { arguments: { thread: "user2" } })).error?.code).toBe(-32602);
     expect((await poll("w9.1.1")).error?.code).toBe(-32602);
+  });
+
+  test("maxAgeMs must be a positive finite number", async () => {
+    const boot = (await poll(null)).result!;
+    for (const maxAgeMs of [0, -5, "60000", Number.POSITIVE_INFINITY])
+      expect((await poll(boot.cursor, { maxAgeMs })).error?.code).toBe(-32602);
+  });
+
+  test("the pull adapter sends nothing on wake, and is off without a pull flag reader", async () => {
+    expect(await pullAdapter.wake(deps(), {} as never, {} as never, {} as never)).toBeUndefined();
+    expect(await pullAdapter.enabled({ ...deps(), pullOn: undefined })).toBe(false);
+    // A flag reader that throws fails closed.
+    const broken = deps({
+      pullOn: async () => {
+        throw new Error("flags unreadable");
+      },
+    });
+    const who = { tokenHash: arden.id, thread: "owner" };
+    expect(await pullRpc(broken, who, "chat/mentions", {})).toMatchObject({
+      error: { code: -32601 },
+    });
   });
 
   test("events/list adds poll delivery only while chat.wake.pull is on", async () => {
