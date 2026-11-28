@@ -457,6 +457,9 @@ function useDrag(
     x: number;
     y: number;
     moved: boolean;
+    /** The held control's grab point survives a full-screen/sidebar restore. */
+    grab?: { el: HTMLElement; x: number; y: number };
+    restoreGrab?: boolean;
     /** The bar and box, measured once on the drag's first frame (drag-frame.ts). */
     geom?: DragGeom;
     /** The offset written after the last frame, and the bar's span: the drop's edge (fold.ts). */
@@ -488,6 +491,15 @@ function useDrag(
     const d = drag.current;
     const box = d?.box;
     if (!d || !box) return;
+    if (d.restoreGrab && d.grab) {
+      // React has restored the floating layout before this animation frame.
+      // Rebase the pointer origin to the same point on the restored control;
+      // the full-screen bar and the remembered panel have different origins.
+      const r = d.grab.el.getBoundingClientRect();
+      d.px = r.left + Math.max(0, Math.min(d.grab.x, r.width));
+      d.py = r.top + Math.max(0, Math.min(d.grab.y, r.height));
+      d.restoreGrab = false;
+    }
     if (!d.geom) {
       const row = (box.querySelector("[data-debug-chat-row]") ?? box).getBoundingClientRect();
       const b = box.getBoundingClientRect();
@@ -534,13 +546,15 @@ function useDrag(
     d.cx = cx;
     d.cy = cy;
     snapRef.current?.move(cx, cy);
-    // Full screen does not move: a drag up past chat.fullLeavePx leaves it, and
-    // the panel, back where it was, follows the finger from the next move on
-    // (measured afresh then: this frame's rect is still the full-screen bar's).
+    // Leave full screen after the upward threshold. The next animation frame
+    // measures the restored layout and keeps the held control under the pointer.
     if (fullDrag?.now()) {
       if (dragLeavesFull({ full: true, dy }, fullDrag.leavePx())) {
         fullDrag.leave();
         d.geom = undefined;
+        d.restoreGrab = true;
+        d.box = box;
+        frame.current!.push({ cx, cy });
       }
       return;
     }
@@ -640,7 +654,11 @@ function useDrag(
       if (snapRef.current && !snapRef.current.enabled()) return;
       setHolding(true);
       const p = posRef.current;
-      drag.current = { px: e.clientX, py: e.clientY, x: p.x, y: p.y, moved: false };
+      const r = fullDrag?.now() ? e.currentTarget.getBoundingClientRect() : null;
+      drag.current = {
+        px: e.clientX, py: e.clientY, x: p.x, y: p.y, moved: false,
+        ...(r ? { grab: { el: e.currentTarget, x: e.clientX - r.left, y: e.clientY - r.top } } : {}),
+      };
       dragged.current.down();
       e.currentTarget.setPointerCapture(e.pointerId);
     },
@@ -655,11 +673,14 @@ function useDrag(
    * A press that began elsewhere (the mic, once it locked horizontally) moves
    * the box from here on, as if it had started on a handle at (px, py).
    */
-  const begin = (px: number, py: number) => {
+  const begin = (px: number, py: number, control?: HTMLElement | null) => {
     if (snapRef.current && !snapRef.current.enabled()) return;
     setHolding(true);
     const p = posRef.current;
-    drag.current = { px, py, x: p.x, y: p.y, moved: false };
+    const r = fullDrag?.now() && control ? control.getBoundingClientRect() : null;
+    drag.current = { px, py, x: p.x, y: p.y, moved: false,
+      ...(r && control ? { grab: { el: control, x: px - r.left, y: py - r.top } } : {}),
+    };
   };
   /**
    * Bring the chat bar back on screen, e.g. after restoring the box where the
@@ -4336,7 +4357,7 @@ export function DebugChat({
       if (!m || m.axis !== "x") return;
       // Sideways before the hold: a drag that moves the box, no clip.
       g.drag();
-      if (!was) begin(micPress.current.x, micPress.current.y);
+      if (!was) begin(micPress.current.x, micPress.current.y, e.currentTarget);
       handle.onPointerMove(e);
     },
     onPointerUp: () => {

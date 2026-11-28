@@ -114,6 +114,67 @@ async function mount(full?: "screen" | "side", vv?: VV, allow = !!full) {
 }
 
 describe("the drag overlay", () => {
+  for (const mode of ["screen", "side"] as const)
+    it(`${mode}: the first restored frame keeps the grabbed control under the pointer`, async () => {
+      const m = await mount(mode);
+      try {
+        const box = m.host.querySelector('[data-testid="debug-chat"]') as unknown as HTMLElement;
+        const row = box.querySelector("[data-debug-chat-row]") as HTMLElement;
+        // happy-dom has no layout: give the actual mounted hook different
+        // full and floating origins, like the production failure.
+        const full = () => !!m.host.querySelector("[data-fullscreen]");
+        const offset = () => {
+          const match = /translate(?:3d)?\(([-\d.]+)px, (?:calc\()?([-\d.]+)px/.exec(
+            box.style.transform,
+          );
+          return { x: Number(match?.[1] ?? 0), y: Number(match?.[2] ?? 0) };
+        };
+        const rect = (kind: "box" | "row" | "grip") => {
+          const f = full();
+          const at = f ? { x: 0, y: 0 } : offset();
+          const x = (f ? (mode === "side" ? 600 : 0) : 700) + at.x;
+          const y = (kind === "box" ? (f ? 0 : 300) : f ? 720 : 660) + at.y;
+          const width = kind === "grip" ? 44 : f ? (mode === "side" ? 424 : 1024) : 300;
+          return new m.p.win.DOMRect(
+            x,
+            y,
+            width,
+            kind === "box" ? (f ? 768 : 404) : 44,
+          ) as unknown as DOMRect;
+        };
+        box.getBoundingClientRect = () => rect("box");
+        row.getBoundingClientRect = () => rect("row");
+        m.grip.getBoundingClientRect = () => rect("grip");
+        const start = m.grip.getBoundingClientRect();
+        m.p.writes.length = 0;
+        await m.act(
+          async () =>
+            void m.grip.dispatchEvent(ptr(m.p, "pointerdown", start.left + 7, start.top + 11)),
+        );
+        await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointermove", 500, 600)));
+        await m.frames();
+        expect(full()).toBe(false);
+        expect(m.grip.getBoundingClientRect().left + 7).toBeCloseTo(500);
+        expect(m.grip.getBoundingClientRect().top + 11).toBeCloseTo(600);
+        await m.act(async () => void m.grip.dispatchEvent(ptr(m.p, "pointermove", 400, 550)));
+        await m.frames();
+        expect(m.grip.getBoundingClientRect().left + 7).toBeCloseTo(400);
+        expect(m.grip.getBoundingClientRect().top + 11).toBeCloseTo(550);
+        await m.act(
+          async () =>
+            void m.p.win.dispatchEvent(
+              new m.p.win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+            ),
+        );
+        await m.frames();
+        expect(full()).toBe(true);
+        expect(m.p.writes.filter((key) => CHAT_KEYS.test(key))).toEqual([]);
+      } finally {
+        await m.act(() => m.root.unmount());
+        await m.p.close();
+      }
+    }, 20_000);
+
   it("shows every zone from the drag's start, previews the hovered one, and goes on the drop", async () => {
     const m = await mount();
     try {

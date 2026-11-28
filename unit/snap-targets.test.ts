@@ -241,7 +241,7 @@ describe("the overlay mounted in DebugChat", () => {
     const out = `${r.stdout.toString()}${r.stderr.toString()}`;
     if (r.exitCode !== 0) console.error(out);
     expect(r.exitCode).toBe(0);
-    expect(out).toMatch(/\b8 pass\b/);
+    expect(out).toMatch(/\b10 pass\b/);
     expect(out).toMatch(/\b0 fail\b/);
   }, 90_000);
 });
