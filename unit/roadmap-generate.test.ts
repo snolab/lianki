@@ -250,6 +250,40 @@ describe("billing: one hold for the try and its retry", () => {
 });
 
 describe("generateFailedResponse: never leaks the provider's words", () => {
+  it("logs only bounded error metadata, never provider prompts or generated text", () => {
+    const logs: Record<string, unknown>[] = [];
+    const cause = Object.assign(new Error("private prompt and generated content"), {
+      name: "AI_APICallError",
+      statusCode: 404,
+      finishReason: "length",
+      responseBody: "private provider payload",
+    });
+    generateFailedResponse(new RoadmapGenerateError("provider-error", cause), (entry) =>
+      logs.push(entry),
+    );
+    expect(logs).toEqual([
+      {
+        event: "roadmap.generate.failed",
+        reason: "provider-error",
+        error: "AI_APICallError",
+        statusCode: 404,
+        finishReason: "length",
+      },
+    ]);
+    expect(JSON.stringify(logs)).not.toContain("private");
+    const unsafe = Object.assign(new Error("private"), {
+      name: "private payload with spaces",
+      statusCode: "private",
+      finishReason: "private",
+    });
+    generateFailedResponse(unsafe, (entry) => logs.push(entry));
+    expect(logs[1]).toEqual({
+      event: "roadmap.generate.failed",
+      reason: "provider-error",
+      error: "object",
+    });
+  });
+
   it("answers a short code for any error", async () => {
     const res = generateFailedResponse(new Error("Workers AI 5xx: account abc123 token"), quiet);
     expect(res.status).toBe(502);

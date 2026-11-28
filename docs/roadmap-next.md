@@ -77,3 +77,27 @@ The owner's 2a request, on top of the robust generator (#1160).
 
 Strings: `roadmap-steps` (`app/(app)/roadmap/roadmap-steps.content.ts`).
 Tests: `unit/roadmap-model.test.ts`.
+
+## Generation transport and safe failure diagnostics (2026-11-29)
+
+`/api/roadmap/generate` explicitly selects a Workers AI structured-generation
+transport through `workersAiStructuredModel`: Chat Completions for the default
+Llama model and Responses for the two GPT-OSS models. Calling the AI SDK provider
+as a function defaults to Responses, which is not available for other Workers AI
+models ([Cloudflare compatibility](https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/)).
+The regression exercises the real SDK request/response parser with a fetch stub,
+including the fitted output's save contract and truncated-output retry.
+
+The roadmap still uses its own credit hold and account request limiter; it does
+not consume `partner.userWindowTokens`. Output limits, attempt count, pricing and
+credit settlement are unchanged. Failed generation logs contain only an error
+identifier, HTTP status and bounded finish reason, never the provider's message,
+prompt or generated text. The page's generic failure can also mean its subsequent
+save failed: verify POST `/api/roadmap/generate` and POST `/api/roadmap` separately.
+
+Tree: /roadmap/jlpt-generation
+
+The production generation helper disables SDK-internal retries (`maxRetries: 0`).
+Only the outer two-attempt loop retries invalid model output; retryable HTTP
+responses do not silently multiply calls beyond the reserved budget. Synthetic
+429/500/503 tests invoke that same production helper.

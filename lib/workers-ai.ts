@@ -65,6 +65,18 @@ export function workersAiProvider() {
 }
 
 /**
+ * The AI SDK's callable provider defaults to Responses. Cloudflare supports
+ * that endpoint only for GPT-OSS; other text models use Chat Completions.
+ * https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/
+ */
+export function workersAiStructuredModel(model = textModel()) {
+  const provider = workersAiProvider();
+  return model === "@cf/openai/gpt-oss-120b" || model === "@cf/openai/gpt-oss-20b"
+    ? provider.responses(model)
+    : provider.chat(model);
+}
+
+/**
  * MeloTTS language codes. The TTS routes only ever received `text`, never a
  * language — OpenAI's tts-1 inferred it from the input — so guess from the
  * script rather than defaulting everything to English, which would make

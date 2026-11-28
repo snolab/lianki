@@ -71,8 +71,8 @@ export async function generateWithRetry(
 
 /**
  * The generation failed after its retry: 502 with a short code only. The
- * provider's message stays in the server log (`roadmap.generate.failed`),
- * never in the answer.
+ * server log keeps only error metadata: never provider text, generated
+ * content, prompts or credentials.
  */
 export function generateFailedResponse(
   err: unknown,
@@ -80,11 +80,24 @@ export function generateFailedResponse(
 ): Response {
   const reason = err instanceof RoadmapGenerateError ? err.reason : "provider-error";
   const cause = err instanceof RoadmapGenerateError ? err.cause : err;
+  const detail = cause as { name?: unknown; statusCode?: unknown; finishReason?: unknown } | null;
+  const error =
+    typeof detail?.name === "string" && /^[A-Za-z_][A-Za-z0-9_]{0,79}$/.test(detail.name)
+      ? detail.name
+      : typeof cause;
+  const status = detail?.statusCode;
+  const finish = detail?.finishReason;
   log({
     event: "roadmap.generate.failed",
     reason,
-    error: (cause as { name?: string } | null)?.name ?? typeof cause,
-    message: String((cause as { message?: string } | null)?.message ?? "").slice(0, 300),
+    error,
+    ...(typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599
+      ? { statusCode: status }
+      : {}),
+    ...(typeof finish === "string" &&
+    ["stop", "length", "content-filter", "tool-calls", "error", "other", "unknown"].includes(finish)
+      ? { finishReason: finish }
+      : {}),
   });
   return Response.json(
     { error: "generate-failed", reason },
