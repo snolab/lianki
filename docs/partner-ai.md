@@ -15,7 +15,17 @@ typed messages start a turn immediately; speech waits for `partner.turnPauseMs`
 (default 8 seconds), bounded by 30 seconds or 12 lines. A newer line supersedes
 an unfinished model result and keeps its source references in the next batch.
 Known other/unknown voiceprint results keep their existing exclusion from
-automatic replies. This does not turn on a microphone or change permissions.
+automatic replies. Speech also honors `partner.spokenNeedsName` (default true):
+an address to Li (`partner.liNames`) or another assistant opens a speech turn,
+and follow-up fragments within its pending pause window join that turn without
+repeating the name. Neither a microphone left active nor `wakeReason: mic-on`
+opens a turn. A device without voiceprint support can explicitly address an
+assistant, but missing voiceprint data never enables an unaddressed new turn,
+even with `spokenNeedsName` off. That option permits unaddressed starts only
+with a verified `me` decision. Explicit `unknown`/`other` decisions cannot be
+overridden by a name or an open turn. Typed messages are unaffected. Skips log
+`partner.standard-skip` with a reason only; original messages still reach their
+existing listeners. This does not turn on a microphone or change permissions.
 
 **No speaker priority or waiting barrier.** The old rules that give development
 assistants priority, reject engineering questions, require Li's name or skip a

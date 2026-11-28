@@ -347,6 +347,7 @@ import {
 } from "../../../packages/debug-chat/src/two-mic";
 import { OwnerAi } from "./owner-ai";
 import { PartnerTurn, type TurnLine } from "./partner-turn";
+import { standardVoiceSkip } from "./partner-voice";
 import { routeLine } from "../../../lib/lane-route";
 import {
   PARTNER_STANDARD_FLAG,
@@ -356,6 +357,10 @@ import {
   PARTNER_TURN_WAIT_KEY,
   PARTNER_TURN_WAIT_MS,
   PARTNER_TURN_WAIT_MAX,
+  OWNER_LI_NAMES,
+  OWNER_LI_NAMES_KEY,
+  OWNER_SPOKEN_NEEDS_NAME,
+  OWNER_SPOKEN_NEEDS_NAME_KEY,
 } from "../../../lib/partner-ai-config";
 import { partnerHistoryLine } from "../../../lib/partner-lines";
 import { type RosterEntry, rollCallText, rosterOf } from "../../../packages/debug-chat/src/roster";
@@ -5122,7 +5127,6 @@ export class DebugHub {
           await accepted(typeof posted === "number" ? posted : undefined);
           const standard =
             typeof posted === "number" &&
-            (!speaker || speaker.decision === "me") &&
             (await this.standardReply(
               page,
               { id: m.id, at: t, spoken: m.source === "stt" },
@@ -5509,6 +5513,31 @@ export class DebugHub {
   ) {
     if (!(await this.standardOn())) return false;
     this.ownerAi.cancel();
+    if (line.spoken) {
+      const source = (await this.history(page.thread)).find((m) => m.id === line.id);
+      // Already handled by the shared flow, even when it stays silent: never
+      // fall through to a legacy reply or start a turn from unconfirmed audio.
+      if (!source) return true;
+      const [needsName, names] = await Promise.all([
+        this.sessions?.config?.(OWNER_SPOKEN_NEEDS_NAME_KEY).catch(() => undefined),
+        this.sessions?.config?.(OWNER_LI_NAMES_KEY).catch(() => undefined),
+      ]);
+      const reason = standardVoiceSkip(
+        { ...source, text: source.raw ?? source.text },
+        {
+          needsName: typeof needsName === "boolean" ? needsName : OWNER_SPOKEN_NEEDS_NAME,
+          liNames:
+            Array.isArray(names) && names.every((n) => typeof n === "string")
+              ? names
+              : OWNER_LI_NAMES,
+          continuation: this.standardTurns.pendingSpeech(page.thread),
+        },
+      );
+      if (reason) {
+        console.log(JSON.stringify({ msg: "partner.standard-skip", reason }));
+        return true;
+      }
+    }
     const [value, wait] = await Promise.all([
       this.sessions?.config?.(PARTNER_TURN_DELAY_KEY).catch(() => undefined),
       this.sessions?.config?.(PARTNER_TURN_WAIT_KEY).catch(() => undefined),

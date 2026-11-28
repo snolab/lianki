@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { lineTier } from "@lianki/debug-chat/rich-text";
-import { DebugHub, type Socket, type Storage } from "@/workers/push/src/debug";
+import { DebugHub, type HubTimer, type Socket, type Storage } from "@/workers/push/src/debug";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import {
@@ -96,7 +96,13 @@ const T0 = 1_800_000_000_000;
 
 /** `config`: the main Worker answers config reads (stub.config); without it, it has no such method. */
 function setup(
-  opts: { on?: boolean; sessions?: boolean; config?: boolean; standard?: boolean } = {},
+  opts: {
+    on?: boolean;
+    sessions?: boolean;
+    config?: boolean;
+    standard?: boolean;
+    timer?: HubTimer;
+  } = {},
 ) {
   const sockets: FakeSocket[] = [];
   let t = T0;
@@ -147,6 +153,7 @@ function setup(
     },
     opts.sessions === false ? {} : { SESSIONS: rpcStub(sessions) },
     () => t,
+    opts.timer,
   );
   const page = (label = "/words pwa iPhone") => {
     const ws = new FakeSocket();
@@ -627,6 +634,109 @@ describe("partner AI: caps (rolling window)", () => {
 
 /** The main Worker side: lib/partner-ai.ts against a real schema. */
 describe("standard Partner routing", () => {
+  it("ambient unverified speech stays visible without calling either reply path for any account", async () => {
+    const s = setup({ standard: true, config: true });
+    s.stub.config = { "partner.turnPauseMs": 0, "partner.turnMaxWaitMs": 0 };
+    const owner = await s.ownerPage();
+    const friend = await s.friend();
+    for (const [i, text] of ["Yeah.", "그.", "hmm"].entries()) {
+      for (const [kind, page] of [
+        ["owner", owner],
+        ["friend", friend],
+      ] as const) {
+        await s.msg(page, {
+          type: "chat",
+          id: `${kind}-ambient-${i}`,
+          text,
+          source: "stt",
+          wake: "active",
+          wakeReason: "mic-on",
+          // A page-supplied tag is not the server's verified speaker identity.
+          speaker: { decision: "me" },
+        });
+        expect(chats(page).some((m) => m.text === text)).toBe(true);
+      }
+    }
+    expect(s.stub.calls).toHaveLength(0);
+    await s.msg(owner, { type: "chat", id: "typed-after-noise", text: "please check the feature" });
+    expect(s.stub.calls).toHaveLength(1);
+    expect(s.stub.calls[0].turn).toEqual([
+      { id: "typed-after-noise", text: "please check the feature" },
+    ]);
+  });
+
+  it("named speech and its unnamed follow-up form one reply with both original ids", async () => {
+    const jobs = new Map<object, () => void>();
+    const timer: HubTimer = {
+      set: (fn) => {
+        const key = {};
+        jobs.set(key, fn);
+        return key;
+      },
+      clear: (key) => {
+        jobs.delete(key as object);
+      },
+    };
+    const s = setup({ standard: true, timer });
+    const owner = await s.ownerPage();
+    await s.msg(owner, {
+      type: "chat",
+      id: "named-start",
+      text: "@coco fix the feature",
+      source: "stt",
+    });
+    s.tick(4);
+    await s.msg(owner, {
+      type: "chat",
+      id: "follow-up",
+      text: "and keep the raw references",
+      source: "stt",
+    });
+    expect(s.stub.calls).toHaveLength(0);
+    const pending = [...jobs.values()];
+    jobs.clear();
+    for (const fn of pending) fn();
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(s.stub.calls).toHaveLength(1);
+    expect(s.stub.calls[0].turn).toEqual([
+      { id: "named-start", text: "@coco fix the feature" },
+      { id: "follow-up", text: "and keep the raw references" },
+    ]);
+    const replies = chats(owner).filter((m) => m.label === PARTNER_AI_LABEL);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({
+      coordination: { sources: [{ id: "named-start" }, { id: "follow-up" }] },
+    });
+    await s.msg(owner, { type: "chat", id: "later-noise", text: "Yeah.", source: "stt" });
+    expect(jobs.size).toBe(0);
+    expect(s.stub.calls).toHaveLength(1);
+  });
+
+  it("the shared voice guard honors live names and fails silent for unverified audio even with name gating off", async () => {
+    const s = setup({ standard: true, config: true });
+    s.stub.config = {
+      "partner.spokenNeedsName": false,
+      "partner.liNames": ["Buddy"],
+      "partner.turnPauseMs": 0,
+    };
+    const owner = await s.ownerPage();
+    await s.msg(owner, { type: "chat", id: "noise-name-off", text: "hmm", source: "stt" });
+    expect(s.stub.calls).toHaveLength(0);
+    await s.msg(owner, {
+      type: "chat",
+      id: "custom-name",
+      text: "Buddy, help me plan",
+      source: "stt",
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.stub.calls).toHaveLength(1);
+    expect(s.stub.calls[0].turn?.[0].id).toBe("custom-name");
+    // Broken configuration cannot make the microphone an implicit invitation.
+    s.stub.configThrows = true;
+    await s.msg(owner, { type: "chat", id: "noise-config-error", text: "Yeah.", source: "stt" });
+    expect(s.stub.calls).toHaveLength(1);
+  });
+
   it("an assistant may answer while the model works without cancelling the model's reply", async () => {
     const s = setup({ standard: true });
     const owner = await s.ownerPage();
