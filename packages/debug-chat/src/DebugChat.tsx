@@ -492,7 +492,7 @@ function useDrag(
     const box = d?.box;
     if (!d || !box) return;
     if (d.restoreGrab && d.grab) {
-      // React has restored the floating layout before this animation frame.
+      // The one-time layout change was committed before this frame queued.
       // Rebase the pointer origin to the same point on the restored control;
       // the full-screen bar and the remembered panel have different origins.
       const r = d.grab.el.getBoundingClientRect();
@@ -546,11 +546,13 @@ function useDrag(
     d.cx = cx;
     d.cy = cy;
     snapRef.current?.move(cx, cy);
-    // Leave full screen after the upward threshold. The next animation frame
-    // measures the restored layout and keeps the held control under the pointer.
+    // A native pointermove is a continuous React event: a queued animation
+    // frame can run before its state update commits. Commit this one layout
+    // transition now, then measure the restored control in the drag frame.
+    // Ordinary moves still only queue a transform, without React renders.
     if (fullDrag?.now()) {
       if (dragLeavesFull({ full: true, dy }, fullDrag.leavePx())) {
-        fullDrag.leave();
+        flushSync(() => fullDrag.leave());
         d.geom = undefined;
         d.restoreGrab = true;
         d.box = box;
