@@ -1,8 +1,17 @@
 import { expect, test } from "bun:test";
 import { createChatBridge } from "../packages/lianki-cli/chat-bridge.mjs";
 import { createChatReceiver } from "../packages/lianki-cli/chat-receiver.mjs";
-import { partnerCoordination } from "../packages/lianki-cli/chat-coordination.mjs";
-import { lineOf } from "../scripts/dev/lane-listen-lib";
+import {
+  partnerCoordination,
+  currentPartnerCoordination,
+} from "../packages/lianki-cli/chat-coordination.mjs";
+import {
+  lineOf,
+  makeDeliverer,
+  makeSeqCursor,
+  refreshAdvisoryLines,
+  type Line,
+} from "../scripts/dev/lane-listen-lib";
 
 const notice = (extra = {}) => ({
   id: "brief-1",
@@ -10,6 +19,8 @@ const notice = (extra = {}) => ({
   thread: "owner",
   label: "Learning Partner AI",
   text: "整理一下。",
+  at: 2000,
+  seq: 2,
   coordination: {
     v: 1,
     state: "answered",
@@ -23,6 +34,223 @@ const notice = (extra = {}) => ({
   ...extra,
 });
 const event = (message: any) => ({ type: "chat", message });
+const snapshot = (extra = {}) => ({
+  partnerStandardFlow: true,
+  messages: [
+    { id: "raw-1", thread: "owner", from: "owner", text: "coco, fix button", seq: 1, at: 1000 },
+    notice(),
+  ],
+  ...extra,
+});
+
+test("buffered enrichment needs the current switch and exact canonical sources", () => {
+  expect(currentPartnerCoordination(notice(), snapshot())?.sources[0].id).toBe("raw-1");
+  for (const data of [
+    undefined,
+    {},
+    snapshot({ partnerStandardFlow: false }),
+    snapshot({ messages: [] }),
+  ])
+    expect(currentPartnerCoordination(notice(), data)).toBeNull();
+  const raw = snapshot().messages[0];
+  for (const message of [
+    notice({ via: "token" }),
+    notice({ at: 3000 }),
+    notice({ seq: 4 }),
+    notice({ thread: "other-thread" }),
+  ])
+    expect(currentPartnerCoordination(message, snapshot())).toBeNull();
+  expect(
+    currentPartnerCoordination(
+      notice(),
+      snapshot({ messages: [{ ...raw, id: "different-source" }, notice()] }),
+    ),
+  ).toBeNull();
+  expect(
+    currentPartnerCoordination(
+      notice(),
+      snapshot({ messages: [raw, notice(), { ...raw, id: "new-request", seq: 3, at: 3000 }] }),
+    ),
+  ).toBeNull();
+  const parsed = lineOf(JSON.stringify(event(notice())))!;
+  expect(refreshAdvisoryLines([parsed], snapshot())[0].text).toContain("Original ids: raw-1");
+  for (const data of [undefined, snapshot({ partnerStandardFlow: false })]) {
+    expect(refreshAdvisoryLines([parsed], data)).toEqual([]);
+    const raw: Line = { id: "raw-control", from: "owner", thread: "owner", text: "original" };
+    expect(refreshAdvisoryLines([raw, parsed], data)).toEqual([raw]);
+  }
+});
+
+test("a busy notice is rechecked after the wait, without holding a new original message", async () => {
+  const sent: string[] = [];
+  let busy = true;
+  let finish!: () => void;
+  let on = true;
+  const discarded: string[] = [];
+  const delivery = makeDeliverer(
+    { lane: "codex", repo: "/repo" },
+    async (body) => {
+      sent.push(body);
+      return 0;
+    },
+    async () => busy,
+    () => {},
+    5,
+    undefined,
+    async (lines) => {
+      await new Promise<void>((r) => {
+        finish = r;
+      });
+      return refreshAdvisoryLines(lines, snapshot({ partnerStandardFlow: on }));
+    },
+    (lines) => {
+      discarded.push(...lines.map((l) => l.id));
+    },
+  );
+  await delivery.add(lineOf(JSON.stringify(event(notice())))!);
+  expect(sent).toHaveLength(0);
+  busy = false;
+  const raw: Line = {
+    id: "new-request",
+    from: "owner",
+    thread: "owner",
+    text: "@coco check the next item",
+    seq: 3,
+  };
+  const pending = delivery.add(raw);
+  for (let i = 0; i < 10 && !finish; i++) await Promise.resolve();
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toContain("new-request");
+  expect(sent[0]).not.toContain("Learning Partner context update");
+  on = false;
+  finish();
+  await pending;
+  await delivery.settled();
+  expect(sent).toHaveLength(1);
+  expect(discarded).toEqual(["brief-1"]);
+  expect(delivery.pending()).toBe(0);
+});
+
+test("a failed live advisory read discards only that optional notice", async () => {
+  const sent: string[] = [];
+  const skipped: string[] = [];
+  const delivery = makeDeliverer(
+    { lane: "codex", repo: "/repo" },
+    async (body) => {
+      sent.push(body);
+      return 0;
+    },
+    async () => false,
+    () => {},
+    undefined,
+    undefined,
+    async () => {
+      throw Error("unavailable");
+    },
+    (lines) => {
+      skipped.push(...lines.map((l) => l.id));
+    },
+  );
+  await delivery.add(lineOf(JSON.stringify(event(notice())))!);
+  await delivery.settled();
+  expect(sent).toEqual([]);
+  expect(skipped).toEqual(["brief-1"]);
+  await delivery.add({
+    id: "raw-control",
+    thread: "owner",
+    from: "owner",
+    text: "@coco check the feature",
+  });
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toContain("raw-control");
+  expect(delivery.pending()).toBe(0);
+});
+
+test("the serial live reader hands off later raw input while an earlier notice read is pending", async () => {
+  const cursor = makeSeqCursor(0);
+  const sent: string[] = [];
+  const skipped: string[] = [];
+  let finish!: () => void;
+  const delivery = makeDeliverer(
+    { lane: "codex", repo: "/repo" },
+    async (body) => {
+      sent.push(body);
+      return 0;
+    },
+    async () => false,
+    undefined,
+    undefined,
+    (lines, ok) => {
+      if (ok) cursor.release(lines.map((l) => l.seq));
+    },
+    async (lines) => {
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      return refreshAdvisoryLines(lines, snapshot({ partnerStandardFlow: false }));
+    },
+    (lines) => {
+      skipped.push(...lines.map((l) => l.id));
+      cursor.release(lines.map((l) => l.seq));
+    },
+  );
+  // Match the production stdout loop: each handle is awaited before reading
+  // the next event, rather than starting concurrent add calls in the test.
+  for (const message of [
+    notice(),
+    { id: "later-raw", from: "owner", thread: "owner", text: "@coco next", seq: 3 },
+  ]) {
+    const line = lineOf(JSON.stringify(event(message)))!;
+    cursor.hold(line.seq);
+    await delivery.add(line);
+  }
+  expect(typeof finish).toBe("function");
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toContain("later-raw");
+  expect(cursor.value()).toBeLessThan(3);
+  expect(delivery.pending()).toBe(1);
+  finish();
+  await delivery.settled();
+  expect(skipped).toEqual(["brief-1"]);
+  expect(cursor.value()).toBe(3);
+  expect(delivery.pending()).toBe(0);
+});
+
+test("independent advisory checks preserve notice order", async () => {
+  const checked: string[] = [];
+  const sent: string[] = [];
+  let finish!: () => void;
+  const delivery = makeDeliverer(
+    { lane: "codex", repo: "/repo" },
+    async (body) => {
+      sent.push(body);
+      return 0;
+    },
+    async () => false,
+    undefined,
+    undefined,
+    undefined,
+    async (lines) => {
+      checked.push(lines[0].id);
+      if (lines[0].id === "brief-1")
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+      return lines;
+    },
+  );
+  await delivery.add(lineOf(JSON.stringify(event(notice())))!);
+  await delivery.add(lineOf(JSON.stringify(event(notice({ id: "brief-2", seq: 4 }))))!);
+  expect(checked).toEqual(["brief-1"]);
+  expect(sent).toEqual([]);
+  finish();
+  await delivery.settled();
+  expect(checked).toEqual(["brief-1", "brief-2"]);
+  expect(sent).toHaveLength(2);
+  expect(sent[0]).toContain("brief-1");
+  expect(sent[1]).toContain("brief-2");
+  expect(delivery.pending()).toBe(0);
+});
 
 test("raw instructions remain live; Partner enrichment stays an agent notice and deduplicates", async () => {
   const sent: any[] = [];

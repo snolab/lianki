@@ -347,6 +347,7 @@ import {
 } from "../../../packages/debug-chat/src/two-mic";
 import { OwnerAi } from "./owner-ai";
 import { PartnerTurn, type TurnLine } from "./partner-turn";
+import { standardVoiceSkip } from "./partner-voice";
 import { routeLine } from "../../../lib/lane-route";
 import {
   PARTNER_STANDARD_FLAG,
@@ -356,6 +357,10 @@ import {
   PARTNER_TURN_WAIT_KEY,
   PARTNER_TURN_WAIT_MS,
   PARTNER_TURN_WAIT_MAX,
+  OWNER_LI_NAMES,
+  OWNER_LI_NAMES_KEY,
+  OWNER_SPOKEN_NEEDS_NAME,
+  OWNER_SPOKEN_NEEDS_NAME_KEY,
 } from "../../../lib/partner-ai-config";
 import { partnerHistoryLine } from "../../../lib/partner-lines";
 import { type RosterEntry, rollCallText, rosterOf } from "../../../packages/debug-chat/src/roster";
@@ -1160,6 +1165,7 @@ export class DebugHub {
         await this.post(m);
       },
       history: (thread) => this.history(thread),
+      partnerStandardOn: () => this.standardOn(),
       replay: (thread, afterSeq, throughSeq, limit) =>
         this.replay(thread, afterSeq, throughSeq, limit),
       acknowledgeRead: (thread, identity, seq) => this.acknowledgeRead(thread, identity, seq),
@@ -5028,6 +5034,7 @@ export class DebugHub {
             m.source === "stt",
             accepted,
             m.attachments,
+            m.source === "stt" && !!m.speakerProof?.length,
           );
         const line = async (speaker: SpeakerTag | undefined) => {
           // An echo (his other phone, or Li read aloud and heard back): kept aside, not posted.
@@ -5122,12 +5129,12 @@ export class DebugHub {
           await accepted(typeof posted === "number" ? posted : undefined);
           const standard =
             typeof posted === "number" &&
-            (!speaker || speaker.decision === "me") &&
             (await this.standardReply(
               page,
               { id: m.id, at: t, spoken: m.source === "stt" },
               m.context,
               m.scene,
+              m.source === "stt" && !!m.speakerProof?.length && !speaker,
             ));
           if (!standard && posted !== false && m.source === "stt") this.autoPolishSoon(page);
           // A new line of his: Li may answer it if no lane does (owner-ai.ts).
@@ -5215,6 +5222,7 @@ export class DebugHub {
     spoken = false,
     accepted?: (seq?: number) => Promise<void>,
     attachments?: AttachmentRef[],
+    unverifiedProof = false,
   ) {
     const t = this.now();
     // A site's thread (lib/li-thread.ts) is its account's: blocks, the rate and the
@@ -5222,7 +5230,17 @@ export class DebugHub {
     const thread = page.thread;
     const userId = parseSubThread(thread)?.base ?? thread;
     if (userId === OWNER_THREAD)
-      return this.ownerSiteChat(page, id, text, t, context, scene, spoken, accepted);
+      return this.ownerSiteChat(
+        page,
+        id,
+        text,
+        t,
+        context,
+        scene,
+        spoken,
+        accepted,
+        unverifiedProof,
+      );
     const rec = await this.ctx.storage.get<FriendRecord>(friendKey(userId));
     if (rec?.blocked) {
       await this.rejectChat(ws, page.thread, id, "blocked");
@@ -5271,7 +5289,8 @@ export class DebugHub {
       ...(spoken ? { source: "stt", ...(scene ? { scene } : {}) } : {}),
     });
     await accepted?.(seq);
-    if (await this.standardReply(page, { id, at: t, spoken }, context, scene)) return;
+    if (await this.standardReply(page, { id, at: t, spoken }, context, scene, unverifiedProof))
+      return;
     // The owner's thread never gets here (OWNER_THREAD lines go to the owner's lanes).
     const ai = await this.aiState();
     if (ai === "on") await this.aiReply(page, email, t, context, scene, id);
@@ -5316,6 +5335,7 @@ export class DebugHub {
     scene?: SttScene,
     spoken = false,
     accepted?: (seq?: number) => Promise<void>,
+    unverifiedProof = false,
   ) {
     const seq = await this.post({
       id,
@@ -5329,7 +5349,8 @@ export class DebugHub {
       ...(spoken ? { source: "stt", ...(scene ? { scene } : {}) } : {}),
     });
     await accepted?.(seq);
-    if (await this.standardReply(page, { id, at: t, spoken }, context, scene)) return;
+    if (await this.standardReply(page, { id, at: t, spoken }, context, scene, unverifiedProof))
+      return;
     const ai = await this.aiState();
     if (ai === "on") await this.aiReply(page, "", t, context, scene, id);
     else if (ai === "unsure")
@@ -5506,9 +5527,39 @@ export class DebugHub {
     line: TurnLine,
     context?: ChatContext,
     scene?: SttScene,
+    unverifiedProof = false,
   ) {
     if (!(await this.standardOn())) return false;
     this.ownerAi.cancel();
+    if (line.spoken) {
+      const source = (await this.history(page.thread)).find((m) => m.id === line.id);
+      // Already handled by the shared flow, even when it stays silent: never
+      // fall through to a legacy reply or start a turn from unconfirmed audio.
+      if (!source) return true;
+      const [needsName, names] = await Promise.all([
+        this.sessions?.config?.(OWNER_SPOKEN_NEEDS_NAME_KEY).catch(() => undefined),
+        this.sessions?.config?.(OWNER_LI_NAMES_KEY).catch(() => undefined),
+      ]);
+      const reason = standardVoiceSkip(
+        { ...source, text: source.raw ?? source.text },
+        {
+          needsName: typeof needsName === "boolean" ? needsName : OWNER_SPOKEN_NEEDS_NAME,
+          liNames:
+            Array.isArray(names) && names.every((n) => typeof n === "string")
+              ? names
+              : OWNER_LI_NAMES,
+          continuation: this.standardTurns.pendingSpeech(page.thread),
+          // Friend/site paths do not establish the Mac key as an account's
+          // identity. A supplied but unsupported or invalid proof is not the
+          // same as a device that supplied no proof at all.
+          unverifiedProof,
+        },
+      );
+      if (reason) {
+        console.log(JSON.stringify({ msg: "partner.standard-skip", reason }));
+        return true;
+      }
+    }
     const [value, wait] = await Promise.all([
       this.sessions?.config?.(PARTNER_TURN_DELAY_KEY).catch(() => undefined),
       this.sessions?.config?.(PARTNER_TURN_WAIT_KEY).catch(() => undefined),
@@ -5534,6 +5585,7 @@ export class DebugHub {
     msgId?: string,
     standard?: { lines: readonly TurnLine[]; current(): boolean },
   ) {
+    if (standard && (!standard.current() || !(await this.standardOn()))) return;
     const thread = page.thread;
     const rpc = this.sessions;
     // The owner's thread (owner-ai.ts schedules it): his account is the user, metered like any.
@@ -5740,7 +5792,10 @@ export class DebugHub {
         for (const { ws } of this.pages(thread)) send(ws, { type: "ai-failed" });
       return;
     }
-    // The polish section stands on its own: applied even when a lane's reply made Li's stale.
+    // Settle an already-started call above, but never apply its optional
+    // standard-flow polish after the switch went off or its turn was replaced.
+    if (standard && (!standard.current() || !(await this.standardOn()))) return;
+    // Legacy polish still stands on its own when a lane's reply made Li stale.
     if (owner && res.polish?.length) await this.liPolish(polish, res.polish);
     if (stale || (standard && (!standard.current() || !(await this.standardOn())))) return;
     const targets = [

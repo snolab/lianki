@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { lineTier } from "@lianki/debug-chat/rich-text";
-import { DebugHub, type Socket, type Storage } from "@/workers/push/src/debug";
+import { DebugHub, type HubTimer, type Socket, type Storage } from "@/workers/push/src/debug";
 import { createTestD1, type TestD1Database } from "@/lib/d1/testDb";
 import { testSchema } from "@/lib/d1/testSchema";
 import {
@@ -28,6 +28,7 @@ import {
 } from "@/lib/partner-ai";
 import { FLAGS } from "@/lib/flags";
 import { rpcStub } from "./support/rpc-stub";
+import { verifySpeakerProofs } from "@/lib/speaker-proof";
 
 /** The hub side (lianki-push's DebugHub) with a stubbed main Worker. */
 class FakeSocket implements Socket {
@@ -85,6 +86,7 @@ type Stub = {
   calls: PartnerRequest[];
   flagCalls: string[];
   on: boolean;
+  standard: boolean;
   /** The flag read fails (the RPC itself, as `.bind(stub)` made it in production). */
   flagThrows?: boolean;
   /** Config values the main Worker answers (undefined = not set). */
@@ -94,9 +96,46 @@ type Stub = {
 };
 const T0 = 1_800_000_000_000;
 
+async function speakerSigner() {
+  const keys = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
+  const pub = Buffer.from(await crypto.subtle.exportKey("raw", keys.publicKey)).toString(
+    "base64url",
+  );
+  const sign = async (thread: string, text: string, decision: "me" | "unknown" | "other") => {
+    const body = Buffer.from(
+      JSON.stringify({
+        v: 1,
+        uid: crypto.randomUUID(),
+        thread,
+        text,
+        decision,
+        score: 0.6,
+        at: T0,
+      }),
+    ).toString("base64url");
+    const signature = await crypto.subtle.sign(
+      { name: "Ed25519" },
+      keys.privateKey,
+      new TextEncoder().encode(body),
+    );
+    return `${body}.${Buffer.from(signature).toString("base64url")}`;
+  };
+  return { pub, sign };
+}
+
 /** `config`: the main Worker answers config reads (stub.config); without it, it has no such method. */
 function setup(
-  opts: { on?: boolean; sessions?: boolean; config?: boolean; standard?: boolean } = {},
+  opts: {
+    on?: boolean;
+    sessions?: boolean;
+    config?: boolean;
+    standard?: boolean;
+    timer?: HubTimer;
+    speakerPub?: string;
+  } = {},
 ) {
   const sockets: FakeSocket[] = [];
   let t = T0;
@@ -104,6 +143,7 @@ function setup(
     calls: [],
     flagCalls: [],
     on: opts.on ?? true,
+    standard: opts.standard === true,
     reply: async () => ({
       ok: true,
       text: "Hi! You have 3 words due.",
@@ -119,11 +159,7 @@ function setup(
       stub.flagCalls.push(k);
       if (stub.flagThrows)
         throw new TypeError('The RPC receiver does not implement the method "bind".');
-      return k === PARTNER_AI_FLAG
-        ? stub.on
-        : k === PARTNER_STANDARD_FLAG
-          ? opts.standard === true
-          : false;
+      return k === PARTNER_AI_FLAG ? stub.on : k === PARTNER_STANDARD_FLAG ? stub.standard : false;
     },
     partnerReply: async (req: PartnerRequest) => {
       stub.calls.push(structuredClone(req));
@@ -145,8 +181,12 @@ function setup(
       getWebSockets: () => sockets,
       storage,
     },
-    opts.sessions === false ? {} : { SESSIONS: rpcStub(sessions) },
+    {
+      ...(opts.sessions === false ? {} : { SESSIONS: rpcStub(sessions) }),
+      ...(opts.speakerPub ? { STT_SPEAKER_PUB: opts.speakerPub } : {}),
+    },
     () => t,
+    opts.timer,
   );
   const page = (label = "/words pwa iPhone") => {
     const ws = new FakeSocket();
@@ -627,6 +667,261 @@ describe("partner AI: caps (rolling window)", () => {
 
 /** The main Worker side: lib/partner-ai.ts against a real schema. */
 describe("standard Partner routing", () => {
+  it("switch-off before a queued speech turn runs makes no model call", async () => {
+    const signer = await speakerSigner();
+    const jobs = new Map<object, () => void>();
+    const timer: HubTimer = {
+      set: (fn) => {
+        const key = {};
+        jobs.set(key, fn);
+        return key;
+      },
+      clear: (key) => {
+        jobs.delete(key as object);
+      },
+    };
+    const s = setup({ standard: true, timer, speakerPub: signer.pub });
+    const owner = await s.ownerPage();
+    const text = "Li, help me plan";
+    await s.msg(owner, {
+      type: "chat",
+      id: "queued-before-off",
+      text,
+      source: "stt",
+      speakerProof: [await signer.sign("owner", text, "me")],
+    });
+    s.stub.standard = false;
+    for (const fn of jobs.values()) fn();
+    jobs.clear();
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(s.stub.calls).toHaveLength(0);
+    expect(chats(owner).some((m) => m.text === text)).toBe(true);
+  });
+
+  it("switch-off during a billed call still settles usage, without reply or polish side effects", async () => {
+    const s = setup({ standard: true });
+    const owner = await s.ownerPage();
+    let finish!: (r: PartnerResult) => void;
+    s.stub.reply = () =>
+      new Promise((r) => {
+        finish = r;
+      });
+    let applied = 0;
+    s.hub["liPolish"] = async () => {
+      applied++;
+    };
+    const pending = s.msg(owner, {
+      type: "chat",
+      id: "active-before-off",
+      text: "coco, check the feature",
+    });
+    for (let i = 0; i < 200 && !finish; i++) await Promise.resolve();
+    expect(typeof finish).toBe("function");
+    s.stub.standard = false;
+    finish({
+      ok: true,
+      text: "must not appear",
+      handoff: "must not hand off",
+      polish: [{ id: "active-before-off", text: "must not edit" }],
+      tokensIn: 10,
+      tokensOut: 5,
+      ms: 1,
+      model: PARTNER_AI_MODEL,
+    });
+    await pending;
+    expect(applied).toBe(0);
+    expect(chats(owner).some((m) => m.label === PARTNER_AI_LABEL)).toBe(false);
+    expect(
+      Object.values(s.storage.store.get(aiUserKey("owner1")) as Record<string, number>).reduce(
+        (a, b) => a + b,
+        0,
+      ),
+    ).toBe(15);
+  });
+
+  it("friend and site speech stays unconfirmed with an unsupported proof or no proof", async () => {
+    const signer = await speakerSigner();
+    for (const kind of ["friend", "site"] as const) {
+      const s = setup({ standard: true, config: true, speakerPub: signer.pub });
+      s.stub.config = { "partner.turnPauseMs": 0 };
+      const page = kind === "friend" ? await s.friend() : await s.ownerPage();
+      const thread = kind === "friend" ? "f1" : `owner~${"a".repeat(22)}`;
+      if (kind === "site")
+        page.serializeAttachment({ ...(page.deserializeAttachment() as object), thread });
+      for (const decision of ["unknown", "other", "me"] as const) {
+        const text = "Li, help me plan";
+        const proof = await signer.sign(thread, text, decision);
+        // The fixture is a real, fresh, thread-bound signature. It does not
+        // authorize reusing the owner's signer as another account's identity.
+        expect(
+          (await verifySpeakerProofs([proof], text, thread, signer.pub, async () => true, T0))
+            ?.decision,
+        ).toBe(decision);
+        await s.msg(page, {
+          type: "chat",
+          id: `${kind}-${decision}`,
+          text,
+          source: "stt",
+          speakerProof: [proof],
+        });
+        expect(chats(page).some((m) => m.text === text)).toBe(true);
+      }
+      await new Promise((r) => setTimeout(r, 0));
+      expect(s.stub.calls).toHaveLength(0);
+      await s.msg(page, {
+        type: "chat",
+        id: `${kind}-proof-free`,
+        text: "Li, help me plan",
+        source: "stt",
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(s.stub.calls).toHaveLength(0);
+      await s.msg(page, { type: "chat", id: `${kind}-typed-control`, text: "please help me plan" });
+      expect(s.stub.calls).toHaveLength(1);
+    }
+  });
+
+  it("the supported owner verifier distinguishes me, unknown, other, failed and replayed proofs", async () => {
+    const signer = await speakerSigner();
+    const s = setup({ standard: true, config: true, speakerPub: signer.pub });
+    s.stub.config = { "partner.turnPauseMs": 0, "partner.spokenNeedsName": false };
+    const page = await s.ownerPage();
+    for (const decision of ["unknown", "other"] as const) {
+      const text = "Li, help me plan";
+      await s.msg(page, {
+        type: "chat",
+        id: `owner-${decision}`,
+        text,
+        source: "stt",
+        speakerProof: [await signer.sign("owner", text, decision)],
+      });
+    }
+    expect(s.stub.calls).toHaveLength(0);
+    const text = "Please plan the next lesson";
+    const me = await signer.sign("owner", text, "me");
+    await s.msg(page, { type: "chat", id: "owner-me", text, source: "stt", speakerProof: [me] });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.stub.calls).toHaveLength(1);
+    for (const [id, body, proof] of [
+      ["replayed", text, me],
+      ["wrong-thread", "Li, help me plan", await signer.sign("f1", "Li, help me plan", "me")],
+      ["wrong-words", "Li, help me plan", await signer.sign("owner", "different words", "me")],
+    ])
+      await s.msg(page, { type: "chat", id, text: body, source: "stt", speakerProof: [proof] });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.stub.calls).toHaveLength(1);
+    expect([...s.storage.store.keys()].filter((k) => k.startsWith("proof:"))).toHaveLength(3);
+  });
+
+  it("ambient unverified speech stays visible without calling either reply path for any account", async () => {
+    const s = setup({ standard: true, config: true });
+    s.stub.config = { "partner.turnPauseMs": 0, "partner.turnMaxWaitMs": 0 };
+    const owner = await s.ownerPage();
+    const friend = await s.friend();
+    for (const [i, text] of ["Yeah.", "그.", "hmm"].entries()) {
+      for (const [kind, page] of [
+        ["owner", owner],
+        ["friend", friend],
+      ] as const) {
+        await s.msg(page, {
+          type: "chat",
+          id: `${kind}-ambient-${i}`,
+          text,
+          source: "stt",
+          wake: "active",
+          wakeReason: "mic-on",
+          // A page-supplied tag is not the server's verified speaker identity.
+          speaker: { decision: "me" },
+        });
+        expect(chats(page).some((m) => m.text === text)).toBe(true);
+      }
+    }
+    expect(s.stub.calls).toHaveLength(0);
+    await s.msg(owner, { type: "chat", id: "typed-after-noise", text: "please check the feature" });
+    expect(s.stub.calls).toHaveLength(1);
+    expect(s.stub.calls[0].turn).toEqual([
+      { id: "typed-after-noise", text: "please check the feature" },
+    ]);
+  });
+
+  it("named speech and its unnamed follow-up form one reply with both original ids", async () => {
+    const signer = await speakerSigner();
+    const jobs = new Map<object, () => void>();
+    const timer: HubTimer = {
+      set: (fn) => {
+        const key = {};
+        jobs.set(key, fn);
+        return key;
+      },
+      clear: (key) => {
+        jobs.delete(key as object);
+      },
+    };
+    const s = setup({ standard: true, timer, speakerPub: signer.pub });
+    const owner = await s.ownerPage();
+    await s.msg(owner, {
+      type: "chat",
+      id: "named-start",
+      text: "@coco fix the feature",
+      source: "stt",
+      speakerProof: [await signer.sign("owner", "@coco fix the feature", "me")],
+    });
+    s.tick(4);
+    await s.msg(owner, {
+      type: "chat",
+      id: "follow-up",
+      text: "and keep the raw references",
+      source: "stt",
+      speakerProof: [await signer.sign("owner", "and keep the raw references", "me")],
+    });
+    expect(s.stub.calls).toHaveLength(0);
+    const pending = [...jobs.values()];
+    jobs.clear();
+    for (const fn of pending) fn();
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(s.stub.calls).toHaveLength(1);
+    expect(s.stub.calls[0].turn).toEqual([
+      { id: "named-start", text: "@coco fix the feature" },
+      { id: "follow-up", text: "and keep the raw references" },
+    ]);
+    const replies = chats(owner).filter((m) => m.label === PARTNER_AI_LABEL);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({
+      coordination: { sources: [{ id: "named-start" }, { id: "follow-up" }] },
+    });
+    await s.msg(owner, { type: "chat", id: "later-noise", text: "Yeah.", source: "stt" });
+    expect(jobs.size).toBe(0);
+    expect(s.stub.calls).toHaveLength(1);
+  });
+
+  it("the shared voice guard honors live names and fails silent for unverified audio even with name gating off", async () => {
+    const signer = await speakerSigner();
+    const s = setup({ standard: true, config: true, speakerPub: signer.pub });
+    s.stub.config = {
+      "partner.spokenNeedsName": false,
+      "partner.liNames": ["Buddy"],
+      "partner.turnPauseMs": 0,
+    };
+    const owner = await s.ownerPage();
+    await s.msg(owner, { type: "chat", id: "noise-name-off", text: "hmm", source: "stt" });
+    expect(s.stub.calls).toHaveLength(0);
+    s.stub.config["partner.spokenNeedsName"] = true;
+    await s.msg(owner, {
+      type: "chat",
+      id: "custom-name",
+      text: "Buddy, help me plan",
+      source: "stt",
+      speakerProof: [await signer.sign("owner", "Buddy, help me plan", "me")],
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.stub.calls).toHaveLength(1);
+    expect(s.stub.calls[0].turn?.[0].id).toBe("custom-name");
+    // Broken configuration cannot make the microphone an implicit invitation.
+    s.stub.configThrows = true;
+    await s.msg(owner, { type: "chat", id: "noise-config-error", text: "Yeah.", source: "stt" });
+    expect(s.stub.calls).toHaveLength(1);
+  });
+
   it("an assistant may answer while the model works without cancelling the model's reply", async () => {
     const s = setup({ standard: true });
     const owner = await s.ownerPage();

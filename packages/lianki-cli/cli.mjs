@@ -690,7 +690,9 @@ async function cmdChatRead(c) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw usage("--limit must be 1–100");
   const { data } = await call(c, token, { method: "POST", path: CHAT_PATH, body: { op: "read", limit, ...readWindow(c.argv["after-seq"], c.argv["through-seq"]) } });
   const messages = Array.isArray(data.messages) ? data.messages : [];
-  emit(c, "chat read", { thread: data.thread ?? null, lane: data.lane ?? null, messages, ...readCoverage(data) }, (d) =>
+  emit(c, "chat read", { thread: data.thread ?? null, lane: data.lane ?? null, messages,
+    ...(typeof data.partnerStandardFlow === "boolean" ? { partnerStandardFlow: data.partnerStandardFlow } : {}),
+    ...readCoverage(data) }, (d) =>
     d.messages.length ? d.messages.map(chatLine).join("\n") : "no messages",
   );
 }

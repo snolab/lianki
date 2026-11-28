@@ -108,6 +108,28 @@ describe("shared Partner turns", () => {
     await s.tick(30);
     expect(s.calls).toEqual([]);
   });
+  test("unnamed continuations belong only to an open speech pause, not an in-flight answer", async () => {
+    let finish!: () => void;
+    const s = setup(
+      () =>
+        new Promise<void>((r) => {
+          finish = r;
+        }),
+    );
+    expect(s.turns.pendingSpeech("account")).toBe(false);
+    s.add("named");
+    expect(s.turns.pendingSpeech("account")).toBe(true);
+    expect(s.turns.pendingSpeech("other-account")).toBe(false);
+    await s.tick(8);
+    expect(typeof finish).toBe("function");
+    expect(s.turns.pendingSpeech("account")).toBe(false);
+    finish();
+    await Promise.resolve();
+    expect(s.turns.pendingSpeech("account")).toBe(false);
+    s.add("next");
+    s.turns.cancel("account");
+    expect(s.turns.pendingSpeech("account")).toBe(false);
+  });
   test("the line bound forces a flush without waiting for silence", async () => {
     const s = setup();
     s.add("a");

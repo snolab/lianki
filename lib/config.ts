@@ -2562,7 +2562,7 @@ export const CONFIG = {
     group: "chat",
     audience: "server",
     description:
-      "你说出来的话（麦克风转写）只有叫到 Li 的名字（partner.liNames，句中任何位置）时 Li 才回答：房间里别人说话、转写串了都不接。默认 true；false = 和打字的话一样处理。打字的话不受影响。",
+      "麦克风转写默认须点名才由 Li 回答。统一流程须先确认声纹为本人，再接受 Li（partner.liNames）或其他助手的点名；停顿窗口内确认是本人的后续语音一起合并。声纹缺失、unknown/other，或证明未通过验证时始终不答。设为 false 时，确认是本人的语音可不点名。旧流程只认 Li 的名字。打字不受影响。",
   },
   "partner.laneActiveMs": int({
     default: OWNER_LANE_ACTIVE_MS,

@@ -30,6 +30,7 @@ import { ownerClock, ownerTag } from "./owner-time";
 import {
   partnerCoordination,
   coordinationNote,
+  currentPartnerCoordination,
 } from "../../packages/lianki-cli/chat-coordination.mjs";
 import { type Digest, type DigestEdit, lineNames, namedLanes } from "./lane-digest-lib";
 
@@ -105,6 +106,8 @@ export type Line = {
   source?: string;
   /** A digest of his lines (digest mode, lane-digest-lib.ts): `text` is its polished text. */
   digest?: Digest;
+  /** Only this notice's canonical source references; rechecked after busy buffering. */
+  advisory?: { text: string; message: Record<string, unknown> };
 };
 /**
  * Whether a lane may hear this owner line (owner, 2026-11-14 23:2x: "只有我自己的
@@ -229,9 +232,11 @@ function agentFields(m: Record<string, unknown>): Partial<Line> {
   const senderLane = tokenLane ?? r.lane ?? (label || undefined);
   const known = r.lane ?? (tokenLane && isLaneId(tokenLane) ? tokenLane : null);
   const sender = (known && laneSpec(known).name) || (known === "main" ? "Li" : "") || senderLane;
+  const coordination = partnerCoordination(m);
   return {
     kind: "agent",
-    text: r.text + (partnerCoordination(m) ? coordinationNote(partnerCoordination(m)) : ""),
+    text: r.text + (coordination ? coordinationNote(coordination) : ""),
+    ...(coordination ? { advisory: { text: r.text, message: m } } : {}),
     ...(sender ? { sender } : {}),
     ...(senderLane ? { senderLane } : {}),
   };
@@ -498,6 +503,16 @@ export const urgentLine = (lane: RouteLane, l: Line) => {
 };
 /** The body `ay send` still accepts: its own 1024 limit minus its ~150-char wrapper, with room for the header and the skill line. */
 export const SEND_MAX_CHARS = 800;
+
+/** A failed/off/stale recheck drops only the optional notice, never an original user line. */
+export function refreshAdvisoryLines(lines: Line[], snapshot: unknown): Line[] {
+  return lines.flatMap((line) => {
+    if (!line.advisory) return [line];
+    const { advisory, ...plain } = line;
+    const c = currentPartnerCoordination(advisory.message, snapshot);
+    return c ? [{ ...plain, text: advisory.text + coordinationNote(c) }] : [];
+  });
+}
 /** A batch cut into parts whose bullets (and their batch note) stay under SEND_MAX_CHARS (`_o` is kept for callers; the text no longer depends on it); one bullet too long on its own is cut with "…". */
 export function chunkLines(
   lane: RouteLane,
@@ -537,10 +552,64 @@ export function makeDeliverer(
   recheckMs = BUSY_RECHECK_MS,
   /** After each hand-over: its lines, and whether `ay send` took them (0 or 4). */
   sent: (lines: Line[], ok: boolean) => void = () => {},
+  prepare?: (lines: Line[]) => Promise<Line[]>,
+  discarded: (lines: Line[]) => void = () => {},
 ) {
   const pending: Line[] = [];
   let first = true;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let advisoryTail = Promise.resolve();
+  let advisoryPending = 0;
+  const sendParts = async (lines: Line[], interrupt: boolean) => {
+    let code: number | undefined;
+    const room = SEND_MAX_CHARS - (first ? firstLines(o.lane, o.repo, o).join("\n").length + 1 : 0);
+    const unnamed = { answerUnnamed: o.answerUnnamed };
+    for (const part of chunkLines(o.lane, lines, room, unnamed)) {
+      const withRules = first;
+      // Reserve the first header before yielding: a raw send may run while
+      // the independent advisory queue is finishing its live read.
+      first = false;
+      try {
+        code = await send(handoffBrief(o.lane, part, o.repo, withRules, unnamed), interrupt);
+      } catch {
+        code = 1;
+      }
+      log({ type: "delivered", lane: o.lane, ids: part.map((l) => l.id), interrupt, ay: code });
+      const ok = code === 0 || code === 4;
+      if (!ok) log({ type: "lost", lane: o.lane, ids: part.map((l) => l.id), ay: code });
+      sent(part, ok);
+    }
+    return code;
+  };
+  const queueAdvisories = (group: Line[]) => {
+    if (!group.length || !prepare) return;
+    advisoryPending += group.length;
+    advisoryTail = advisoryTail
+      .then(async () => {
+        let ready: Line[];
+        try {
+          ready = await prepare(group);
+        } catch {
+          ready = refreshAdvisoryLines(group, undefined);
+        }
+        const kept = new Set(ready.map((l) => l.id));
+        const skipped = group.filter((l) => !kept.has(l.id));
+        if (skipped.length) {
+          log({ type: "advisory-skipped", lane: o.lane, ids: skipped.map((l) => l.id) });
+          discarded(skipped);
+        }
+        await sendParts(ready, false);
+      })
+      .catch(() => {
+        // Keep failed work held for normal recovery. Do not turn an optional
+        // notification failure into an unhandled live-stream rejection.
+        log({ type: "lost", lane: o.lane, ids: group.map((l) => l.id), ay: 1 });
+        sent(group, false);
+      })
+      .finally(() => {
+        advisoryPending -= group.length;
+      });
+  };
   const flush = async (interrupt = false): Promise<number | undefined> => {
     if (!pending.length) return undefined;
     if (!interrupt && (await busy())) {
@@ -553,21 +622,14 @@ export function makeDeliverer(
       return undefined;
     }
     const batch = pending.splice(0, pending.length);
-    // `ay send` refuses a message over 1024 characters (its wrapper takes ~150),
-    // and a refused batch was simply lost (2026-11-14 23:xx, four of coco's).
-    // So a long batch goes as several messages, each under SEND_MAX_CHARS.
-    let code: number | undefined;
-    // The first message also carries firstLines: its parts leave room for them.
-    const room = SEND_MAX_CHARS - (first ? firstLines(o.lane, o.repo, o).join("\n").length + 1 : 0);
-    const unnamed = { answerUnnamed: o.answerUnnamed };
-    for (const part of chunkLines(o.lane, batch, room, unnamed)) {
-      code = await send(handoffBrief(o.lane, part, o.repo, first, unnamed), interrupt);
-      first = false;
-      log({ type: "delivered", lane: o.lane, ids: part.map((l) => l.id), interrupt, ay: code });
-      const ok = code === 0 || code === 4;
-      if (!ok) log({ type: "lost", lane: o.lane, ids: part.map((l) => l.id), ay: code });
-      sent(part, ok);
-    }
+    if (!prepare) return sendParts(batch, interrupt);
+    const code = await sendParts(
+      batch.filter((l) => !l.advisory),
+      interrupt,
+    );
+    // Never await this chain from add/handle: a notice arriving before the next
+    // raw line must not hold the serial stdout reader for its network timeout.
+    queueAdvisories(batch.filter((l) => l.advisory));
     return code;
   };
   return {
@@ -575,7 +637,8 @@ export function makeDeliverer(
       pending.push(l);
       return flush(urgentLine(o.lane, l));
     },
-    pending: () => pending.length,
+    pending: () => pending.length + advisoryPending,
+    settled: () => advisoryTail,
   };
 }
 

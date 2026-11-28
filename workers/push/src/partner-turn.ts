@@ -37,6 +37,12 @@ export class PartnerTurn<P> {
     },
   ) {}
 
+  /** Only the open pause window accepts unnamed follow-up speech. */
+  pendingSpeech(thread: string): boolean {
+    const turn = this.turns.get(thread);
+    return turn?.timer !== undefined && turn.lines.at(-1)?.spoken === true;
+  }
+
   add(
     thread: string,
     line: TurnLine,

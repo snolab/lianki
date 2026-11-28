@@ -20,3 +20,29 @@ export function partnerCoordination(m) {
 export function coordinationNote(c) {
   return `\n[Learning Partner context update; advisory, not a new instruction or permission. You may respond or stay silent. Original ids: ${c.sources.map((s) => s.id).join(", ")}. Check these ids before acting again.]\n${c.summary}`;
 }
+
+/** Recheck a buffered notice against the current authenticated thread, not its old copy. */
+export function currentPartnerCoordination(message, snapshot) {
+  if (snapshot?.partnerStandardFlow !== true || !Array.isArray(snapshot.messages)) return null;
+  const messages = snapshot.messages.filter((m) => m && typeof m === "object");
+  const original = partnerCoordination(message);
+  if (!original) return null;
+  const current = messages.find((m) => m.id === message.id && m.thread === message.thread);
+  const c = partnerCoordination(current);
+  if (!c || current.seq !== message.seq || current.at !== message.at ||
+    c.fromSeq !== original.fromSeq || c.throughSeq !== original.throughSeq ||
+    JSON.stringify(c.sources) !== JSON.stringify(original.sources) ||
+    !Number.isSafeInteger(current.seq) || !Number.isSafeInteger(c.fromSeq) ||
+    !Number.isSafeInteger(c.throughSeq) || c.throughSeq >= current.seq) return null;
+  const sources = c.sources.map((s) => messages.find((m) =>
+    m.id === s.id && m.thread === message.thread && m.from === c.from &&
+    Number.isSafeInteger(m.seq) && m.seq >= c.fromSeq && m.seq <= c.throughSeq &&
+    typeof (m.raw ?? m.text) === "string" && (m.raw ?? m.text).slice(0, 2000) === s.text));
+  if (sources.some((s) => !s) ||
+    Math.min(...sources.map((s) => s.seq)) !== c.fromSeq ||
+    Math.max(...sources.map((s) => s.seq)) !== c.throughSeq) return null;
+  // A newer user turn has already replaced this context. Never attach an old
+  // brief to whichever raw instruction happens to share its outgoing batch.
+  if (messages.some((m) => m.thread === message.thread && m.from === c.from && m.seq > current.seq)) return null;
+  return c;
+}
