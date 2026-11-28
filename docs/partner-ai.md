@@ -27,9 +27,16 @@ overridden by a name or an open turn. Typed messages are unaffected. Skips log
 `partner.standard-skip` with a reason only; original messages still reach their
 existing listeners. This does not turn on a microphone or change permissions.
 
+Supplied proofs that fail verification are also unconfirmed, not absent.
+Friend and site-thread paths do not currently establish the owner's Mac key as
+that account's voice identity: speech carrying any unsupported proof stays
+silent there, even when named. This does not extend biometric trust to another
+account. A truly proof-free device can still explicitly address an assistant.
+
 **No speaker priority or waiting barrier.** The old rules that give development
-assistants priority, reject engineering questions, require Li's name or skip a
-reply because another assistant answered do not apply to this mode. Original
+assistants priority, reject engineering questions or skip a reply because
+another assistant answered do not apply to this mode. The speech-intent guard
+above accepts an address to any assistant, rather than requiring Li's own name. Original
 messages still reach listeners immediately. Any assistant may listen, answer
 directly or remain silent; a model error, timeout, missing credits or cap never
 holds the original message back. There is no new execution queue or automatic

@@ -28,6 +28,7 @@ import {
 } from "@/lib/partner-ai";
 import { FLAGS } from "@/lib/flags";
 import { rpcStub } from "./support/rpc-stub";
+import { verifySpeakerProofs } from "@/lib/speaker-proof";
 
 /** The hub side (lianki-push's DebugHub) with a stubbed main Worker. */
 class FakeSocket implements Socket {
@@ -94,6 +95,36 @@ type Stub = {
 };
 const T0 = 1_800_000_000_000;
 
+async function speakerSigner() {
+  const keys = (await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
+  const pub = Buffer.from(await crypto.subtle.exportKey("raw", keys.publicKey)).toString(
+    "base64url",
+  );
+  const sign = async (thread: string, text: string, decision: "me" | "unknown" | "other") => {
+    const body = Buffer.from(
+      JSON.stringify({
+        v: 1,
+        uid: crypto.randomUUID(),
+        thread,
+        text,
+        decision,
+        score: 0.6,
+        at: T0,
+      }),
+    ).toString("base64url");
+    const signature = await crypto.subtle.sign(
+      { name: "Ed25519" },
+      keys.privateKey,
+      new TextEncoder().encode(body),
+    );
+    return `${body}.${Buffer.from(signature).toString("base64url")}`;
+  };
+  return { pub, sign };
+}
+
 /** `config`: the main Worker answers config reads (stub.config); without it, it has no such method. */
 function setup(
   opts: {
@@ -102,6 +133,7 @@ function setup(
     config?: boolean;
     standard?: boolean;
     timer?: HubTimer;
+    speakerPub?: string;
   } = {},
 ) {
   const sockets: FakeSocket[] = [];
@@ -151,7 +183,10 @@ function setup(
       getWebSockets: () => sockets,
       storage,
     },
-    opts.sessions === false ? {} : { SESSIONS: rpcStub(sessions) },
+    {
+      ...(opts.sessions === false ? {} : { SESSIONS: rpcStub(sessions) }),
+      ...(opts.speakerPub ? { STT_SPEAKER_PUB: opts.speakerPub } : {}),
+    },
     () => t,
     opts.timer,
   );
@@ -634,6 +669,78 @@ describe("partner AI: caps (rolling window)", () => {
 
 /** The main Worker side: lib/partner-ai.ts against a real schema. */
 describe("standard Partner routing", () => {
+  it("friend and site speech carrying unsupported proofs is not downgraded to proof-free speech", async () => {
+    const signer = await speakerSigner();
+    for (const kind of ["friend", "site"] as const) {
+      const s = setup({ standard: true, config: true, speakerPub: signer.pub });
+      s.stub.config = { "partner.turnPauseMs": 0 };
+      const page = kind === "friend" ? await s.friend() : await s.ownerPage();
+      const thread = kind === "friend" ? "f1" : `owner~${"a".repeat(22)}`;
+      if (kind === "site")
+        page.serializeAttachment({ ...(page.deserializeAttachment() as object), thread });
+      for (const decision of ["unknown", "other", "me"] as const) {
+        const text = "Li, help me plan";
+        const proof = await signer.sign(thread, text, decision);
+        // The fixture is a real, fresh, thread-bound signature. It does not
+        // authorize reusing the owner's signer as another account's identity.
+        expect(
+          (await verifySpeakerProofs([proof], text, thread, signer.pub, async () => true, T0))
+            ?.decision,
+        ).toBe(decision);
+        await s.msg(page, {
+          type: "chat",
+          id: `${kind}-${decision}`,
+          text,
+          source: "stt",
+          speakerProof: [proof],
+        });
+        expect(chats(page).some((m) => m.text === text)).toBe(true);
+      }
+      await new Promise((r) => setTimeout(r, 0));
+      expect(s.stub.calls).toHaveLength(0);
+      await s.msg(page, {
+        type: "chat",
+        id: `${kind}-proof-free`,
+        text: "Li, help me plan",
+        source: "stt",
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(s.stub.calls).toHaveLength(1);
+    }
+  });
+
+  it("the supported owner verifier distinguishes me, unknown, other, failed and replayed proofs", async () => {
+    const signer = await speakerSigner();
+    const s = setup({ standard: true, config: true, speakerPub: signer.pub });
+    s.stub.config = { "partner.turnPauseMs": 0, "partner.spokenNeedsName": false };
+    const page = await s.ownerPage();
+    for (const decision of ["unknown", "other"] as const) {
+      const text = "Li, help me plan";
+      await s.msg(page, {
+        type: "chat",
+        id: `owner-${decision}`,
+        text,
+        source: "stt",
+        speakerProof: [await signer.sign("owner", text, decision)],
+      });
+    }
+    expect(s.stub.calls).toHaveLength(0);
+    const text = "Please plan the next lesson";
+    const me = await signer.sign("owner", text, "me");
+    await s.msg(page, { type: "chat", id: "owner-me", text, source: "stt", speakerProof: [me] });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.stub.calls).toHaveLength(1);
+    for (const [id, body, proof] of [
+      ["replayed", text, me],
+      ["wrong-thread", "Li, help me plan", await signer.sign("f1", "Li, help me plan", "me")],
+      ["wrong-words", "Li, help me plan", await signer.sign("owner", "different words", "me")],
+    ])
+      await s.msg(page, { type: "chat", id, text: body, source: "stt", speakerProof: [proof] });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.stub.calls).toHaveLength(1);
+    expect([...s.storage.store.keys()].filter((k) => k.startsWith("proof:"))).toHaveLength(3);
+  });
+
   it("ambient unverified speech stays visible without calling either reply path for any account", async () => {
     const s = setup({ standard: true, config: true });
     s.stub.config = { "partner.turnPauseMs": 0, "partner.turnMaxWaitMs": 0 };

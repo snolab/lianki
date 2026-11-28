@@ -24,6 +24,17 @@ describe("shared Partner speech intent", () => {
         ).toBe("unconfirmed-voice");
   });
 
+  test("a supplied but unverified proof never becomes an absent-identity device", () => {
+    for (const continuation of [false, true])
+      expect(
+        standardVoiceSkip(speech("Li, help me plan"), {
+          ...conf,
+          continuation,
+          unverifiedProof: true,
+        }),
+      ).toBe("unconfirmed-voice");
+  });
+
   test("verified speech still needs an address unless the existing setting opts out", () => {
     const line = { ...speech("What should I study?"), speaker: { decision: "me" as const } };
     expect(standardVoiceSkip(line, conf)).toBe("spoken-unnamed");

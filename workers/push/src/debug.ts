@@ -5033,6 +5033,7 @@ export class DebugHub {
             m.source === "stt",
             accepted,
             m.attachments,
+            m.source === "stt" && !!m.speakerProof?.length,
           );
         const line = async (speaker: SpeakerTag | undefined) => {
           // An echo (his other phone, or Li read aloud and heard back): kept aside, not posted.
@@ -5132,6 +5133,7 @@ export class DebugHub {
               { id: m.id, at: t, spoken: m.source === "stt" },
               m.context,
               m.scene,
+              m.source === "stt" && !!m.speakerProof?.length && !speaker,
             ));
           if (!standard && posted !== false && m.source === "stt") this.autoPolishSoon(page);
           // A new line of his: Li may answer it if no lane does (owner-ai.ts).
@@ -5219,6 +5221,7 @@ export class DebugHub {
     spoken = false,
     accepted?: (seq?: number) => Promise<void>,
     attachments?: AttachmentRef[],
+    unverifiedProof = false,
   ) {
     const t = this.now();
     // A site's thread (lib/li-thread.ts) is its account's: blocks, the rate and the
@@ -5226,7 +5229,17 @@ export class DebugHub {
     const thread = page.thread;
     const userId = parseSubThread(thread)?.base ?? thread;
     if (userId === OWNER_THREAD)
-      return this.ownerSiteChat(page, id, text, t, context, scene, spoken, accepted);
+      return this.ownerSiteChat(
+        page,
+        id,
+        text,
+        t,
+        context,
+        scene,
+        spoken,
+        accepted,
+        unverifiedProof,
+      );
     const rec = await this.ctx.storage.get<FriendRecord>(friendKey(userId));
     if (rec?.blocked) {
       await this.rejectChat(ws, page.thread, id, "blocked");
@@ -5275,7 +5288,8 @@ export class DebugHub {
       ...(spoken ? { source: "stt", ...(scene ? { scene } : {}) } : {}),
     });
     await accepted?.(seq);
-    if (await this.standardReply(page, { id, at: t, spoken }, context, scene)) return;
+    if (await this.standardReply(page, { id, at: t, spoken }, context, scene, unverifiedProof))
+      return;
     // The owner's thread never gets here (OWNER_THREAD lines go to the owner's lanes).
     const ai = await this.aiState();
     if (ai === "on") await this.aiReply(page, email, t, context, scene, id);
@@ -5320,6 +5334,7 @@ export class DebugHub {
     scene?: SttScene,
     spoken = false,
     accepted?: (seq?: number) => Promise<void>,
+    unverifiedProof = false,
   ) {
     const seq = await this.post({
       id,
@@ -5333,7 +5348,8 @@ export class DebugHub {
       ...(spoken ? { source: "stt", ...(scene ? { scene } : {}) } : {}),
     });
     await accepted?.(seq);
-    if (await this.standardReply(page, { id, at: t, spoken }, context, scene)) return;
+    if (await this.standardReply(page, { id, at: t, spoken }, context, scene, unverifiedProof))
+      return;
     const ai = await this.aiState();
     if (ai === "on") await this.aiReply(page, "", t, context, scene, id);
     else if (ai === "unsure")
@@ -5510,6 +5526,7 @@ export class DebugHub {
     line: TurnLine,
     context?: ChatContext,
     scene?: SttScene,
+    unverifiedProof = false,
   ) {
     if (!(await this.standardOn())) return false;
     this.ownerAi.cancel();
@@ -5531,6 +5548,10 @@ export class DebugHub {
               ? names
               : OWNER_LI_NAMES,
           continuation: this.standardTurns.pendingSpeech(page.thread),
+          // Friend/site paths do not establish the Mac key as an account's
+          // identity. A supplied but unsupported or invalid proof is not the
+          // same as a device that supplied no proof at all.
+          unverifiedProof,
         },
       );
       if (reason) {
