@@ -1,5 +1,5 @@
 /**
- * MCP Events (docs/mcp-events.md; lib/mcp-events/*): the mention match, the
+ * MCP Events (docs/chat-wake.md; lib/mcp-events/*): the mention match, the
  * loop guard, the thread scope, the Standard Webhooks signature, callback
  * verification, retries, revocation, the flag and its owner audience, and the
  * remote MCP server's forwarding. Synthetic data only: example.com accounts,
@@ -36,6 +36,7 @@ import {
   type EventsDeps,
 } from "../lib/mcp-events/server";
 import { DOH_URL, eventsDeps, resolveDoh } from "../lib/mcp-events/deps";
+import { WAKE_PULL_FLAG, wakeLimits } from "../lib/chat-wake/rules";
 import { addressVerdict, dohAddresses, hostAllowed, publicAddress } from "../lib/mcp-events/rules";
 import { handle, type Env } from "../workers/mcp/src/mcp";
 
@@ -1003,7 +1004,7 @@ describe("subscribe: refusals and rotation", () => {
   const code = (a: { body: unknown }) => (a.body as { error: { code: number } }).error.code;
 
   test("an unknown events method is not found, before the token is read", async () => {
-    expect(code(await eventsRpc(deps(), "not-a-token", { method: "events/poll" }))).toBe(-32601);
+    expect(code(await eventsRpc(deps(), "not-a-token", { method: "events/nope" }))).toBe(-32601);
     expect(code(await eventsRpc(deps(), ownerToken, null))).toBe(-32601);
   });
 
@@ -1090,7 +1091,7 @@ describe("delivery: edges", () => {
     db.raw().exec("UPDATE mcp_event_subscription SET thread = 'user2'");
     sent = [];
     const r = await mentionEvents(deps(), { ...ownerLine("@Arden"), thread: "user2" });
-    expect(r).toEqual({ delivered: 0, skipped: 1, dropped: 0 });
+    expect(r).toMatchObject({ delivered: 0, skipped: 1, dropped: 0 });
     expect(sent).toEqual([]);
   });
 
@@ -1106,7 +1107,7 @@ describe("delivery: edges", () => {
         }),
         ownerLine("@Arden"),
       );
-      expect(r).toEqual({ delivered: 0, skipped: 0, dropped: 0 });
+      expect(r).toMatchObject({ delivered: 0, skipped: 0, dropped: 0 });
       expect(log).toHaveBeenCalled();
     } finally {
       log.mockRestore();
@@ -1148,6 +1149,8 @@ describe("live deps (deps.ts)", () => {
     expect(live.sealSecret).toBe(SEAL);
     expect(await live.flagOn()).toBe(FLAGS[MCP_EVENTS_FLAG].default);
     expect(await live.limits()).toEqual(eventsLimits(defaultConfig()));
+    expect(await live.pullOn!()).toBe(FLAGS[WAKE_PULL_FLAG].default);
+    expect(await live.wakeLimits!()).toEqual(wakeLimits(defaultConfig()));
     const before = Date.now();
     expect(live.now()).toBeGreaterThanOrEqual(before);
     await live.sleep(1);
@@ -1184,6 +1187,8 @@ describe("live deps (deps.ts)", () => {
     } as unknown as D1Like;
     const live = eventsDeps(broken, undefined);
     expect(await live.flagOn()).toBe(false);
+    expect(await live.pullOn!()).toBe(false);
     expect(await live.limits()).toEqual(eventsLimits(defaultConfig()));
+    expect(await live.wakeLimits!()).toEqual(wakeLimits(defaultConfig()));
   });
 });

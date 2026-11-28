@@ -4,7 +4,7 @@
  *
  * Transport: MCP Streamable HTTP, stateless. One endpoint; a POST carries one
  * JSON-RPC message (initialize, ping, tools/list, tools/call, and events/* for
- * MCP Events, forwarded to the main Worker, docs/mcp-events.md; a notification
+ * MCP Events, forwarded to the main Worker, docs/chat-wake.md; a notification
  * or a response is accepted with 202). The answer is JSON, or one
  * `text/event-stream` event when the client's Accept prefers that. There is
  * no session and nothing to stream unasked, so GET (the server-to-client
@@ -246,14 +246,20 @@ function listed(t: (typeof TOOLS)[number]) {
 }
 
 /**
- * MCP Events (docs/mcp-events.md): events/* go to the main Worker with the
+ * MCP Events (docs/chat-wake.md): events/* go to the main Worker with the
  * caller's own token (POST /api/mcp-events), which holds the subscriptions in
  * D1 and decides everything (the flag mcp.events, the token, its thread). This
  * Worker still holds no data. A refused token is a 401 as for any call; any
  * other failure is null.
  */
 export const EVENTS_PATH = "/api/mcp-events";
-export const EVENT_METHODS = ["events/list", "events/subscribe", "events/unsubscribe"];
+/** events/poll: SEP-3415 pull delivery of chat.mention (docs/chat-wake.md, "Pull"). */
+export const EVENT_METHODS = [
+  "events/list",
+  "events/subscribe",
+  "events/unsubscribe",
+  "events/poll",
+];
 
 async function eventsCall(
   env: Env,

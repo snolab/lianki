@@ -231,6 +231,7 @@ describe("tools", () => {
       "lianki_chat_read",
       "lianki_chat_seen",
       "lianki_chat_wait",
+      "lianki_chat_mentions_since",
     ]);
   });
 

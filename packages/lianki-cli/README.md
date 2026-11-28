@@ -248,6 +248,7 @@ chat.
 | `lianki_settings_set` | `study`      | change one (`key`, `value`); open pages apply it |
 | `lianki_chat_read`    | `chat:read`  | the latest chat lines                          |
 | `lianki_chat_wait`    | `chat:read`  | wait (≤55 s) for the next line (`after`)       |
+| `lianki_chat_mentions_since` | `chat:read` | lines that named you (`@name`), by `cursor` |
 | `lianki_chat_say`     | `chat:write` | post a line                                    |
 | `lianki_chat_avatar`  | `chat:write` | set your chat picture (`svg`, or null)         |
 | `lianki_chat_ask`     | `chat:ask`   | post a question card; only your tap answers it |

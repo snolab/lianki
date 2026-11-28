@@ -86,6 +86,9 @@ describe("registry", () => {
       "chat.line-replay",
       "library.catalogue",
       "books.mine",
+      // Pull wake for any agent (docs/chat-wake.md), default on as briefed 2026-11-27, audience owner;
+      // it reads nothing unless mcp.events (off) is on too.
+      "chat.wake.pull",
       "voice.sync-speak",
       "voice.polish-readback",
       "words.pinch-card-height",

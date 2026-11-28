@@ -407,8 +407,15 @@ export const FLAGS = {
   },
   "mcp.events": {
     description:
-      "MCP 事件（docs/mcp-events.md）：连上 https://lianki.com/mcp 的 ChatGPT 会话可以订阅「被 @ 名字」事件——你在这个令牌所在的聊天里写一行带 @令牌名（不分大小写）的话，Lianki 就向 ChatGPT 的回呼地址发一条签名通知，只带这一行的 id、文字和作者，不带历史。代理自己的行永远不会触发。打开后：只有你本人（有 dev 权限的账号）的令牌能订阅。关闭（默认）：不再宣告事件能力，订阅被拒绝，任何通知都不发（已有订阅留着，重新打开即恢复；令牌被撤销时订阅自动删除）。",
+      "MCP 事件（docs/chat-wake.md）：连上 https://lianki.com/mcp 的 ChatGPT 会话可以订阅「被 @ 名字」事件——你在这个令牌所在的聊天里写一行带 @令牌名（不分大小写）的话，Lianki 就向 ChatGPT 的回呼地址发一条签名通知，只带这一行的 id、文字和作者，不带历史。代理自己的行永远不会触发。打开后：只有你本人（有 dev 权限的账号）的令牌能订阅。关闭（默认）：不再宣告事件能力，订阅被拒绝，任何通知都不发（已有订阅留着，重新打开即恢复；令牌被撤销时订阅自动删除）。",
     default: false,
+    group: "mcp",
+    audience: "owner",
+  },
+  "chat.wake.pull": {
+    description:
+      "拉取式唤醒（docs/chat-wake.md）：任何代理（Gemini 定时任务、本机 Claude Code / Codex、以后的客户端）用自己的令牌查「谁 @ 了我」——MCP 工具 lianki_chat_mentions_since 和 events/poll，只返回这个令牌自己线程里 @ 它名字的那几行（id、文字、作者），不带历史，需要 chat:read。要先打开 mcp.events（被 @ 的记录由它记下）。只对有 dev 权限的账号开放。关闭 = 工具和 events/poll 都答「未开启」，events/list 不再列出 poll；记录照记，过期后在有人写聊天或代理来查时顺带分批删（网站完全没人用时不删）。",
+    default: true,
     group: "mcp",
     audience: "owner",
   },

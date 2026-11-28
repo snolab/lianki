@@ -379,7 +379,7 @@ export const CONFIG = {
     audience: "server",
     description: "同一 IP 每分钟最多请求几次 OAuth 换令牌/续期/撤销。",
   }),
-  // MCP Events (docs/mcp-events.md): a ChatGPT session woken by @its-name in its token's thread.
+  // MCP Events (docs/chat-wake.md): a ChatGPT session woken by @its-name in its token's thread.
   "mcp.eventsSubscribePerHour": int({
     default: 30,
     min: 1,
@@ -390,7 +390,7 @@ export const CONFIG = {
     description:
       "同一个令牌每小时最多订阅/续订几次 MCP 事件（ChatGPT 被 @ 名字唤醒；每次订阅都要先回呼验证对方地址）。",
   }),
-  // The callback allowlist is the control against SSRF (docs/mcp-events.md,
+  // The callback allowlist is the control against SSRF (docs/chat-wake.md,
   // "Callback addresses"): only hosts listed here are ever POSTed to.
   "mcp.eventsCallbackHosts": {
     default: ["connectors.api.openai.com"] as string[],
@@ -489,6 +489,93 @@ export const CONFIG = {
     group: "mcp",
     audience: "server",
     description: "ChatGPT 更换签名密钥后，旧密钥和新密钥一起签名多久（分钟）。",
+  }),
+  // Chat wake (docs/chat-wake.md): every @mention of a token kept in D1 chat_mention,
+  // fanned out to its wake adapters (push: ChatGPT webhook; pull: tool + events/poll).
+  "chat.wakeRetentionDays": int({
+    default: 7,
+    min: 1,
+    max: 90,
+    unit: "days",
+    group: "chat",
+    audience: "server",
+    description:
+      "被 @ 的记录（chat_mention，唤醒代理用）超过几天后可以删除。不是定时删：只在有动静时顺带分批删（有人在聊天里写话、代理来查「谁 @ 了我」时），平时通常在下一次动静后几分钟内删掉；整个网站都没人用时不会删，所以没有保证的删除时间。撤销令牌时它的记录立即删除。只存那一行的文字，不存历史。",
+  }),
+  "chat.wakeMaxPerToken": int({
+    default: 500,
+    min: 10,
+    max: 10000,
+    unit: "mentions",
+    group: "chat",
+    audience: "server",
+    description: "同一个令牌最多保留几条被 @ 的记录；超出时删最旧的（代理翻页时会被告知有缺口）。",
+  }),
+  "chat.wakePurgeBatch": int({
+    default: 100,
+    min: 1,
+    max: 1000,
+    unit: "rows",
+    group: "chat",
+    audience: "server",
+    description:
+      "每写一条被 @ 的记录，顺带最多删掉几条已过保留期的旧记录（任何令牌的，包括从不来查的令牌；不用定时任务）。",
+  }),
+  "chat.wakePerMinute": int({
+    default: 10,
+    min: 1,
+    max: 600,
+    unit: "per min",
+    group: "chat",
+    audience: "server",
+    description: "同一个令牌每分钟最多记下几次被 @（超出的这一分钟内不记、不唤醒拉取式代理）。",
+  }),
+  "chat.wakeMaxTokens": int({
+    default: 50,
+    min: 1,
+    max: 500,
+    unit: "tokens",
+    group: "chat",
+    audience: "server",
+    description:
+      "一行带 @ 的话最多对照这个线程里几个令牌的名字（防止一个账号令牌太多时拖慢聊天）。",
+  }),
+  "chat.wakePullTtlMin": int({
+    default: 1440,
+    min: 5,
+    max: 43200,
+    unit: "min",
+    group: "chat",
+    audience: "server",
+    description:
+      "代理不带游标来查「谁 @ 了我」时（例如 Gemini 定时任务），往回看多久（分钟）；也是 events/poll 的 maxAgeMs 上限。",
+  }),
+  "chat.wakePullLimit": int({
+    default: 20,
+    min: 1,
+    max: 100,
+    unit: "mentions",
+    group: "chat",
+    audience: "server",
+    description: "代理查「谁 @ 了我」时一次最多返回几条（它可以按游标继续翻）。",
+  }),
+  "chat.wakePullPerMinute": int({
+    default: 30,
+    min: 1,
+    max: 600,
+    unit: "per min",
+    group: "chat",
+    audience: "server",
+    description: "同一个令牌每分钟最多查几次「谁 @ 了我」（工具和 events/poll 合计）。",
+  }),
+  "chat.wakeNextPollMs": int({
+    default: 60000,
+    min: 1000,
+    max: 3600000,
+    unit: "ms",
+    group: "chat",
+    audience: "server",
+    description: "events/poll 建议代理隔多久再来查一次（毫秒，nextPollMs）。",
   }),
   "chat.cacheLines": int({
     default: 40,

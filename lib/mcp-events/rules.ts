@@ -1,5 +1,5 @@
 /**
- * MCP Events, the pure part (docs/mcp-events.md): the one event Lianki offers
+ * MCP Events, the pure part (docs/chat-wake.md): the one event Lianki offers
  * (`chat.mention`), its schemas, the mention match, the loop guard, the
  * callback URL rule, the Standard Webhooks signature, deterministic ids and
  * the retry rule. No D1, no fetch, no clock: everything here is a function of
@@ -145,7 +145,7 @@ export function mentionData(l: MentionLine & { from: "owner" | "friend" }) {
  * This is the spelling only. The address is checked at connect time too:
  * every verification and every delivery attempt resolves the host (A and
  * AAAA, DNS over HTTPS) and refuses any non-public answer (`publicAddress`,
- * server.ts `checkHost`; docs/mcp-events.md, "Callback addresses").
+ * server.ts `checkHost`; docs/chat-wake.md, "Callback addresses").
  */
 /**
  * Is this callback URL's host on the allowlist (`mcp.eventsCallbackHosts`)?

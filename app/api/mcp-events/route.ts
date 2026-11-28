@@ -12,7 +12,7 @@ const TOKEN_RE = /^lk_[0-9a-f]{64}$/;
  * POST /api/mcp-events  Authorization: Bearer lk_…  {method, params}
  *   → {result} | {error: {code, message, data?}}
  *
- * MCP Events for the remote MCP server (docs/mcp-events.md): lianki-mcp
+ * MCP Events for the remote MCP server (docs/chat-wake.md): lianki-mcp
  * forwards events/probe, events/list, events/subscribe and events/unsubscribe
  * here with the caller's own token; lib/mcp-events/server.ts decides. 401 only
  * when the token itself is refused. Behind the flag mcp.events (off).
