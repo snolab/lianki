@@ -30,7 +30,7 @@ export type Parsed =
   | { cmd: "grant" | "revoke"; email: string; permissions: Permission[]; local: boolean };
 
 const USAGE =
-  "usage: permission.ts list | grant <email> <admin,dev> | revoke <email> <admin,dev> [--local]";
+  "usage: permission.ts list | grant <email> <admin,dev,insider> | revoke <email> <admin,dev,insider> [--local]";
 
 /** Throws with the usage or the problem. */
 export function parseArgs(argv: string[]): Parsed {

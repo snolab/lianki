@@ -1,20 +1,26 @@
 /**
- * Permission checks: the ONE gate for every owner / dev / admin surface
- * (docs/secrets-and-auth.md, "Permissions"). Two permissions, held per account
- * as rows in D1 (`account_permission`, db/migrations/0058_account_permission.sql,
- * lib/account-permission.ts), granted and revoked at /dev/permissions:
+ * Permission checks: the ONE gate for every owner / dev / admin / insider
+ * surface (docs/secrets-and-auth.md, "Permissions"). Three permissions, held per
+ * account as rows in D1 (`account_permission`, db/migrations/0058_account_permission.sql
+ * and 0091_insider_permission.sql, lib/account-permission.ts), granted and
+ * revoked at /dev/permissions:
  *
- * - `admin` — manages people, money and grants: /dev/permissions, users,
+ * - `admin`   — manages people, money and grants: /dev/permissions, users,
  *   credits, membership, gift codes, friends, flags, box clients, payment test
  *   mode.
- * - `dev`   — development tools and dark features: every other /dev page and
+ * - `dev`     — development tools and dark features: every other /dev page and
  *   /api/dev route, the dev bridge, live view, the owner chat thread, features
  *   shipped dark behind a flag.
+ * - `insider` — early access: features shipped to insiders first, behind a flag
+ *   with `audience: "insider"` (lib/flags.ts, lib/flag-audience.ts). No tools,
+ *   no /dev page, nobody else's data.
  *
- * Neither implies the other: each is its own grant. Never an email list in code
- * or env (AGENTS.md hard rules).
+ * `admin` and `dev` do not imply each other: each is its own grant. The one
+ * implication is `isInsider`: an `admin` holder counts as an insider too, so
+ * whoever runs the site always sees what insiders see. `dev` alone does not.
+ * Never an email list in code or env (AGENTS.md hard rules).
  *
- * `isAdmin` / `isDev` are synchronous: they answer from a snapshot of the
+ * `isAdmin` / `isDev` / `isInsider` are synchronous: they answer from a snapshot of the
  * grants kept in this isolate, refreshed by `auth.api.getSession` (auth.ts →
  * lib/permission-store.ts) before a signed-in user is handed back. Code with
  * no session (a webhook, a bearer token) calls refreshPermissions() itself.
@@ -28,7 +34,7 @@
  * Exact address only (trimmed, lowercased), never the canonical form. Kept free
  * of D1 and Next imports so scripts can use it.
  */
-export const PERMISSIONS = ["admin", "dev"] as const;
+export const PERMISSIONS = ["admin", "dev", "insider"] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 export const isPermission = (v: unknown): v is Permission =>
@@ -86,6 +92,14 @@ export const isAdmin = (email: string | null | undefined, now?: number): boolean
 /** Development tools and features shipped dark. */
 export const isDev = (email: string | null | undefined, now?: number): boolean =>
   hasPermission(email, "dev", now);
+
+/**
+ * Early access to features shipped to insiders first: the `insider` grant, or
+ * `admin` (whoever runs the site sees every insider feature). `dev` alone does
+ * not make an insider.
+ */
+export const isInsider = (email: string | null | undefined, now?: number): boolean =>
+  hasPermission(email, "insider", now) || hasPermission(email, "admin", now);
 
 /**
  * Who holds `permission` right now, oldest grant first; [] when unknown (fail

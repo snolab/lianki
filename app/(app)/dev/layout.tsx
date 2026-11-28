@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { authUserOrNull } from "@/app/signInEmail";
-import { PERMISSIONS, hasPermission, permissionHolders, type Permission } from "@/lib/permissions";
+import { hasPermission, permissionHolders, type Permission } from "@/lib/permissions";
+
+const PAGE_PERMISSIONS: readonly Permission[] = ["admin", "dev"];
 import DevPageAccess from "./DevPageAccess";
 
 /**
@@ -12,7 +14,10 @@ import DevPageAccess from "./DevPageAccess";
 export default async function DevLayout({ children }: { children: ReactNode }) {
   const user = await authUserOrNull();
   const holders: Partial<Record<Permission, string[]>> = {};
-  for (const p of PERMISSIONS) if (hasPermission(user?.email, p)) holders[p] = permissionHolders(p);
+  // Only the permissions a /dev page checks: `insider` opens no /dev page, and
+  // an insider must not be handed the list of the other insiders.
+  for (const p of PAGE_PERMISSIONS)
+    if (hasPermission(user?.email, p)) holders[p] = permissionHolders(p);
   return (
     <>
       {children}

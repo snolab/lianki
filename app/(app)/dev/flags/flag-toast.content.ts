@@ -135,6 +135,24 @@ const dictionary = {
       sw: "akaunti zilizo kwenye orodha ya ruhusa",
       mr: "परवानगी यादीतील खाती",
     }),
+    insiders: t({
+      en: "insiders only",
+      zh: "仅内测用户",
+      ja: "インサイダーのみ",
+      ko: "내부 테스터만",
+      hi: "केवल इनसाइडर",
+      es: "solo los insiders",
+      fr: "les initiés uniquement",
+      ar: "المختبرين الداخليين فقط",
+      bn: "শুধু ইনসাইডারদের",
+      pt: "apenas os insiders",
+      ru: "только инсайдеров",
+      ur: "صرف اندرونی صارفین",
+      id: "hanya insider",
+      de: "nur Insider",
+      sw: "wanaojaribu mapema pekee",
+      mr: "फक्त इनसायडर",
+    }),
     cacheNote: t({
       en: "A change takes effect within {seconds} s: the servers keep switches cached that long.",
       zh: "改动最多 {seconds} 秒内生效：服务器会把开关缓存这么久。",
@@ -196,7 +214,7 @@ const context: Record<keyof typeof dictionary.content, string> = {
   on: "The state word put into {state} of the 'saved' toast on /dev/flags when a feature switch was just turned on. Lower case, one word; an on/off state, not a verb.",
   off: "The state word put into {state} of the 'saved' toast on /dev/flags when a feature switch was just turned off. Lower case, one word; an on/off state, not a verb.",
   saved:
-    "Toast after a feature switch was flipped on /dev/flags and the server saved it. {flag} is the switch's code name (keep as is), {state} is the on/off word, {seconds} the cache time, {audience} who the switch reaches (a noun phrase from everyone / ownerOnly / allowlist). One line.",
+    "Toast after a feature switch was flipped on /dev/flags and the server saved it. {flag} is the switch's code name (keep as is), {state} is the on/off word, {seconds} the cache time, {audience} who the switch reaches (a noun phrase from everyone / ownerOnly / allowlist / insiders). One line.",
   failed:
     "Toast (an error, shown with a warning icon) when flipping a feature switch on /dev/flags was not saved. {flag} is the switch's code name, {error} the server's reason, both kept as is.",
   everyone:
@@ -205,10 +223,12 @@ const context: Record<keyof typeof dictionary.content, string> = {
     "Put into {audience} of the 'saved' toast on /dev/flags: the switch reaches only the site owner's account plus accounts given access to it. A noun phrase that reads after 'for'.",
   allowlist:
     "Put into {audience} of the 'saved' toast on /dev/flags: the switch reaches only the accounts on the switch's own allow list. A noun phrase that reads after 'for'.",
+  insiders:
+    "Put into {audience} of the 'saved' toast on /dev/flags: the switch reaches only insiders, the accounts given the 'insider' permission at /dev/permissions (early access to new features) plus the site's admins. A noun phrase that reads after 'for'.",
   cacheNote:
     "Small note above the list of feature switches on /dev/flags: a flipped switch takes up to {seconds} seconds to reach everyone because servers cache the switches. One sentence; keep {seconds}.",
   permSaved:
-    "Toast on /dev/permissions after a permission (admin or dev, in {permission}) was granted to or revoked from the account {email} and the server saved it. Keep {permission}, {email} and {seconds} as is.",
+    "Toast on /dev/permissions after a permission (admin, dev or insider, in {permission}) was granted to or revoked from the account {email} and the server saved it. Keep {permission}, {email} and {seconds} as is.",
   dismiss:
     "Screen-reader label of the small × button that closes the toast on /dev/flags and /dev/permissions. An imperative verb.",
 };

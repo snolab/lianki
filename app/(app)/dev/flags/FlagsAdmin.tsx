@@ -193,7 +193,9 @@ export default function FlagsAdmin() {
                 ? t.ownerOnly.value
                 : audience === "allowlist"
                   ? t.allowlist.value
-                  : t.everyone.value,
+                  : audience === "insider"
+                    ? t.insiders.value
+                    : t.everyone.value,
           }),
         });
       } else {
