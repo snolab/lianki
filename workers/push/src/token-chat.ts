@@ -183,6 +183,8 @@ export interface TokenHost {
   sockets(): TokenSocket[];
   post(m: ChatMessage & { thread: string }): Promise<void>;
   history(thread: string): Promise<ChatMessage[]>;
+  /** Current reply switch, not a permission grant. Failure disables advisory metadata. */
+  partnerStandardOn?(): Promise<boolean>;
   replay?(
     thread: string,
     afterSeq?: number,
@@ -612,6 +614,15 @@ export class TokenChat {
       return json({ ok: true, thread: thread === OWNER_THREAD ? "owner" : "own", lastReadSeq });
     }
     if (op === "read") {
+      const partnerStandardFlow =
+        (await this.host.partnerStandardOn?.().catch(() => false)) ?? false;
+      const visible = (lines: ChatMessage[]) =>
+        lines.map((line) => {
+          const m = forLane(line, v.lane);
+          if (partnerStandardFlow) return m;
+          const { coordination: _coordination, ...plain } = m;
+          return plain;
+        });
       // A read is presence: it stays for the read window (chat.presenceReadMin).
       const r = await this.record(v, thread);
       if (r) {
@@ -638,7 +649,8 @@ export class TokenChat {
           ok: true,
           thread: thread === OWNER_THREAD ? "owner" : "own",
           lane: v.lane,
-          messages: range.messages.map((line) => forLane(line, v.lane)),
+          messages: visible(range.messages),
+          partnerStandardFlow,
         });
       }
       if (body.afterSeq !== undefined) return json({ ok: false, error: "unavailable" }, 503);
@@ -647,7 +659,8 @@ export class TokenChat {
         ok: true,
         thread: thread === OWNER_THREAD ? "owner" : "own",
         lane: v.lane,
-        messages: list.map((x) => forLane(x, v.lane)),
+        messages: visible(list),
+        partnerStandardFlow,
       });
     }
     const who = await this.who(v, thread, mcp);

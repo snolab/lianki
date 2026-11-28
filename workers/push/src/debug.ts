@@ -1165,6 +1165,7 @@ export class DebugHub {
         await this.post(m);
       },
       history: (thread) => this.history(thread),
+      partnerStandardOn: () => this.standardOn(),
       replay: (thread, afterSeq, throughSeq, limit) =>
         this.replay(thread, afterSeq, throughSeq, limit),
       acknowledgeRead: (thread, identity, seq) => this.acknowledgeRead(thread, identity, seq),
@@ -5584,6 +5585,7 @@ export class DebugHub {
     msgId?: string,
     standard?: { lines: readonly TurnLine[]; current(): boolean },
   ) {
+    if (standard && (!standard.current() || !(await this.standardOn()))) return;
     const thread = page.thread;
     const rpc = this.sessions;
     // The owner's thread (owner-ai.ts schedules it): his account is the user, metered like any.
@@ -5790,7 +5792,10 @@ export class DebugHub {
         for (const { ws } of this.pages(thread)) send(ws, { type: "ai-failed" });
       return;
     }
-    // The polish section stands on its own: applied even when a lane's reply made Li's stale.
+    // Settle an already-started call above, but never apply its optional
+    // standard-flow polish after the switch went off or its turn was replaced.
+    if (standard && (!standard.current() || !(await this.standardOn()))) return;
+    // Legacy polish still stands on its own when a lane's reply made Li stale.
     if (owner && res.polish?.length) await this.liPolish(polish, res.polish);
     if (stale || (standard && (!standard.current() || !(await this.standardOn())))) return;
     const targets = [

@@ -1,8 +1,16 @@
 import { expect, test } from "bun:test";
 import { createChatBridge } from "../packages/lianki-cli/chat-bridge.mjs";
 import { createChatReceiver } from "../packages/lianki-cli/chat-receiver.mjs";
-import { partnerCoordination } from "../packages/lianki-cli/chat-coordination.mjs";
-import { lineOf } from "../scripts/dev/lane-listen-lib";
+import {
+  partnerCoordination,
+  currentPartnerCoordination,
+} from "../packages/lianki-cli/chat-coordination.mjs";
+import {
+  lineOf,
+  makeDeliverer,
+  refreshAdvisoryLines,
+  type Line,
+} from "../scripts/dev/lane-listen-lib";
 
 const notice = (extra = {}) => ({
   id: "brief-1",
@@ -10,6 +18,8 @@ const notice = (extra = {}) => ({
   thread: "owner",
   label: "Learning Partner AI",
   text: "整理一下。",
+  at: 2000,
+  seq: 2,
   coordination: {
     v: 1,
     state: "answered",
@@ -23,6 +33,135 @@ const notice = (extra = {}) => ({
   ...extra,
 });
 const event = (message: any) => ({ type: "chat", message });
+const snapshot = (extra = {}) => ({
+  partnerStandardFlow: true,
+  messages: [
+    { id: "raw-1", thread: "owner", from: "owner", text: "coco, fix button", seq: 1, at: 1000 },
+    notice(),
+  ],
+  ...extra,
+});
+
+test("buffered enrichment needs the current switch and exact canonical sources", () => {
+  expect(currentPartnerCoordination(notice(), snapshot())?.sources[0].id).toBe("raw-1");
+  for (const data of [
+    undefined,
+    {},
+    snapshot({ partnerStandardFlow: false }),
+    snapshot({ messages: [] }),
+  ])
+    expect(currentPartnerCoordination(notice(), data)).toBeNull();
+  const raw = snapshot().messages[0];
+  for (const message of [
+    notice({ via: "token" }),
+    notice({ at: 3000 }),
+    notice({ seq: 4 }),
+    notice({ thread: "other-thread" }),
+  ])
+    expect(currentPartnerCoordination(message, snapshot())).toBeNull();
+  expect(
+    currentPartnerCoordination(
+      notice(),
+      snapshot({ messages: [{ ...raw, id: "different-source" }, notice()] }),
+    ),
+  ).toBeNull();
+  expect(
+    currentPartnerCoordination(
+      notice(),
+      snapshot({ messages: [raw, notice(), { ...raw, id: "new-request", seq: 3, at: 3000 }] }),
+    ),
+  ).toBeNull();
+  const parsed = lineOf(JSON.stringify(event(notice())))!;
+  expect(refreshAdvisoryLines([parsed], snapshot())[0].text).toContain("Original ids: raw-1");
+  for (const data of [undefined, snapshot({ partnerStandardFlow: false })]) {
+    expect(refreshAdvisoryLines([parsed], data)).toEqual([]);
+    const raw: Line = { id: "raw-control", from: "owner", thread: "owner", text: "original" };
+    expect(refreshAdvisoryLines([raw, parsed], data)).toEqual([raw]);
+  }
+});
+
+test("a busy notice is rechecked after the wait, without holding a new original message", async () => {
+  const sent: string[] = [];
+  let busy = true;
+  let finish!: () => void;
+  let on = true;
+  const discarded: string[] = [];
+  const delivery = makeDeliverer(
+    { lane: "codex", repo: "/repo" },
+    async (body) => {
+      sent.push(body);
+      return 0;
+    },
+    async () => busy,
+    () => {},
+    5,
+    undefined,
+    async (lines) => {
+      await new Promise<void>((r) => {
+        finish = r;
+      });
+      return refreshAdvisoryLines(lines, snapshot({ partnerStandardFlow: on }));
+    },
+    (lines) => {
+      discarded.push(...lines.map((l) => l.id));
+    },
+  );
+  await delivery.add(lineOf(JSON.stringify(event(notice())))!);
+  expect(sent).toHaveLength(0);
+  busy = false;
+  const raw: Line = {
+    id: "new-request",
+    from: "owner",
+    thread: "owner",
+    text: "@coco check the next item",
+    seq: 3,
+  };
+  const pending = delivery.add(raw);
+  for (let i = 0; i < 10 && !finish; i++) await Promise.resolve();
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toContain("new-request");
+  expect(sent[0]).not.toContain("Learning Partner context update");
+  on = false;
+  finish();
+  await pending;
+  expect(sent).toHaveLength(1);
+  expect(discarded).toEqual(["brief-1"]);
+  expect(delivery.pending()).toBe(0);
+});
+
+test("a failed live advisory read discards only that optional notice", async () => {
+  const sent: string[] = [];
+  const skipped: string[] = [];
+  const delivery = makeDeliverer(
+    { lane: "codex", repo: "/repo" },
+    async (body) => {
+      sent.push(body);
+      return 0;
+    },
+    async () => false,
+    () => {},
+    undefined,
+    undefined,
+    async () => {
+      throw Error("unavailable");
+    },
+    (lines) => {
+      skipped.push(...lines.map((l) => l.id));
+    },
+  );
+  await delivery.add(lineOf(JSON.stringify(event(notice())))!);
+  expect(sent).toEqual([]);
+  expect(skipped).toEqual(["brief-1"]);
+  await delivery.add({
+    id: "raw-control",
+    thread: "owner",
+    from: "owner",
+    text: "@coco check the feature",
+  });
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toContain("raw-control");
+  expect(delivery.pending()).toBe(0);
+});
 
 test("raw instructions remain live; Partner enrichment stays an agent notice and deduplicates", async () => {
   const sent: any[] = [];

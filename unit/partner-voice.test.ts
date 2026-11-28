@@ -42,11 +42,16 @@ describe("shared Partner speech intent", () => {
     expect(standardVoiceSkip(line, { ...conf, continuation: true })).toBeNull();
   });
 
-  test("an explicit assistant address works on devices without voiceprint support", () => {
-    for (const text of ["Li, help me plan", "学习伙伴，帮我整理", "@coco fix the feature"])
-      expect(standardVoiceSkip(speech(text), conf)).toBeNull();
+  test("an explicit assistant address still requires a verified voice", () => {
+    for (const text of ["Li, help me plan", "学习伙伴，帮我整理", "@coco fix the feature"]) {
+      expect(standardVoiceSkip(speech(text), conf)).toBe("unconfirmed-voice");
+      expect(standardVoiceSkip({ ...speech(text), speaker: { decision: "me" } }, conf)).toBeNull();
+    }
     expect(
-      standardVoiceSkip(speech("Buddy, help me plan"), { ...conf, liNames: ["Buddy"] }),
+      standardVoiceSkip(
+        { ...speech("Buddy, help me plan"), speaker: { decision: "me" } },
+        { ...conf, liNames: ["Buddy"] },
+      ),
     ).toBeNull();
     expect(standardVoiceSkip(speech("like this room"), conf)).toBe("unconfirmed-voice");
   });
@@ -57,7 +62,7 @@ describe("shared Partner speech intent", () => {
         ...conf,
         continuation: true,
       }),
-    ).toBeNull();
+    ).toBe("unconfirmed-voice");
     expect(standardVoiceSkip({ text: "hello" }, conf)).toBeNull();
     expect(standardVoiceSkip({ text: "hello", speaker: { decision: "unknown" } }, conf)).toBeNull();
   });

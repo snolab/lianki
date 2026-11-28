@@ -165,6 +165,55 @@ function hubSetup(extraRpc: Record<string, any> = {}) {
 }
 
 describe("tokens: permissions as data, expiry required, one account", () => {
+  it("a read strips old advisory metadata when the shared switch is off, keeping the raw messages", async () => {
+    let standard = true;
+    const h = hubSetup({
+      flag: async (key: string) =>
+        key === "partner.standard-flow" ? standard : key === "partner.ai-reply",
+      partnerReply: async () => ({ ok: false, error: "off" }),
+    });
+    const token = await mint(OWNER, "reader", ["chat:read"]);
+    await h.hub["post"]({
+      id: "raw",
+      thread: "owner",
+      from: "owner",
+      text: "check this",
+      at: t,
+      label: "test",
+    });
+    await h.hub["post"]({
+      id: "reply",
+      thread: "owner",
+      from: "agent",
+      text: "context",
+      at: t + 1,
+      label: "Learning Partner AI",
+      coordination: {
+        v: 1,
+        state: "answered",
+        from: "owner",
+        sources: [{ id: "raw", text: "check this" }],
+        summary: "check this",
+        targets: [],
+      },
+    });
+    const on = await h.http(token.token, { op: "read" });
+    expect(on.body.partnerStandardFlow).toBe(true);
+    expect((on.body.messages as any[]).find((m) => m.id === "reply").coordination).toBeDefined();
+    standard = false;
+    const off = await h.http(token.token, { op: "read" });
+    expect(off.body.partnerStandardFlow).toBe(false);
+    expect((off.body.messages as any[]).map((m) => m.text)).toEqual(["check this", "context"]);
+    expect((off.body.messages as any[]).find((m) => m.id === "reply").coordination).toBeUndefined();
+    // Storage is unchanged; turning the switch back on is an actual fresh read.
+    standard = true;
+    expect(
+      ((await h.http(token.token, { op: "read" })).body.messages as any[]).find(
+        (m) => m.id === "reply",
+      ).coordination,
+    ).toBeDefined();
+  });
+
   it("prepare requires read and write, and binds payer to the authenticated account", async () => {
     const calls: any[] = [];
     const h = hubSetup({

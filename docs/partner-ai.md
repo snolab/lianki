@@ -16,14 +16,13 @@ typed messages start a turn immediately; speech waits for `partner.turnPauseMs`
 an unfinished model result and keeps its source references in the next batch.
 Known other/unknown voiceprint results keep their existing exclusion from
 automatic replies. Speech also honors `partner.spokenNeedsName` (default true):
-an address to Li (`partner.liNames`) or another assistant opens a speech turn,
+an address to Li (`partner.liNames`) or another assistant in verified speech opens a turn,
 and follow-up fragments within its pending pause window join that turn without
 repeating the name. Neither a microphone left active nor `wakeReason: mic-on`
-opens a turn. A device without voiceprint support can explicitly address an
-assistant, but missing voiceprint data never enables an unaddressed new turn,
-even with `spokenNeedsName` off. That option permits unaddressed starts only
-with a verified `me` decision. Explicit `unknown`/`other` decisions cannot be
-overridden by a name or an open turn. Typed messages are unaffected. Skips log
+opens a turn. Every spoken fragment needs a verified `me` decision; a missing,
+`unknown` or `other` decision cannot be overridden by a name, an open turn or
+`spokenNeedsName` off. That option permits unaddressed starts only with `me`.
+Typed messages are unaffected, including on devices without voiceprint support. Skips log
 `partner.standard-skip` with a reason only; original messages still reach their
 existing listeners. This does not turn on a microphone or change permissions.
 
@@ -31,7 +30,7 @@ Supplied proofs that fail verification are also unconfirmed, not absent.
 Friend and site-thread paths do not currently establish the owner's Mac key as
 that account's voice identity: speech carrying any unsupported proof stays
 silent there, even when named. This does not extend biometric trust to another
-account. A truly proof-free device can still explicitly address an assistant.
+account. Proof-free devices can still type their requests.
 
 **No speaker priority or waiting barrier.** The old rules that give development
 assistants priority, reject engineering questions or skip a reply because
@@ -58,6 +57,16 @@ The public token WebSocket, `lianki_chat_wait`, `lianki_chat_read`, and CLI
 `chat listen` expose the same metadata within the authenticated thread. The CLI
 bridge and `lane-listen --everyone` label it as an advisory context update and
 keep the original user/agent roles. No separate MCP subscription API is added.
+
+`chat read` reports `partnerStandardFlow` from the live shared-flow switch and
+omits advisory metadata while it is off; stored history and reply text remain.
+Before a busy local listener hands over a buffered advisory, it rereads its
+authenticated thread and checks that switch, the reply's identity/sequence/time,
+and the canonical source IDs/text/sequence range. A newer user line, missing
+source, read failure or disabled switch discards the optional queued notice,
+passing its cursor without claiming it was delivered.
+Original messages and direct assistant replies are sent first, without waiting
+for that check. Already-handed-over external messages cannot be recalled.
 
 All accounts use the existing credit reservation, settlement and caps. The
 main Worker rechecks both switches; development grants no longer exclude a

@@ -86,6 +86,7 @@ type Stub = {
   calls: PartnerRequest[];
   flagCalls: string[];
   on: boolean;
+  standard: boolean;
   /** The flag read fails (the RPC itself, as `.bind(stub)` made it in production). */
   flagThrows?: boolean;
   /** Config values the main Worker answers (undefined = not set). */
@@ -142,6 +143,7 @@ function setup(
     calls: [],
     flagCalls: [],
     on: opts.on ?? true,
+    standard: opts.standard === true,
     reply: async () => ({
       ok: true,
       text: "Hi! You have 3 words due.",
@@ -157,11 +159,7 @@ function setup(
       stub.flagCalls.push(k);
       if (stub.flagThrows)
         throw new TypeError('The RPC receiver does not implement the method "bind".');
-      return k === PARTNER_AI_FLAG
-        ? stub.on
-        : k === PARTNER_STANDARD_FLAG
-          ? opts.standard === true
-          : false;
+      return k === PARTNER_AI_FLAG ? stub.on : k === PARTNER_STANDARD_FLAG ? stub.standard : false;
     },
     partnerReply: async (req: PartnerRequest) => {
       stub.calls.push(structuredClone(req));
@@ -669,7 +667,79 @@ describe("partner AI: caps (rolling window)", () => {
 
 /** The main Worker side: lib/partner-ai.ts against a real schema. */
 describe("standard Partner routing", () => {
-  it("friend and site speech carrying unsupported proofs is not downgraded to proof-free speech", async () => {
+  it("switch-off before a queued speech turn runs makes no model call", async () => {
+    const signer = await speakerSigner();
+    const jobs = new Map<object, () => void>();
+    const timer: HubTimer = {
+      set: (fn) => {
+        const key = {};
+        jobs.set(key, fn);
+        return key;
+      },
+      clear: (key) => {
+        jobs.delete(key as object);
+      },
+    };
+    const s = setup({ standard: true, timer, speakerPub: signer.pub });
+    const owner = await s.ownerPage();
+    const text = "Li, help me plan";
+    await s.msg(owner, {
+      type: "chat",
+      id: "queued-before-off",
+      text,
+      source: "stt",
+      speakerProof: [await signer.sign("owner", text, "me")],
+    });
+    s.stub.standard = false;
+    for (const fn of jobs.values()) fn();
+    jobs.clear();
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(s.stub.calls).toHaveLength(0);
+    expect(chats(owner).some((m) => m.text === text)).toBe(true);
+  });
+
+  it("switch-off during a billed call still settles usage, without reply or polish side effects", async () => {
+    const s = setup({ standard: true });
+    const owner = await s.ownerPage();
+    let finish!: (r: PartnerResult) => void;
+    s.stub.reply = () =>
+      new Promise((r) => {
+        finish = r;
+      });
+    let applied = 0;
+    s.hub["liPolish"] = async () => {
+      applied++;
+    };
+    const pending = s.msg(owner, {
+      type: "chat",
+      id: "active-before-off",
+      text: "coco, check the feature",
+    });
+    for (let i = 0; i < 200 && !finish; i++) await Promise.resolve();
+    expect(typeof finish).toBe("function");
+    s.stub.standard = false;
+    finish({
+      ok: true,
+      text: "must not appear",
+      handoff: "must not hand off",
+      polish: [{ id: "active-before-off", text: "must not edit" }],
+      tokensIn: 10,
+      tokensOut: 5,
+      ms: 1,
+      model: PARTNER_AI_MODEL,
+    });
+    await pending;
+    expect(applied).toBe(0);
+    expect(chats(owner).some((m) => m.label === PARTNER_AI_LABEL)).toBe(false);
+    expect(
+      Object.values(s.storage.store.get(aiUserKey("owner1")) as Record<string, number>).reduce(
+        (a, b) => a + b,
+        0,
+      ),
+    ).toBe(15);
+  });
+
+  it("friend and site speech stays unconfirmed with an unsupported proof or no proof", async () => {
     const signer = await speakerSigner();
     for (const kind of ["friend", "site"] as const) {
       const s = setup({ standard: true, config: true, speakerPub: signer.pub });
@@ -705,6 +775,8 @@ describe("standard Partner routing", () => {
         source: "stt",
       });
       await new Promise((r) => setTimeout(r, 0));
+      expect(s.stub.calls).toHaveLength(0);
+      await s.msg(page, { type: "chat", id: `${kind}-typed-control`, text: "please help me plan" });
       expect(s.stub.calls).toHaveLength(1);
     }
   });
@@ -773,6 +845,7 @@ describe("standard Partner routing", () => {
   });
 
   it("named speech and its unnamed follow-up form one reply with both original ids", async () => {
+    const signer = await speakerSigner();
     const jobs = new Map<object, () => void>();
     const timer: HubTimer = {
       set: (fn) => {
@@ -784,13 +857,14 @@ describe("standard Partner routing", () => {
         jobs.delete(key as object);
       },
     };
-    const s = setup({ standard: true, timer });
+    const s = setup({ standard: true, timer, speakerPub: signer.pub });
     const owner = await s.ownerPage();
     await s.msg(owner, {
       type: "chat",
       id: "named-start",
       text: "@coco fix the feature",
       source: "stt",
+      speakerProof: [await signer.sign("owner", "@coco fix the feature", "me")],
     });
     s.tick(4);
     await s.msg(owner, {
@@ -798,6 +872,7 @@ describe("standard Partner routing", () => {
       id: "follow-up",
       text: "and keep the raw references",
       source: "stt",
+      speakerProof: [await signer.sign("owner", "and keep the raw references", "me")],
     });
     expect(s.stub.calls).toHaveLength(0);
     const pending = [...jobs.values()];
@@ -820,7 +895,8 @@ describe("standard Partner routing", () => {
   });
 
   it("the shared voice guard honors live names and fails silent for unverified audio even with name gating off", async () => {
-    const s = setup({ standard: true, config: true });
+    const signer = await speakerSigner();
+    const s = setup({ standard: true, config: true, speakerPub: signer.pub });
     s.stub.config = {
       "partner.spokenNeedsName": false,
       "partner.liNames": ["Buddy"],
@@ -829,11 +905,13 @@ describe("standard Partner routing", () => {
     const owner = await s.ownerPage();
     await s.msg(owner, { type: "chat", id: "noise-name-off", text: "hmm", source: "stt" });
     expect(s.stub.calls).toHaveLength(0);
+    s.stub.config["partner.spokenNeedsName"] = true;
     await s.msg(owner, {
       type: "chat",
       id: "custom-name",
       text: "Buddy, help me plan",
       source: "stt",
+      speakerProof: [await signer.sign("owner", "Buddy, help me plan", "me")],
     });
     await new Promise((r) => setTimeout(r, 0));
     expect(s.stub.calls).toHaveLength(1);

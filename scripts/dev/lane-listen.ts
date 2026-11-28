@@ -73,6 +73,7 @@ import {
   bypassLine,
   digestible,
   editOf,
+  refreshAdvisoryLines,
   type Line,
 } from "./lane-listen-lib";
 import {
@@ -375,6 +376,20 @@ async function main(): Promise<number> {
       for (const s of seqs) if (s !== undefined && s > lastDelivered) lastDelivered = s;
       const r = o.dryRun ? null : receiptAfter(seqs, cursor.value(), acker.last());
       if (r !== null) void acker.ack(r);
+    },
+    async (lines) => {
+      let snapshot: unknown;
+      try {
+        const raw = await liankiChat(o, t.token!, ["read", "--limit", "100"]);
+        snapshot = raw ? JSON.parse(raw)?.data : undefined;
+      } catch {}
+      return refreshAdvisoryLines(lines, snapshot);
+    },
+    (lines) => {
+      // An expired optional notice is deliberately not delivered. Pass its
+      // checkpoint without claiming it was handed to the assistant.
+      cursor?.release(lines.map((l) => l.seq));
+      save();
     },
   );
   if (t.from === "none") {
