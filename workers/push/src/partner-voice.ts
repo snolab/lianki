@@ -15,9 +15,12 @@ export function standardVoiceSkip(
   if (line.source !== "stt") return null;
   // Only the hub's verified speaker tag is used. A name never overrides an
   // explicit unknown/other result, even inside an already-open speech turn.
-  if (conf.unverifiedProof || line.speaker?.decision !== "me") return "unconfirmed-voice";
+  if (conf.unverifiedProof || (line.speaker && line.speaker.decision !== "me"))
+    return "unconfirmed-voice";
   if (conf.continuation) return null;
   if (namesLi(line.text, conf.liNames) || routeLine(line.text).addressed) return null;
-  if (!conf.needsName) return null;
-  return "spoken-unnamed";
+  // Devices without voiceprint support can still address an assistant, but
+  // turning off the name requirement must not enable unverified room audio.
+  if (!conf.needsName && line.speaker?.decision === "me") return null;
+  return line.speaker?.decision === "me" ? "spoken-unnamed" : "unconfirmed-voice";
 }

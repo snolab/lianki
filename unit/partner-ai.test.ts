@@ -739,7 +739,7 @@ describe("standard Partner routing", () => {
     ).toBe(15);
   });
 
-  it("friend and site speech stays unconfirmed with an unsupported proof or no proof", async () => {
+  it("friend and site speech carrying unsupported proofs is not downgraded to proof-free speech", async () => {
     const signer = await speakerSigner();
     for (const kind of ["friend", "site"] as const) {
       const s = setup({ standard: true, config: true, speakerPub: signer.pub });
@@ -775,8 +775,6 @@ describe("standard Partner routing", () => {
         source: "stt",
       });
       await new Promise((r) => setTimeout(r, 0));
-      expect(s.stub.calls).toHaveLength(0);
-      await s.msg(page, { type: "chat", id: `${kind}-typed-control`, text: "please help me plan" });
       expect(s.stub.calls).toHaveLength(1);
     }
   });
@@ -844,55 +842,60 @@ describe("standard Partner routing", () => {
     ]);
   });
 
-  it("named speech and its unnamed follow-up form one reply with both original ids", async () => {
-    const signer = await speakerSigner();
-    const jobs = new Map<object, () => void>();
-    const timer: HubTimer = {
-      set: (fn) => {
-        const key = {};
-        jobs.set(key, fn);
-        return key;
-      },
-      clear: (key) => {
-        jobs.delete(key as object);
-      },
-    };
-    const s = setup({ standard: true, timer, speakerPub: signer.pub });
-    const owner = await s.ownerPage();
-    await s.msg(owner, {
-      type: "chat",
-      id: "named-start",
-      text: "@coco fix the feature",
-      source: "stt",
-      speakerProof: [await signer.sign("owner", "@coco fix the feature", "me")],
+  for (const verified of [true, false])
+    it(`named speech and its follow-up keep both ids (${verified ? "verified" : "proof-free"})`, async () => {
+      const signer = await speakerSigner();
+      const jobs = new Map<object, () => void>();
+      const timer: HubTimer = {
+        set: (fn) => {
+          const key = {};
+          jobs.set(key, fn);
+          return key;
+        },
+        clear: (key) => {
+          jobs.delete(key as object);
+        },
+      };
+      const s = setup({ standard: true, timer, speakerPub: signer.pub });
+      const owner = await s.ownerPage();
+      await s.msg(owner, {
+        type: "chat",
+        id: "named-start",
+        text: "@coco fix the feature",
+        source: "stt",
+        ...(verified
+          ? { speakerProof: [await signer.sign("owner", "@coco fix the feature", "me")] }
+          : {}),
+      });
+      s.tick(4);
+      await s.msg(owner, {
+        type: "chat",
+        id: "follow-up",
+        text: "and keep the raw references",
+        source: "stt",
+        ...(verified
+          ? { speakerProof: [await signer.sign("owner", "and keep the raw references", "me")] }
+          : {}),
+      });
+      expect(s.stub.calls).toHaveLength(0);
+      const pending = [...jobs.values()];
+      jobs.clear();
+      for (const fn of pending) fn();
+      for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+      expect(s.stub.calls).toHaveLength(1);
+      expect(s.stub.calls[0].turn).toEqual([
+        { id: "named-start", text: "@coco fix the feature" },
+        { id: "follow-up", text: "and keep the raw references" },
+      ]);
+      const replies = chats(owner).filter((m) => m.label === PARTNER_AI_LABEL);
+      expect(replies).toHaveLength(1);
+      expect(replies[0]).toMatchObject({
+        coordination: { sources: [{ id: "named-start" }, { id: "follow-up" }] },
+      });
+      await s.msg(owner, { type: "chat", id: "later-noise", text: "Yeah.", source: "stt" });
+      expect(jobs.size).toBe(0);
+      expect(s.stub.calls).toHaveLength(1);
     });
-    s.tick(4);
-    await s.msg(owner, {
-      type: "chat",
-      id: "follow-up",
-      text: "and keep the raw references",
-      source: "stt",
-      speakerProof: [await signer.sign("owner", "and keep the raw references", "me")],
-    });
-    expect(s.stub.calls).toHaveLength(0);
-    const pending = [...jobs.values()];
-    jobs.clear();
-    for (const fn of pending) fn();
-    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
-    expect(s.stub.calls).toHaveLength(1);
-    expect(s.stub.calls[0].turn).toEqual([
-      { id: "named-start", text: "@coco fix the feature" },
-      { id: "follow-up", text: "and keep the raw references" },
-    ]);
-    const replies = chats(owner).filter((m) => m.label === PARTNER_AI_LABEL);
-    expect(replies).toHaveLength(1);
-    expect(replies[0]).toMatchObject({
-      coordination: { sources: [{ id: "named-start" }, { id: "follow-up" }] },
-    });
-    await s.msg(owner, { type: "chat", id: "later-noise", text: "Yeah.", source: "stt" });
-    expect(jobs.size).toBe(0);
-    expect(s.stub.calls).toHaveLength(1);
-  });
 
   it("the shared voice guard honors live names and fails silent for unverified audio even with name gating off", async () => {
     const signer = await speakerSigner();
