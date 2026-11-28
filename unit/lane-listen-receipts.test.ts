@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, statSync } from "node:fs";
+import { mkdtempSync, statSync, writeFileSync, readdirSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -7,6 +7,8 @@ import {
   makeAcker,
   makeDeliverer,
   makeSeqCursor,
+  makeCursorCheckpoint,
+  makeLineAdmission,
   readCursor,
   receiptAfter,
   catchUpTrigger,
@@ -93,6 +95,101 @@ test("the cursor file is the owner's alone and survives a restart", () => {
   expect(statSync(join(env.LIANKI_LANE_TOKEN_DIR, "codex.seq")).mode & 0o077).toBe(0);
   writeCursor("codex", -3, env);
   expect(readCursor("codex", env)).toBe(42);
+});
+
+test("restart rejects already checkpointed agent lines arriving as live events", async () => {
+  const env = { LIANKI_LANE_TOKEN_DIR: mkdtempSync(join(tmpdir(), "lane-replay-")) };
+  expect(writeCursor("claude", 80, env)).toBe(true);
+  const admit = makeLineAdmission(readCursor("claude", env));
+  const sent: string[] = [];
+  const out = makeDeliverer(
+    { lane: "claude", repo: "/synthetic" },
+    async (text) => (sent.push(text), 0),
+    async () => false,
+  );
+  const receive = async (seq: number, id: string) => {
+    const line = lineOf(
+      JSON.stringify({
+        type: "chat",
+        message: { id, seq, from: "agent", label: "worker", text: "synthetic result" },
+      }),
+    )!;
+    if (admit.take(line)) await out.add(line);
+  };
+  await receive(70, "already-delivered");
+  await receive(80, "checkpoint-boundary");
+  await receive(81, "fresh-result");
+  await receive(81, "fresh-result");
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toContain("fresh-result");
+  expect(sent[0]).not.toContain("already-delivered");
+  // The floor is the restored checkpoint: no newer out-of-order line is silently dropped.
+  expect(admit.take({ id: "missing-gap", seq: 82 })).toBe(true);
+  expect(admit.take({ id: "later-result", seq: 90 })).toBe(true);
+  expect(admit.take({ id: "out-of-order", seq: 85 })).toBe(true);
+  const firstRun = makeLineAdmission(null);
+  expect(firstRun.take({ id: "first-live", seq: 1 })).toBe(true);
+  expect(firstRun.take({ id: "legacy-no-seq" })).toBe(true);
+});
+
+test("a rejected hand-over can be recovered, without reopening the restored prefix", async () => {
+  const admit = makeLineAdmission(80);
+  let attempts = 0;
+  const out = makeDeliverer(
+    { lane: "claude", repo: "/synthetic" },
+    async () => (++attempts === 1 ? 1 : 0),
+    async () => false,
+    () => {},
+    10,
+    (lines, ok) => {
+      if (!ok) admit.retry(lines.map((line) => line.id));
+    },
+  );
+  const line: Line = {
+    id: "retryable",
+    thread: "owner",
+    seq: 81,
+    from: "agent",
+    kind: "agent",
+    text: "synthetic result",
+  };
+  for (let i = 0; i < 3; i++) if (admit.take(line)) await out.add(line);
+  expect(attempts).toBe(2);
+  admit.retry(["old"]);
+  expect(admit.take({ id: "old", seq: 80 })).toBe(false);
+});
+
+test("checkpoint failures stay retryable, and older or invalid checkpoints never advance it", () => {
+  let writable = false;
+  const writes: number[] = [];
+  const save = makeCursorCheckpoint(4, (seq) => (writes.push(seq), writable));
+  expect(save(5)).toBe(false);
+  writable = true;
+  expect(save(5)).toBe(true);
+  expect(save(5)).toBe(true);
+  expect(save(3)).toBe(true);
+  expect(save(-1)).toBe(false);
+  expect(writes).toEqual([5, 5]);
+});
+
+test("cursor files reject torn or blank data, atomically replace it, and refuse stale writes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lane-atomic-"));
+  const env = { LIANKI_LANE_TOKEN_DIR: dir };
+  const file = join(dir, "claude.seq");
+  for (const bad of ["", " \n", "8e1", "42x", "9999999999999999999999999"]) {
+    writeFileSync(file, bad);
+    expect(readCursor("claude", env)).toBeNull();
+  }
+  expect(writeCursor("claude", 81, env)).toBe(true);
+  expect(writeCursor("claude", 70, env)).toBe(true);
+  expect(readCursor("claude", env)).toBe(81);
+  expect(readdirSync(dir)).toEqual(["claude.seq"]);
+  expect(statSync(file).mode & 0o077).toBe(0);
+  expect(writeCursor("claude", 82, { LIANKI_LANE_TOKEN_DIR: file })).toBe(false);
+  expect(readCursor("claude", env)).toBe(81);
+  mkdirSync(join(dir, "blocked.seq"));
+  expect(writeCursor("blocked", 1, env)).toBe(false);
+  expect(readdirSync(dir).sort()).toEqual(["blocked.seq", "claude.seq"]);
 });
 
 test("a read answer is a page with its coverage; a failure or an old hub is no page", () => {

@@ -230,6 +230,16 @@ it. It moves past a line only when `ay send` took it (exit 0 or 4), or when
 the line was never this lane's (another lane's, a refused voice). A line
 lost in delivery holds the cursor before it.
 
+The restored checkpoint also filters live socket events at or below that sequence;
+reconnect does not rely only on a process-local set of message IDs. The filter's
+floor is the restored checkpoint, not a moving live maximum, so later out-of-order
+lines above it remain deliverable. Cursor replacement uses a private temporary
+file and atomic rename; an older checkpoint is ignored, and failed writes are
+logged and remain retryable rather than advancing the in-memory saved position.
+Blank or torn files are not sequence zero. Keep one checkpoint writer per lane.
+A running listener must load this version on its next coordinated launch; changing
+source files alone does not upgrade an existing process.
+
 - **Receipt.** After a hand-over the listener posts `lianki chat seen --seq
 N` with its own token: N is the newest line handed over, never past a
   held one. The hub keeps it as that token's read position, and the chat

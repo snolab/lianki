@@ -3,7 +3,16 @@
  * token comes from (never printed), reading both listeners' JSON lines, and
  * what the lane's agent is handed. Tested in unit/lane-listen.test.ts.
  */
-import { closeSync, fstatSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -645,19 +654,72 @@ export const laneCursorPath = (lane: string, env?: Record<string, string | undef
 /** The saved cursor, or null when there is none yet (a first run starts from the live stream). */
 export function readCursor(lane: string, env?: Record<string, string | undefined>): number | null {
   try {
-    const n = Number(readFileSync(laneCursorPath(lane, env), "utf8").trim());
+    const text = readFileSync(laneCursorPath(lane, env), "utf8").trim();
+    if (!/^\d+$/.test(text)) return null;
+    const n = Number(text);
     return validSeq(n) ? n : null;
   } catch {
     return null;
   }
 }
 
-export function writeCursor(lane: string, seq: number, env?: Record<string, string | undefined>) {
-  if (!validSeq(seq)) return;
+/** Atomic replacement: a crash cannot truncate the last durable checkpoint. */
+export function writeCursor(
+  lane: string,
+  seq: number,
+  env?: Record<string, string | undefined>,
+): boolean {
+  if (!validSeq(seq)) return false;
+  let temporary: string | undefined;
   try {
     mkdirSync(laneTokenDir(env), { recursive: true, mode: 0o700 });
-    writeFileSync(laneCursorPath(lane, env), `${seq}\n`, { mode: 0o600 });
-  } catch {}
+    const path = laneCursorPath(lane, env);
+    // A delayed checkpoint must not replace a newer one already saved.
+    const previous = readCursor(lane, env);
+    if (previous !== null && previous >= seq) return true;
+    temporary = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    writeFileSync(temporary, `${seq}\n`, { mode: 0o600, flag: "wx" });
+    renameSync(temporary, path);
+    temporary = undefined;
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (temporary)
+      try {
+        unlinkSync(temporary);
+      } catch {}
+  }
+}
+
+/** Only successful durable writes advance the cached checkpoint; a failure can retry. */
+export function makeCursorCheckpoint(start: number | null, write: (seq: number) => boolean) {
+  let saved = start;
+  return (seq: number): boolean => {
+    if (!validSeq(seq)) return false;
+    if (saved !== null && seq <= saved) return true;
+    if (!write(seq)) return false;
+    saved = seq;
+    return true;
+  };
+}
+
+/** A restored checkpoint also gates live replay, not just catch-up API reads. */
+export function makeLineAdmission(deliveredThrough: number | null) {
+  const seen = new Set<string>();
+  return {
+    take(line: Pick<Line, "id" | "seq">): boolean {
+      if (deliveredThrough !== null && validSeq(line.seq) && line.seq <= deliveredThrough)
+        return false;
+      if (seen.has(line.id)) return false;
+      seen.add(line.id);
+      return true;
+    },
+    /** A failed hand-over stays held and may be retried by recovery. */
+    retry(ids: readonly string[]) {
+      for (const id of ids) seen.delete(id);
+    },
+  };
 }
 
 /**
