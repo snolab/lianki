@@ -96,3 +96,8 @@ prompt or generated text. The page's generic failure can also mean its subsequen
 save failed: verify POST `/api/roadmap/generate` and POST `/api/roadmap` separately.
 
 Tree: /roadmap/jlpt-generation
+
+The production generation helper disables SDK-internal retries (`maxRetries: 0`).
+Only the outer two-attempt loop retries invalid model output; retryable HTTP
+responses do not silently multiply calls beyond the reserved budget. Synthetic
+429/500/503 tests invoke that same production helper.

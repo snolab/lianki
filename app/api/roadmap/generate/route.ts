@@ -1,14 +1,13 @@
-import { generateObject } from "ai";
 import { metered, refusal } from "@/lib/payments/metered";
 import { MAX_OUT } from "@/lib/payments/paid-calls";
 import { textHoldUsd, textUsd } from "@/lib/payments/prices";
 import { walletDb, walletUserId } from "@/lib/payments/wallet-db";
-import { textModel, workersAiStructuredModel } from "@/lib/workers-ai";
+import { textModel } from "@/lib/workers-ai";
 import { NextRequest, NextResponse } from "next/server";
 import { authEmailOrToken } from "@/lib/authEmailOrToken";
 import { cappedJsonError, readJsonCapped, tooMany } from "@/lib/security/route-guard";
 import { accountKey } from "@/lib/security/throttle";
-import { LooseRoadmapSchema } from "@/lib/roadmap/generate-schema";
+import { generateRoadmapObject } from "@/lib/roadmap/provider";
 import { ATTEMPTS, generateFailedResponse, generateWithRetry } from "@/lib/roadmap/generate";
 import { roadmapPrompt } from "@/lib/roadmap/prompt";
 import { matchExamDecks } from "@/lib/roadmap/exam-match";
@@ -54,12 +53,7 @@ export async function POST(request: NextRequest) {
       () =>
         generateWithRetry(
           async () => {
-            const r = await generateObject({
-              model: workersAiStructuredModel(model),
-              schema: LooseRoadmapSchema,
-              maxOutputTokens: maxOut,
-              prompt,
-            });
+            const r = await generateRoadmapObject(model, prompt, maxOut);
             return { object: r.object, usage: r.usage };
           },
           {

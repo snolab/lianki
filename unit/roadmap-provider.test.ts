@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { generateObject } from "ai";
-import { workersAiStructuredModel } from "@/lib/workers-ai";
-import { LooseRoadmapSchema } from "@/lib/roadmap/generate-schema";
+import { generateRoadmapObject } from "@/lib/roadmap/provider";
 import { generateWithRetry } from "@/lib/roadmap/generate";
 import { SaveRoadmapSchema } from "@/lib/roadmap/save-schema";
 
@@ -44,13 +42,7 @@ function responses() {
   });
 }
 const generate = (model?: string) =>
-  generateObject({
-    model: workersAiStructuredModel(model),
-    schema: LooseRoadmapSchema,
-    prompt: "Generate a synthetic jlpt n1 roadmap",
-    maxOutputTokens: 3000,
-    maxRetries: 0,
-  });
+  generateRoadmapObject(model, "Generate a synthetic jlpt n1 roadmap", 3000);
 const run = () =>
   generateWithRetry(
     async () => {
@@ -102,6 +94,7 @@ describe("roadmap structured provider wire contract (no network)", () => {
     expect(requests).toHaveLength(1);
     expect(requests[0].body.model).toBe("@cf/meta/llama-3.3-70b-instruct-fp8-fast");
     expect(requests[0].body.stream).not.toBe(true);
+    expect(requests[0].body.max_tokens).toBe(3000);
     expect(result.value.nodes).toHaveLength(3);
     expect(
       SaveRoadmapSchema.safeParse({ topic: "jlpt n1", nodes: result.value.nodes }).success,
@@ -127,6 +120,18 @@ describe("roadmap structured provider wire contract (no network)", () => {
     await generate();
     expect(requests[0].body.model).toBe("@cf/synthetic/another-text-model");
   });
+
+  it.each([429, 500, 503])(
+    "HTTP %s makes one request, without hidden SDK retries",
+    async (status) => {
+      replies = [
+        Response.json({ error: { message: "Synthetic failure", type: "synthetic" } }, { status }),
+      ];
+      await expect(run()).rejects.toMatchObject({ reason: "provider-error" });
+      expect(requests).toHaveLength(1);
+      expect(replies).toHaveLength(0);
+    },
+  );
 
   it("real SDK truncated JSON retries once and the successful output saves", async () => {
     replies = [chat('{"nodes":[{"title":"unfinished', "length"), chat()];
