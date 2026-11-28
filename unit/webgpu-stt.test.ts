@@ -139,7 +139,7 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
     let gets = 0;
     let idleCb: (() => void) | null = null;
     let readyEvents = 0;
-    const confirmed: { estimatedMb: number; risk: string }[] = [];
+    const confirmed: { estimatedMb: number; risk: string; signal?: AbortSignal }[] = [];
     const payload = new Uint8Array([1, 2, 3, 4, 5, 6]);
 
     const mgr = createWebGpuModelManager({
@@ -180,7 +180,9 @@ describe("WebGpuModelManager & model-download confirm/cancel", () => {
 
     expect(await mgr.ensureReady()).toBe(true);
     // Cellular: no HEAD before the confirm, so the fallback total (capped at cacheMb).
-    expect(confirmed).toEqual([{ estimatedMb: 10, risk: "restricted" }]);
+    expect(confirmed).toHaveLength(1);
+    expect(confirmed[0]).toMatchObject({ estimatedMb: 10, risk: "restricted" });
+    expect(confirmed[0]?.signal).toBeInstanceOf(AbortSignal);
     expect(mgr.snapshot().sizeLabel).toBe(
       formatModelSize(payload.byteLength + ORT_MJS.byteLength + ORT_WASM.byteLength),
     );

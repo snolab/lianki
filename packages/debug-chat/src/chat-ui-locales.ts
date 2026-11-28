@@ -159,6 +159,11 @@ export type ChatExtra = {
   endedElsewhere: string;
   rateLimited: string;
   modelDownloadConfirm: string;
+  modelDownloadSttConfirm: string;
+  modelDownloadTitleWake: string;
+  modelDownloadTitleStt: string;
+  modelDownloadAllow: string;
+  modelDownloadCancel: string;
   modelDownloadWaiting: string;
   sttServersTitle: string;
   sttServersBody: string;
@@ -304,6 +309,11 @@ export const EXTRA_CONTEXT: ChatExtra = {
   endedElsewhere: `In ${CHAT}: a line above the chat box when the chat was closed from another open page of Lianki; it reconnects when the user comes back to this page.`,
   rateLimited: `In ${CHAT}: a line above the chat box when the user sent too many messages; the last one was not sent; {n} is how many minutes to wait. Keep {n}.`,
   modelDownloadConfirm: "Browser confirmation before uncached wake-word model/runtime download on cellular, metered, Data Saver or unknown network (Safari cannot tell). {mb} is the approximate total megabytes, localized separately. Explain possible mobile-data charges; OK downloads this batch only, Cancel keeps normal cloud speech recognition. Do not claim Wi-Fi was detected when network information is absent.",
+  modelDownloadSttConfirm: `In ${CHAT}: body text of the in-app confirmation dialog before downloading an uncached on-device speech recognition model and runtime on cellular, metered, Data Saver or unknown networks (where the browser cannot tell). {mb} is the approximate total megabytes, localized separately; keep {mb}. Explain possible mobile-data charges; confirming downloads this batch only, while Cancel keeps regular speech recognition without downloading. Do not mention wake words or claim Wi-Fi was detected.`,
+  modelDownloadTitleWake: `In ${CHAT}: short heading of the in-app confirmation dialog shown before downloading the wake-word model on a metered or unknown network. Short imperative or noun phrase, no trailing punctuation.`,
+  modelDownloadTitleStt: `In ${CHAT}: short heading of the in-app confirmation dialog shown before downloading the on-device speech recognition model on a metered or unknown network. Distinct from wake-word download; short imperative or noun phrase, no trailing punctuation.`,
+  modelDownloadAllow: `In ${CHAT}: primary confirmation button in the model-download confirmation dialog: proceeds with downloading the model on the current network. One imperative verb, e.g. 'Download'.`,
+  modelDownloadCancel: `In ${CHAT}: secondary dismiss button in the model-download confirmation dialog: declines the download and keeps regular speech recognition without downloading. The platform's usual 'Cancel'.`,
   modelDownloadWaiting: "Mic tooltip after model download is declined or cancelled on a network change: no uncached model is downloading; ordinary speech recognition continues. Waiting for Wi-Fi or explicit download confirmation. Short status, no technical detail.",
   sttServersTitle: `In ${CHAT}: the heading of a small card shown once per device when the mic turns on and the user may use Lianki's own speech-to-text servers: they turn speech into text faster, while the user speaks. A short noun phrase.`,
   sttServersBody: `In ${CHAT}: the text of that card: the voice is sent to Lianki's speech servers, which write it out while the user speaks; the audio is not stored, only what the user sends is kept; free for now. Call them only 'Lianki's speech servers' (never a computer or a person). Two or three short sentences.`,
@@ -693,6 +703,11 @@ export const OTHER_LEGACY: Record<Other, LegacyStrings> = {
 export const EXTRA: Record<ChatLocale, ChatExtra> = {
   en: {
     modelDownloadConfirm: "Download about {mb} MB for wake words? This connection may use mobile or metered data, or its type is unknown. Data charges may apply. Cancel to keep regular speech recognition without downloading.",
+    modelDownloadSttConfirm: "Download about {mb} MB for on-device speech recognition? This connection may use mobile or metered data, or its type is unknown. Data charges may apply. Cancel to keep regular speech recognition without downloading.",
+    modelDownloadTitleWake: "Download wake-word model",
+    modelDownloadTitleStt: "Download speech model",
+    modelDownloadAllow: "Download",
+    modelDownloadCancel: "Cancel",
     modelDownloadWaiting: "Model download paused; speech recognition continues. Use Wi-Fi or confirm the download.",
     miniAppLoading: "Loading mini app…",
     miniAppUnavailable: "Mini app unavailable",
@@ -809,6 +824,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   zh: {
     modelDownloadConfirm: "下载约 {mb} MB 的唤醒词模型？当前可能是移动或计量网络，也可能无法识别网络类型，下载可能产生流量费用。取消后继续普通语音识别，不下载模型。",
+    modelDownloadSttConfirm: "下载约 {mb} MB 的本地语音识别模型？当前可能是移动或计量网络，也可能无法识别网络类型，下载可能产生流量费用。取消后继续普通语音识别，不下载模型。",
+    modelDownloadTitleWake: "下载唤醒词模型",
+    modelDownloadTitleStt: "下载本地语音模型",
+    modelDownloadAllow: "下载",
+    modelDownloadCancel: "取消",
     modelDownloadWaiting: "模型下载已暂停，语音识别照常继续。请连接 Wi-Fi 或确认下载。",
     miniAppLoading: "正在加载迷你应用…",
     miniAppUnavailable: "迷你应用不可用",
@@ -924,6 +944,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   hi: {
     modelDownloadConfirm: "वेक-वर्ड के लिए लगभग {mb} MB डाउनलोड करें? यह मोबाइल या मीटर्ड डेटा हो सकता है, या नेटवर्क अज्ञात है। डेटा शुल्क लग सकता है। रद्द करने पर बिना डाउनलोड सामान्य वाक् पहचान जारी रहेगी।",
+    modelDownloadSttConfirm: "डिवाइस पर वाक् पहचान के लिए लगभग {mb} MB डाउनलोड करें? यह मोबाइल या मीटर्ड डेटा हो सकता है, या नेटवर्क अज्ञात है। डेटा शुल्क लग सकता है। रद्द करने पर बिना डाउनलोड सामान्य वाक् पहचान जारी रहेगी।",
+    modelDownloadTitleWake: "वेक-वर्ड मॉडल डाउनलोड करें",
+    modelDownloadTitleStt: "स्थानीय वाक् मॉडल डाउनलोड करें",
+    modelDownloadAllow: "डाउनलोड करें",
+    modelDownloadCancel: "रद्द करें",
     modelDownloadWaiting: "मॉडल डाउनलोड रुका है; वाक् पहचान जारी है। Wi-Fi या डाउनलोड की पुष्टि करें।",
     miniAppLoading: "मिनी ऐप लोड हो रहा है…",
     miniAppUnavailable: "मिनी ऐप उपलब्ध नहीं है",
@@ -1039,6 +1064,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   es: {
     modelDownloadConfirm: "¿Descargar unos {mb} MB para palabras de activación? La conexión puede usar datos móviles o medidos, o ser desconocida. Puede haber cargos. Cancela para seguir reconociendo voz sin descargar.",
+    modelDownloadSttConfirm: "¿Descargar unos {mb} MB para el reconocimiento de voz en el dispositivo? La conexión puede usar datos móviles o medidos, o ser desconocida. Puede haber cargos. Cancela para seguir reconociendo voz sin descargar.",
+    modelDownloadTitleWake: "Descargar modelo de activación",
+    modelDownloadTitleStt: "Descargar modelo de voz local",
+    modelDownloadAllow: "Descargar",
+    modelDownloadCancel: "Cancelar",
     modelDownloadWaiting: "Descarga pausada; el reconocimiento continúa. Usa Wi-Fi o confirma la descarga.",
     miniAppLoading: "Cargando miniaplicación…",
     miniAppUnavailable: "Miniaplicación no disponible",
@@ -1154,6 +1184,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   fr: {
     modelDownloadConfirm: "Télécharger environ {mb} Mo pour les mots de réveil ? Cette connexion peut être mobile, limitée ou inconnue. Des frais peuvent s’appliquer. Annulez pour continuer la reconnaissance sans téléchargement.",
+    modelDownloadSttConfirm: "Télécharger environ {mb} Mo pour la reconnaissance vocale sur l’appareil ? Cette connexion peut être mobile, limitée ou inconnue. Des frais peuvent s’appliquer. Annulez pour continuer la reconnaissance sans téléchargement.",
+    modelDownloadTitleWake: "Télécharger le modèle d’éveil",
+    modelDownloadTitleStt: "Télécharger le modèle vocal local",
+    modelDownloadAllow: "Télécharger",
+    modelDownloadCancel: "Annuler",
     modelDownloadWaiting: "Téléchargement en pause ; la reconnaissance continue. Utilisez le Wi-Fi ou confirmez.",
     miniAppLoading: "Chargement de la mini-app…",
     miniAppUnavailable: "Mini-app indisponible",
@@ -1269,6 +1304,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   ar: {
     modelDownloadConfirm: "هل تريد تنزيل نحو {mb} ميغابايت لكلمات التنبيه؟ قد تكون الشبكة خلوية أو محدودة أو غير معروفة. قد تُفرض رسوم بيانات. الإلغاء يُبقي التعرف المعتاد دون تنزيل.",
+    modelDownloadSttConfirm: "هل تريد تنزيل نحو {mb} ميغابايت للتعرف على الكلام على الجهاز؟ قد تكون الشبكة خلوية أو محدودة أو غير معروفة. قد تُفرض رسوم بيانات. الإلغاء يُبقي التعرف المعتاد دون تنزيل.",
+    modelDownloadTitleWake: "تنزيل نموذج كلمات التنبيه",
+    modelDownloadTitleStt: "تنزيل نموذج الكلام المحلي",
+    modelDownloadAllow: "تنزيل",
+    modelDownloadCancel: "إلغاء",
     modelDownloadWaiting: "تنزيل النموذج متوقف؛ التعرف على الكلام مستمر. استخدم Wi-Fi أو أكّد التنزيل.",
     miniAppLoading: "جارٍ تحميل التطبيق المصغر…",
     miniAppUnavailable: "التطبيق المصغر غير متاح",
@@ -1384,6 +1424,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   bn: {
     modelDownloadConfirm: "জাগানোর শব্দের জন্য প্রায় {mb} MB ডাউনলোড করবেন? এটি মোবাইল বা মিটারযুক্ত ডেটা হতে পারে, অথবা নেটওয়ার্ক অজানা। ডেটা খরচ হতে পারে। বাতিল করলে ডাউনলোড ছাড়াই স্বাভাবিক শনাক্তকরণ চলবে।",
+    modelDownloadSttConfirm: "ডিভাইসে কথা শনাক্তকরণের জন্য প্রায় {mb} MB ডাউনলোড করবেন? এটি মোবাইল বা মিটারযুক্ত ডেটা হতে পারে, অথবা নেটওয়ার্ক অজানা। ডেটা খরচ হতে পারে। বাতিল করলে ডাউনলোড ছাড়াই স্বাভাবিক শনাক্তকরণ চলবে।",
+    modelDownloadTitleWake: "জাগানোর শব্দের মডেল ডাউনলোড",
+    modelDownloadTitleStt: "স্থানীয় কথা শনাক্তকরণ মডেল ডাউনলোড",
+    modelDownloadAllow: "ডাউনলোড করুন",
+    modelDownloadCancel: "বাতিল",
     modelDownloadWaiting: "মডেল ডাউনলোড থামানো; কথা শনাক্তকরণ চলছে। Wi-Fi ব্যবহার করুন বা নিশ্চিত করুন।",
     miniAppLoading: "মিনি অ্যাপ লোড হচ্ছে…",
     miniAppUnavailable: "মিনি অ্যাপ উপলব্ধ নেই",
@@ -1499,6 +1544,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   pt: {
     modelDownloadConfirm: "Baixar cerca de {mb} MB para palavras de ativação? A conexão pode ser móvel, limitada ou desconhecida. Pode haver cobrança de dados. Cancele para continuar o reconhecimento sem baixar.",
+    modelDownloadSttConfirm: "Baixar cerca de {mb} MB para reconhecimento de voz no dispositivo? A conexão pode ser móvel, limitada ou desconhecida. Pode haver cobrança de dados. Cancele para continuar o reconhecimento sem baixar.",
+    modelDownloadTitleWake: "Baixar modelo de ativação",
+    modelDownloadTitleStt: "Baixar modelo de voz local",
+    modelDownloadAllow: "Baixar",
+    modelDownloadCancel: "Cancelar",
     modelDownloadWaiting: "Download pausado; o reconhecimento continua. Use Wi-Fi ou confirme o download.",
     miniAppLoading: "Carregando miniaplicativo…",
     miniAppUnavailable: "Miniaplicativo indisponível",
@@ -1614,6 +1664,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   ru: {
     modelDownloadConfirm: "Скачать около {mb} МБ для слов активации? Сеть может быть мобильной, с оплатой трафика или неизвестной. Возможны расходы. Отмена сохранит обычное распознавание без загрузки.",
+    modelDownloadSttConfirm: "Скачать около {mb} МБ для распознавания речи на устройстве? Сеть может быть мобильной, с оплатой трафика или неизвестной. Возможны расходы. Отмена сохранит обычное распознавание без загрузки.",
+    modelDownloadTitleWake: "Скачать модель активации",
+    modelDownloadTitleStt: "Скачать локальную модель речи",
+    modelDownloadAllow: "Скачать",
+    modelDownloadCancel: "Отмена",
     modelDownloadWaiting: "Загрузка модели приостановлена; распознавание продолжается. Используйте Wi-Fi или подтвердите загрузку.",
     miniAppLoading: "Загрузка мини-приложения…",
     miniAppUnavailable: "Мини-приложение недоступно",
@@ -1729,6 +1784,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   ur: {
     modelDownloadConfirm: "بیداری کے الفاظ کے لیے تقریباً {mb} MB ڈاؤن لوڈ کریں؟ نیٹ ورک موبائل، میٹرڈ یا نامعلوم ہو سکتا ہے۔ ڈیٹا چارجز لگ سکتے ہیں۔ منسوخ کرنے پر عام شناخت بغیر ڈاؤن لوڈ جاری رہے گی۔",
+    modelDownloadSttConfirm: "ڈیوائس پر آواز کی شناخت کے لیے تقریباً {mb} MB ڈاؤن لوڈ کریں؟ نیٹ ورک موبائل، میٹرڈ یا نامعلوم ہو سکتا ہے۔ ڈیٹا چارجز لگ سکتے ہیں۔ منسوخ کرنے پر عام شناخت بغیر ڈاؤن لوڈ جاری رہے گی۔",
+    modelDownloadTitleWake: "بیداری کے الفاظ کا ماڈل ڈاؤن لوڈ کریں",
+    modelDownloadTitleStt: "مقامی آواز شناخت کا ماڈل ڈاؤن لوڈ کریں",
+    modelDownloadAllow: "ڈاؤن لوڈ کریں",
+    modelDownloadCancel: "منسوخ کریں",
     modelDownloadWaiting: "ماڈل ڈاؤن لوڈ رکا ہے؛ آواز کی شناخت جاری ہے۔ Wi-Fi استعمال کریں یا تصدیق کریں۔",
     miniAppLoading: "منی ایپ لوڈ ہو رہی ہے…",
     miniAppUnavailable: "منی ایپ دستیاب نہیں",
@@ -1844,6 +1904,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   id: {
     modelDownloadConfirm: "Unduh sekitar {mb} MB untuk kata pemicu? Jaringan mungkin seluler, berkuota, atau tidak diketahui. Biaya data mungkin berlaku. Batalkan untuk tetap mengenali suara tanpa mengunduh.",
+    modelDownloadSttConfirm: "Unduh sekitar {mb} MB untuk pengenalan suara di perangkat? Jaringan mungkin seluler, berkuota, atau tidak diketahui. Biaya data mungkin berlaku. Batalkan untuk tetap mengenali suara tanpa mengunduh.",
+    modelDownloadTitleWake: "Unduh model kata pemicu",
+    modelDownloadTitleStt: "Unduh model suara lokal",
+    modelDownloadAllow: "Unduh",
+    modelDownloadCancel: "Batal",
     modelDownloadWaiting: "Unduhan model dijeda; pengenalan suara berlanjut. Gunakan Wi-Fi atau konfirmasikan unduhan.",
     miniAppLoading: "Memuat aplikasi mini…",
     miniAppUnavailable: "Aplikasi mini tidak tersedia",
@@ -1959,6 +2024,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   de: {
     modelDownloadConfirm: "Etwa {mb} MB für Aktivierungswörter herunterladen? Das Netz ist möglicherweise mobil, getaktet oder unbekannt. Datenkosten können entstehen. Abbrechen behält die normale Spracherkennung ohne Download bei.",
+    modelDownloadSttConfirm: "Etwa {mb} MB für die lokale Spracherkennung auf dem Gerät herunterladen? Das Netz ist möglicherweise mobil, getaktet oder unbekannt. Datenkosten können entstehen. Abbrechen behält die normale Spracherkennung ohne Download bei.",
+    modelDownloadTitleWake: "Aktivierungswort-Modell herunterladen",
+    modelDownloadTitleStt: "Lokales Sprachmodell herunterladen",
+    modelDownloadAllow: "Herunterladen",
+    modelDownloadCancel: "Abbrechen",
     modelDownloadWaiting: "Modelldownload pausiert; Spracherkennung läuft weiter. WLAN nutzen oder Download bestätigen.",
     miniAppLoading: "Mini-App wird geladen…",
     miniAppUnavailable: "Mini-App nicht verfügbar",
@@ -2074,6 +2144,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   ja: {
     modelDownloadConfirm: "ウェイクワード用に約 {mb} MB をダウンロードしますか？モバイル回線、従量制回線、または種類不明のネットワークです。通信料金が発生する場合があります。キャンセルすると通常の音声認識を続け、ダウンロードしません。",
+    modelDownloadSttConfirm: "端末内の音声認識用に約 {mb} MB をダウンロードしますか？モバイル回線、従量制回線、または種類不明のネットワークです。通信料金が発生する場合があります。キャンセルすると通常の音声認識を続け、ダウンロードしません。",
+    modelDownloadTitleWake: "ウェイクワードモデルをダウンロード",
+    modelDownloadTitleStt: "端末内音声モデルをダウンロード",
+    modelDownloadAllow: "ダウンロード",
+    modelDownloadCancel: "キャンセル",
     modelDownloadWaiting: "モデルのダウンロードを停止中。音声認識は続行します。Wi-Fi に接続するかダウンロードを確認してください。",
     miniAppLoading: "ミニアプリを読み込み中…",
     miniAppUnavailable: "ミニアプリを利用できません",
@@ -2189,6 +2264,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   sw: {
     modelDownloadConfirm: "Pakua takriban MB {mb} kwa maneno ya kuamsha? Mtandao unaweza kuwa wa simu, wenye kipimo au usiojulikana. Gharama za data zinaweza kutokea. Ghairi kuendelea kutambua sauti bila kupakua.",
+    modelDownloadSttConfirm: "Pakua takriban MB {mb} kwa utambuzi wa sauti kwenye kifaa? Mtandao unaweza kuwa wa simu, wenye kipimo au usiojulikana. Gharama za data zinaweza kutokea. Ghairi kuendelea kutambua sauti bila kupakua.",
+    modelDownloadTitleWake: "Pakua modeli ya maneno ya kuamsha",
+    modelDownloadTitleStt: "Pakua modeli ya sauti ya kifaa",
+    modelDownloadAllow: "Pakua",
+    modelDownloadCancel: "Ghairi",
     modelDownloadWaiting: "Upakuaji wa modeli umesitishwa; utambuzi wa sauti unaendelea. Tumia Wi-Fi au thibitisha upakuaji.",
     miniAppLoading: "Inapakia programu ndogo…",
     miniAppUnavailable: "Programu ndogo haipatikani",
@@ -2304,6 +2384,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   mr: {
     modelDownloadConfirm: "जागृत शब्दांसाठी सुमारे {mb} MB डाउनलोड करायचे? नेटवर्क मोबाइल, मोजलेले किंवा अज्ञात असू शकते. डेटा शुल्क लागू शकते. रद्द केल्यास डाउनलोडविना सामान्य आवाज ओळख सुरू राहील.",
+    modelDownloadSttConfirm: "डिव्हाइसवरील आवाज ओळखीसाठी सुमारे {mb} MB डाउनलोड करायचे? नेटवर्क मोबाइल, मोजलेले किंवा अज्ञात असू शकते. डेटा शुल्क लागू शकते. रद्द केल्यास डाउनलोडविना सामान्य आवाज ओळख सुरू राहील.",
+    modelDownloadTitleWake: "जागृत शब्दांचे मॉडेल डाउनलोड करा",
+    modelDownloadTitleStt: "स्थानिक आवाज मॉडेल डाउनलोड करा",
+    modelDownloadAllow: "डाउनलोड करा",
+    modelDownloadCancel: "रद्द करा",
     modelDownloadWaiting: "मॉडेल डाउनलोड थांबले; आवाज ओळख सुरू आहे. Wi-Fi वापरा किंवा डाउनलोडची पुष्टी करा.",
     miniAppLoading: "मिनी ॲप लोड होत आहे…",
     miniAppUnavailable: "मिनी ॲप उपलब्ध नाही",
@@ -2419,6 +2504,11 @@ export const EXTRA: Record<ChatLocale, ChatExtra> = {
   },
   ko: {
     modelDownloadConfirm: "호출어용 약 {mb} MB를 다운로드할까요? 모바일, 종량제 또는 종류를 알 수 없는 네트워크일 수 있어 데이터 요금이 발생할 수 있습니다. 취소하면 다운로드 없이 일반 음성 인식을 계속합니다.",
+    modelDownloadSttConfirm: "기기 내 음성 인식용 약 {mb} MB를 다운로드할까요? 모바일, 종량제 또는 종류를 알 수 없는 네트워크일 수 있어 데이터 요금이 발생할 수 있습니다. 취소하면 다운로드 없이 일반 음성 인식을 계속합니다.",
+    modelDownloadTitleWake: "호출어 모델 다운로드",
+    modelDownloadTitleStt: "기기 내 음성 모델 다운로드",
+    modelDownloadAllow: "다운로드",
+    modelDownloadCancel: "취소",
     modelDownloadWaiting: "모델 다운로드 일시 중지; 음성 인식은 계속됩니다. Wi-Fi를 사용하거나 다운로드를 확인하세요.",
     miniAppLoading: "미니 앱 불러오는 중…",
     miniAppUnavailable: "미니 앱을 사용할 수 없습니다",

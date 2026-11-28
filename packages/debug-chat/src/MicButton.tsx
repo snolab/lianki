@@ -224,7 +224,12 @@ function localFor(
     hasWebGpu
       ? (u: string, protocols?: string[]): WsLike =>
           u === WEBGPU_STT_URL
-            ? openWebGpuStt(getSharedWebGpuManager({ confirmDownload: confirmBrowserModelDownload }))
+            ? openWebGpuStt(
+                getSharedWebGpuManager({
+                  confirmDownload: (details) =>
+                    confirmBrowserModelDownload({ ...details, kind: "stt" }),
+                }),
+              )
             : (base ?? ((w, p) => new WebSocket(w, p) as unknown as WsLike))(u, protocols)
       : base;
   if (isMixedRoutes(url))
@@ -647,7 +652,7 @@ function session(): MicSession {
       ? undefined
       : (onState) => createKws({ log: (ev) => v.log(ev), onState, keywords: wakeNames(),
           estimatedMb: publicCfg("voice.kwsDownloadMb"),
-          confirmDownload: confirmBrowserModelDownload,
+          confirmDownload: (details) => confirmBrowserModelDownload({ ...details, kind: "wake" }),
         }),
     wakeAllowed: () => !wakeOff(),
     upload: async (wav, { seq, durationMs, partial, local, onEcho, onSignals }, cfg) => {

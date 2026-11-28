@@ -115,7 +115,8 @@ describe("model download billing/network boundary", () => {
         return true;
       },
     });
-    expect(shown).toEqual({ estimatedMb: 25, risk: "restricted" });
+    expect(shown).toMatchObject({ estimatedMb: 25, risk: "restricted" });
+    expect((shown as { signal?: AbortSignal }).signal).toBeInstanceOf(AbortSignal);
     expect(out).toHaveLength(1);
     expect(h.calls).toHaveLength(1);
     expect(h.stored.has(asset.url)).toBe(true);
@@ -264,25 +265,435 @@ test("KWS has a complete manifest and never starts a Worker after a blocked prep
   expect(late.state()).toBe("idle");
 });
 
-test("download confirmation has translator context and all sixteen locales keep the size", () => {
-  expect(EXTRA_CONTEXT.modelDownloadConfirm).toContain("{mb}");
-  for (const locale of CHAT_LOCALES) {
-    expect(EXTRA[locale].modelDownloadConfirm).toContain("{mb}");
-    expect(EXTRA[locale].modelDownloadWaiting.length).toBeGreaterThan(10);
+test("download confirmation has translator context and all sixteen locales keep the size and distinct copy", () => {
+  const keys = [
+    "modelDownloadConfirm",
+    "modelDownloadSttConfirm",
+    "modelDownloadTitleWake",
+    "modelDownloadTitleStt",
+    "modelDownloadAllow",
+    "modelDownloadCancel",
+    "modelDownloadWaiting",
+  ] as const;
+  for (const key of keys) {
+    expect(EXTRA_CONTEXT[key].split(/\s+/).length).toBeGreaterThan(5);
   }
+  expect(EXTRA_CONTEXT.modelDownloadConfirm).toContain("{mb}");
+  expect(EXTRA_CONTEXT.modelDownloadSttConfirm).toContain("{mb}");
+  for (const locale of CHAT_LOCALES) {
+    const e = EXTRA[locale];
+    expect(e.modelDownloadConfirm).toContain("{mb}");
+    expect(e.modelDownloadSttConfirm).toContain("{mb}");
+    expect(e.modelDownloadSttConfirm).not.toBe(e.modelDownloadConfirm);
+    expect(e.modelDownloadTitleWake.trim().length).toBeGreaterThan(2);
+    expect(e.modelDownloadTitleStt.trim().length).toBeGreaterThan(2);
+    expect(e.modelDownloadTitleStt).not.toBe(e.modelDownloadTitleWake);
+    expect(e.modelDownloadAllow.trim().length).toBeGreaterThan(1);
+    expect(e.modelDownloadCancel.trim().length).toBeGreaterThan(1);
+    expect(e.modelDownloadAllow).not.toBe(e.modelDownloadCancel);
+    expect(e.modelDownloadWaiting.length).toBeGreaterThan(10);
+  }
+  expect(EXTRA.en.modelDownloadSttConfirm.toLowerCase()).not.toContain("wake");
+  expect(EXTRA.en.modelDownloadTitleStt.toLowerCase()).not.toContain("wake");
+  expect(EXTRA.zh.modelDownloadSttConfirm).not.toContain("唤醒词");
+  expect(EXTRA.zh.modelDownloadTitleStt).not.toContain("唤醒词");
 });
 
-test("browser defaults guard the real fetch and localized confirmation without a microphone", async () => {
-  let prompt = "";
+async function withDom<T>(
+  lang: string,
+  fn: (ctx: {
+    win: InstanceType<(typeof import("happy-dom"))["Window"]>;
+    q: (selector: string) => HTMLElement | null;
+    btn: (selector: string) => HTMLButtonElement;
+    setVisibility: (state: "visible" | "hidden") => void;
+    confirmCalls: () => number;
+    alertCalls: () => number;
+  }) => Promise<T>,
+): Promise<T> {
+  const { Window } = await import("happy-dom");
+  const win = new Window();
+  win.document.documentElement.lang = lang;
+  let vis: "visible" | "hidden" = "visible";
+  Object.defineProperty(win.document, "visibilityState", {
+    get: () => vis,
+    configurable: true,
+  });
+  let confirms = 0;
+  let alerts = 0;
+  const dialogs = win as unknown as { confirm: () => boolean; alert: () => void };
+  dialogs.confirm = () => {
+    confirms++;
+    throw new Error("window.confirm must never be called");
+  };
+  dialogs.alert = () => {
+    alerts++;
+    throw new Error("window.alert must never be called");
+  };
+  const restore = stubGlobals({
+    window: win,
+    document: win.document,
+  });
+  const q = (selector: string) =>
+    win.document.querySelector(selector) as unknown as HTMLElement | null;
+  const btn = (selector: string) => {
+    const el = win.document.querySelector(selector) as unknown as HTMLButtonElement | null;
+    if (!el) throw new Error(`missing element: ${selector}`);
+    return el;
+  };
+  try {
+    return await fn({
+      win,
+      q,
+      btn,
+      setVisibility: (state) => {
+        vis = state;
+      },
+      confirmCalls: () => confirms,
+      alertCalls: () => alerts,
+    });
+  } finally {
+    win.dispatchEvent(new win.Event("pagehide"));
+    restore();
+    await win.happyDOM.close();
+  }
+}
+
+const flush = () => new Promise<void>((r) => setTimeout(r, 0));
+
+describe("in-app glass model download confirmation modal", () => {
+  test("never uses window.confirm/alert; distinguishes wake vs stt copy, restores focus, and cleans up", async () => {
+    await withDom("en", async ({ win, q, btn, confirmCalls, alertCalls }) => {
+      const opener = win.document.createElement("button");
+      opener.textContent = "Mic";
+      win.document.body.appendChild(opener);
+      opener.focus();
+
+      // Wake download (default kind)
+      const wakePromise = confirmBrowserModelDownload({ estimatedMb: 25 });
+      await flush();
+      expect(confirmCalls()).toBe(0);
+      expect(alertCalls()).toBe(0);
+
+      const overlay = q('[data-testid="model-download-modal"]')!;
+      expect(overlay).not.toBeNull();
+      const dialog = overlay.querySelector('[role="alertdialog"]') as unknown as HTMLElement;
+      expect(dialog).not.toBeNull();
+      expect(dialog.getAttribute("aria-modal")).toBe("true");
+      const title = overlay.querySelector(
+        '[data-testid="model-download-title"]',
+      ) as unknown as HTMLElement;
+      const body = overlay.querySelector(
+        '[data-testid="model-download-body"]',
+      ) as unknown as HTMLElement;
+      const cancelBtn = btn('[data-testid="model-download-cancel"]');
+      const allowBtn = btn('[data-testid="model-download-allow"]');
+      const styleText = overlay.querySelector("style")?.textContent ?? "";
+      expect(dialog.getAttribute("aria-labelledby")).toBe(title.id);
+      expect(dialog.getAttribute("aria-describedby")).toBe(body.id);
+      expect(title.textContent).toBe(EXTRA.en.modelDownloadTitleWake);
+      expect(body.textContent).toContain("25 MB");
+      expect(body.textContent?.toLowerCase()).toContain("wake");
+      expect(cancelBtn.textContent).toBe(EXTRA.en.modelDownloadCancel);
+      expect(allowBtn.textContent).toBe(EXTRA.en.modelDownloadAllow);
+      expect(cancelBtn.type).toBe("button");
+      expect(allowBtn.type).toBe("button");
+      expect(cancelBtn.style.minHeight).toBe("44px");
+      expect(allowBtn.style.minHeight).toBe("44px");
+      expect(allowBtn.style.background).toContain("0.53 0.207 22.3");
+      expect(overlay.style.zIndex).toBe("var(--lk-z-chat-modal, 90)");
+      expect(styleText).toContain("max(16px, env(safe-area-inset-top))");
+      expect(styleText).toContain(
+        "oklch(from var(--background, oklch(0.98 0.005 85)) l c h / 0.88)",
+      );
+      expect(styleText).toContain("prefers-reduced-transparency: reduce");
+
+      // Safe default focus is on Cancel; Tab traps strictly between Cancel and Allow
+      expect(win.document.activeElement as unknown).toBe(cancelBtn);
+      win.document.dispatchEvent(
+        new win.KeyboardEvent("keydown", { key: "Tab", cancelable: true }),
+      );
+      expect(win.document.activeElement as unknown).toBe(allowBtn);
+      win.document.dispatchEvent(
+        new win.KeyboardEvent("keydown", { key: "Tab", cancelable: true }),
+      );
+      expect(win.document.activeElement as unknown).toBe(cancelBtn);
+      win.document.dispatchEvent(
+        new win.KeyboardEvent("keydown", { key: "Tab", shiftKey: true, cancelable: true }),
+      );
+      expect(win.document.activeElement as unknown).toBe(allowBtn);
+      opener.focus();
+      win.document.dispatchEvent(
+        new win.KeyboardEvent("keydown", { key: "Tab", cancelable: true }),
+      );
+      expect(win.document.activeElement as unknown).toBe(cancelBtn);
+      opener.focus();
+      win.document.dispatchEvent(
+        new win.KeyboardEvent("keydown", { key: "Tab", shiftKey: true, cancelable: true }),
+      );
+      expect(win.document.activeElement as unknown).toBe(allowBtn);
+
+      // Clicking inside dialog panel does not dismiss
+      dialog.click();
+      expect(q('[data-testid="model-download-modal"]')).not.toBeNull();
+
+      // Clicking Allow resolves true, removes modal, and restores focus
+      allowBtn.click();
+      expect(await wakePromise).toBe(true);
+      expect(q('[data-testid="model-download-modal"]')).toBeNull();
+      expect(win.document.activeElement).toBe(opener);
+
+      // STT download uses distinct speech copy without wake words, in zh locale
+      win.document.documentElement.lang = "zh-CN";
+      const sttPromise = confirmBrowserModelDownload({ estimatedMb: 70, kind: "stt" });
+      await flush();
+      const sttTitle = q('[data-testid="model-download-title"]')!;
+      const sttBody = q('[data-testid="model-download-body"]')!;
+      expect(sttTitle.textContent).toBe(EXTRA.zh.modelDownloadTitleStt);
+      expect(sttBody.textContent).toContain("70 MB");
+      expect(sttBody.textContent).not.toContain("唤醒词");
+      const sttCancel = btn('[data-testid="model-download-cancel"]');
+      expect(sttCancel.textContent).toBe(EXTRA.zh.modelDownloadCancel);
+      sttCancel.click();
+      expect(await sttPromise).toBe(false);
+      expect(q('[data-testid="model-download-modal"]')).toBeNull();
+      expect(confirmCalls()).toBe(0);
+      expect(alertCalls()).toBe(0);
+    });
+  });
+
+  test("panel fits short viewports and large text: copy scrolls, Download/Cancel stay reachable", async () => {
+    await withDom("en", async ({ win, q, btn }) => {
+      // Short landscape phone with very large text
+      win.happyDOM.setViewport({ width: 640, height: 280 });
+      win.document.documentElement.style.fontSize = "32px";
+      const p = confirmBrowserModelDownload({ estimatedMb: 70, kind: "stt" });
+      await flush();
+      const overlay = q('[data-testid="model-download-modal"]')!;
+      const panel = q('[data-testid="model-download-panel"]')!;
+      const scroll = q('[data-testid="model-download-scroll"]')!;
+      const actions = q('[data-testid="model-download-actions"]')!;
+      const styleText = overlay.querySelector("style")?.textContent ?? "";
+      const panelRule =
+        styleText.match(/\[data-testid="model-download-panel"\]\s*\{[^}]*\}/)?.[0] ?? "";
+
+      // Panel is capped to the viewport (dvh with vh fallback) and can scroll itself as a last resort
+      expect(panelRule).toContain("max-height: calc(100vh - 32px)");
+      expect(panelRule).toContain("max-height: min(100%, calc(100dvh - 32px))");
+      expect(panelRule).toContain("overflow-y: auto");
+      expect(panel.style.overflowY).toBe("auto");
+      expect(panel.style.minHeight).toBe("0");
+      expect(panel.style.flexDirection).toBe("column");
+
+      // Title and body live in a shrinkable scroll region; the button row never shrinks
+      expect(scroll.contains(q('[data-testid="model-download-title"]') as unknown as Node)).toBe(
+        true,
+      );
+      expect(scroll.contains(q('[data-testid="model-download-body"]') as unknown as Node)).toBe(
+        true,
+      );
+      expect(scroll.style.overflowY).toBe("auto");
+      expect(scroll.style.minHeight).toBe("0");
+      expect(scroll.style.flexShrink).toBe("1");
+      expect(actions.parentElement as unknown).toBe(panel);
+      expect(panel.lastElementChild as unknown).toBe(actions);
+      expect(actions.style.flexShrink).toBe("0");
+      expect(actions.contains(btn('[data-testid="model-download-allow"]') as unknown as Node)).toBe(
+        true,
+      );
+      expect(
+        actions.contains(btn('[data-testid="model-download-cancel"]') as unknown as Node),
+      ).toBe(true);
+
+      // Still operable in this layout
+      btn('[data-testid="model-download-allow"]').click();
+      expect(await p).toBe(true);
+    });
+  });
+
+  test("dismisses cleanly on backdrop click, Escape, visibilitychange, pagehide, and signal abort", async () => {
+    await withDom("en", async ({ win, q, setVisibility }) => {
+      // Backdrop click
+      const pBackdrop = confirmBrowserModelDownload({ estimatedMb: 70, kind: "stt" });
+      await flush();
+      q('[data-testid="model-download-modal"]')!.click();
+      expect(await pBackdrop).toBe(false);
+      expect(q('[data-testid="model-download-modal"]')).toBeNull();
+
+      // Escape key (unrelated key does not dismiss)
+      const pEsc = confirmBrowserModelDownload({ estimatedMb: 25, kind: "wake" });
+      await flush();
+      win.document.dispatchEvent(new win.KeyboardEvent("keydown", { key: "a", cancelable: true }));
+      expect(q('[data-testid="model-download-modal"]')).not.toBeNull();
+      win.document.dispatchEvent(
+        new win.KeyboardEvent("keydown", { key: "Escape", cancelable: true }),
+      );
+      expect(await pEsc).toBe(false);
+      expect(q('[data-testid="model-download-modal"]')).toBeNull();
+
+      // visibilitychange -> visible keeps open; -> hidden dismisses
+      const pVis = confirmBrowserModelDownload({ estimatedMb: 70, kind: "stt" });
+      await flush();
+      win.document.dispatchEvent(new win.Event("visibilitychange"));
+      expect(q('[data-testid="model-download-modal"]')).not.toBeNull();
+      setVisibility("hidden");
+      win.document.dispatchEvent(new win.Event("visibilitychange"));
+      expect(await pVis).toBe(false);
+      expect(q('[data-testid="model-download-modal"]')).toBeNull();
+      setVisibility("visible");
+
+      // pagehide
+      const pHide = confirmBrowserModelDownload({ estimatedMb: 25 });
+      await flush();
+      win.dispatchEvent(new win.Event("pagehide"));
+      expect(await pHide).toBe(false);
+      expect(q('[data-testid="model-download-modal"]')).toBeNull();
+
+      // AbortSignal
+      const ac = new AbortController();
+      const pAbort = confirmBrowserModelDownload({
+        estimatedMb: 70,
+        kind: "stt",
+        signal: ac.signal,
+      });
+      await flush();
+      expect(q('[data-testid="model-download-modal"]')).not.toBeNull();
+      ac.abort();
+      expect(await pAbort).toBe(false);
+      expect(q('[data-testid="model-download-modal"]')).toBeNull();
+    });
+  });
+
+  test("network drop during downloadModelAssets auto-dismisses the open glass modal immediately", async () => {
+    await withDom("en", async ({ q }) => {
+      const h = setup({ connection: { type: "cellular" } });
+      const task = h.run({
+        estimatedMb: 70,
+        confirm: (details) => confirmBrowserModelDownload({ ...details, kind: "stt" }),
+      });
+      await flush();
+      expect(q('[data-testid="model-download-modal"]')).not.toBeNull();
+      expect(q('[data-testid="model-download-title"]')?.textContent).toBe(
+        EXTRA.en.modelDownloadTitleStt,
+      );
+      // Network goes offline while the modal is open
+      h.events.dispatchEvent(new Event("offline"));
+      await expect(task).rejects.toBeInstanceOf(ModelDownloadBlocked);
+      expect(q('[data-testid="model-download-modal"]')).toBeNull();
+      expect(h.calls).toHaveLength(0);
+
+      // Network switches to Save-Data while modal is open
+      const h2 = setup({ connection: { type: "cellular" } });
+      const task2 = h2.run({
+        estimatedMb: 70,
+        confirm: (details) => confirmBrowserModelDownload({ ...details, kind: "stt" }),
+      });
+      await flush();
+      expect(q('[data-testid="model-download-modal"]')).not.toBeNull();
+      h2.change({ connection: { type: "cellular", saveData: true } });
+      await expect(task2).rejects.toBeInstanceOf(ModelDownloadBlocked);
+      expect(q('[data-testid="model-download-modal"]')).toBeNull();
+      expect(h2.calls).toHaveLength(0);
+    });
+  });
+
+  test("fails closed without mounting when hidden, pre-aborted, or DOM is unavailable", async () => {
+    await withDom("en", async ({ q, setVisibility }) => {
+      setVisibility("hidden");
+      expect(await confirmBrowserModelDownload({ estimatedMb: 25 })).toBe(false);
+      expect(q('[data-testid="model-download-modal"]')).toBeNull();
+
+      setVisibility("visible");
+      const ac = new AbortController();
+      ac.abort();
+      expect(
+        await confirmBrowserModelDownload({ estimatedMb: 70, kind: "stt", signal: ac.signal }),
+      ).toBe(false);
+      expect(q('[data-testid="model-download-modal"]')).toBeNull();
+    });
+
+    // Missing document.body / createElement
+    const restoreNoBody = stubGlobals({
+      document: { visibilityState: "visible", body: null, createElement: () => ({}) },
+    });
+    try {
+      expect(await confirmBrowserModelDownload({ estimatedMb: 25 })).toBe(false);
+    } finally {
+      restoreNoBody();
+    }
+
+    const restoreNoCreate = stubGlobals({
+      document: { visibilityState: "visible", body: {} },
+    });
+    try {
+      expect(await confirmBrowserModelDownload({ estimatedMb: 25 })).toBe(false);
+    } finally {
+      restoreNoCreate();
+    }
+  });
+
+  test("serializes concurrent confirmation calls so two modals never stack", async () => {
+    await withDom("en", async ({ win, q, btn, setVisibility }) => {
+      const first = confirmBrowserModelDownload({ estimatedMb: 25, kind: "wake" });
+      const second = confirmBrowserModelDownload({ estimatedMb: 70, kind: "stt" });
+      await flush();
+
+      expect(win.document.querySelectorAll('[data-testid="model-download-modal"]')).toHaveLength(1);
+      expect(q('[data-testid="model-download-title"]')?.textContent).toBe(
+        EXTRA.en.modelDownloadTitleWake,
+      );
+
+      btn('[data-testid="model-download-allow"]').click();
+      expect(await first).toBe(true);
+      await flush();
+
+      expect(win.document.querySelectorAll('[data-testid="model-download-modal"]')).toHaveLength(1);
+      expect(q('[data-testid="model-download-title"]')?.textContent).toBe(
+        EXTRA.en.modelDownloadTitleStt,
+      );
+
+      btn('[data-testid="model-download-cancel"]').click();
+      expect(await second).toBe(false);
+      expect(win.document.querySelectorAll('[data-testid="model-download-modal"]')).toHaveLength(0);
+
+      // A queued call whose signal aborts resolves false immediately without mounting
+      const ac = new AbortController();
+      const third = confirmBrowserModelDownload({ estimatedMb: 25, kind: "wake" });
+      const fourth = confirmBrowserModelDownload({
+        estimatedMb: 70,
+        kind: "stt",
+        signal: ac.signal,
+      });
+      await flush();
+      expect(win.document.querySelectorAll('[data-testid="model-download-modal"]')).toHaveLength(1);
+      ac.abort();
+      expect(await fourth).toBe(false);
+      // Third modal is still open and resolves normally
+      expect(q('[data-testid="model-download-title"]')?.textContent).toBe(
+        EXTRA.en.modelDownloadTitleWake,
+      );
+      btn('[data-testid="model-download-cancel"]').click();
+      expect(await third).toBe(false);
+      await flush();
+      expect(win.document.querySelectorAll('[data-testid="model-download-modal"]')).toHaveLength(0);
+
+      // A queued call when page becomes hidden re-checks visibility and fails closed without mounting
+      const fifth = confirmBrowserModelDownload({ estimatedMb: 25, kind: "wake" });
+      const sixth = confirmBrowserModelDownload({ estimatedMb: 70, kind: "stt" });
+      await flush();
+      setVisibility("hidden");
+      win.document.dispatchEvent(new win.Event("visibilitychange"));
+      expect(await fifth).toBe(false);
+      expect(await sixth).toBe(false);
+      expect(win.document.querySelectorAll('[data-testid="model-download-modal"]')).toHaveLength(0);
+    });
+  });
+});
+
+test("browser defaults guard the real fetch on unmetered network without a microphone", async () => {
   let calls = 0;
   const restore = stubGlobals({
     navigator: { connection: { type: "wifi" }, onLine: true },
-    document: { visibilityState: "visible", documentElement: { lang: "zh" } },
     window: {
-      confirm: (text: string) => {
-        prompt = text;
-        return false;
-      },
       addEventListener() {},
       removeEventListener() {},
     },
@@ -300,15 +711,8 @@ test("browser defaults guard the real fetch and localized confirmation without a
   });
   try {
     expect(browserModelNetwork().connection?.type).toBe("wifi");
-    expect(confirmBrowserModelDownload({ estimatedMb: 25 })).toBe(false);
-    expect(prompt).toContain("25 MB");
-    expect(prompt).toContain("取消");
     await downloadModelAssets({ assets: [asset], cacheName: "fixture", estimatedMb: 25 });
     expect(calls).toBe(1);
-    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
-    prompt = "";
-    expect(confirmBrowserModelDownload({ estimatedMb: 25 })).toBe(false);
-    expect(prompt).toBe("");
   } finally {
     restore();
   }

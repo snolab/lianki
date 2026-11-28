@@ -626,6 +626,7 @@ export type WebGpuManagerDeps = {
   confirmDownload?: (details: {
     estimatedMb: number;
     risk: ModelDownloadRisk;
+    signal?: AbortSignal;
   }) => boolean | Promise<boolean>;
   network?: () => ModelNetwork;
   cache?: () => Promise<Pick<Cache, "match" | "put" | "delete">>;
