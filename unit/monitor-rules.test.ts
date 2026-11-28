@@ -14,6 +14,13 @@ describe("inWindow", () => {
 });
 
 describe("pathGroup", () => {
+  test("encoded credential prefixes stay redacted", () => {
+    for (const separator of ["%2F", "%5c", "%252f", "%255c", "%invalid"]) {
+      expect(pathGroup(`https://lianki.com/mcp${separator}lk_${"a".repeat(64)}`)).toBe(
+        "/mcp/:token",
+      );
+    }
+  });
   test("redacts the entire MCP credential namespace, including malformed paths", () => {
     for (const path of [`lk_${"a".repeat(64)}`, "lk_short", "%6ck_encoded/extra"]) {
       expect(pathGroup(`https://lianki.com/mcp/${path}?secret=ignored`)).toBe("/mcp/:token");

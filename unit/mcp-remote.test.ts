@@ -353,6 +353,7 @@ describe("token addresses", () => {
     for (const path of [
       "not-a-token",
       "lk_short",
+      `${TOKEN}?x=1`,
       `${TOKEN}/extra`,
       `${TOKEN}/`,
       `%6ck_${"a".repeat(64)}`,
@@ -368,19 +369,24 @@ describe("token addresses", () => {
 
   test("encoded path separators cannot forward a credential URL to the app", async () => {
     const { env, seen } = setup();
-    const res = await handle(new Request(`${ORIGIN}/mcp%2F${TOKEN}`, rpc("initialize")), env);
-    expect(res.status).toBe(401);
+    for (const separator of ["%2F", "%5c", "%252f", "%255c", "%invalid"]) {
+      const res = await handle(
+        new Request(`${ORIGIN}/mcp${separator}${TOKEN}`, rpc("initialize")),
+        env,
+      );
+      expect(res.status).toBe(401);
+      expect(await res.text()).not.toContain(TOKEN);
+    }
     expect(seen).toEqual([]);
-    expect(await res.text()).not.toContain(TOKEN);
   });
 
-  test("conflicting or malformed headers are refused; matching credentials work", async () => {
-    for (const auth of [`Bearer lk_${"b".repeat(64)}`, "Basic ignored", `Bearer ${TOKEN}`]) {
+  test("any Authorization header with a credential URL is refused", async () => {
+    for (const auth of [`Bearer lk_${"b".repeat(64)}`, "Basic ignored", `Bearer ${TOKEN}`, ""]) {
       const { env, seen } = setup();
       const req = addressed("initialize");
       req.headers.set("authorization", auth);
       const res = await handle(req, env);
-      expect(res.status).toBe(auth === `Bearer ${TOKEN}` ? 200 : 401);
+      expect(res.status).toBe(401);
       if (res.status === 401) expect(seen).toEqual([]);
     }
   });
@@ -391,7 +397,8 @@ describe("token addresses", () => {
       new Request(`${ORIGIN}/mcp/${TOKEN}`, { headers: { accept: "text/html" } }),
       env,
     );
-    expect(page.status).toBe(200);
+    expect(page.status).toBe(405);
+    expect(page.headers.get("content-type") ?? "").not.toContain("text/html");
     expect(page.headers.get("referrer-policy")).toBe("no-referrer");
     expect(page.headers.get("cache-control")).toBe("no-store");
     expect(await page.text()).not.toContain(TOKEN);
@@ -419,7 +426,7 @@ describe("token addresses", () => {
     expect(await res.text()).not.toContain(TOKEN);
   });
 
-  test("deployment does not persist or forward raw URL invocation events", async () => {
+  test("deployment disables persisted observability and credential URL tail forwarding", async () => {
     const config = Bun.JSONC.parse(
       await Bun.file(new URL("../workers/mcp/wrangler.jsonc", import.meta.url)).text(),
     ) as {
@@ -442,11 +449,12 @@ test("connection guide explains token creation and headerless ChatGPT setup with
   for (const lang of ["en", "zh"]) {
     const { env } = setup();
     const res = await handle(
-      new Request(`${ORIGIN}/mcp/${TOKEN}`, {
+      new Request(`${ORIGIN}/mcp`, {
         headers: { accept: "text/html", "accept-language": lang },
       }),
       env,
     );
+    expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain("/my/mcp");
     expect(html).toContain("No authentication");

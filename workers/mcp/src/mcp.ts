@@ -322,10 +322,10 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   )
     return env.MAIN.fetch(req);
   const pathToken = canonical ? undefined : url.pathname.slice(MCP_PATH.length + 1);
-  if (pathToken !== undefined && !TOKEN_RE.test(pathToken))
+  if (pathToken !== undefined && (!TOKEN_RE.test(pathToken) || url.search))
     return plain(rpcError(null, -32001, "Invalid MCP token address"), 401, AUTH_HEADERS);
   // The guide uses only the origin, never the credential-bearing path.
-  if (wantsGuide(req)) {
+  if (canonical && wantsGuide(req)) {
     const res = guide(req, url.origin);
     res.headers.set("referrer-policy", "no-referrer");
     return res;
@@ -338,7 +338,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
 
   const header = req.headers.get("authorization") ?? "";
   const bearer = /^Bearer\s+(\S+)$/i.exec(header);
-  if ((!pathToken && !bearer) || (pathToken && header && bearer?.[1] !== pathToken))
+  if ((!pathToken && !bearer) || (pathToken && req.headers.has("authorization")))
     return plain(
       rpcError(null, -32001, "Authorization: Bearer <your Lianki API token> is required"),
       401,
