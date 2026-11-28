@@ -390,6 +390,9 @@ async function main(): Promise<number> {
       // checkpoint without claiming it was handed to the assistant.
       cursor?.release(lines.map((l) => l.seq));
       save();
+      const r =
+        cursor && !o.dryRun ? liftReceipt(lastDelivered, cursor.value(), acker.last()) : null;
+      if (r !== null) void acker.ack(r);
     },
   );
   if (t.from === "none") {

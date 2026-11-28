@@ -8,6 +8,7 @@ import {
 import {
   lineOf,
   makeDeliverer,
+  makeSeqCursor,
   refreshAdvisoryLines,
   type Line,
 } from "../scripts/dev/lane-listen-lib";
@@ -124,6 +125,7 @@ test("a busy notice is rechecked after the wait, without holding a new original 
   on = false;
   finish();
   await pending;
+  await delivery.settled();
   expect(sent).toHaveLength(1);
   expect(discarded).toEqual(["brief-1"]);
   expect(delivery.pending()).toBe(0);
@@ -150,6 +152,7 @@ test("a failed live advisory read discards only that optional notice", async () 
     },
   );
   await delivery.add(lineOf(JSON.stringify(event(notice())))!);
+  await delivery.settled();
   expect(sent).toEqual([]);
   expect(skipped).toEqual(["brief-1"]);
   await delivery.add({
@@ -160,6 +163,92 @@ test("a failed live advisory read discards only that optional notice", async () 
   });
   expect(sent).toHaveLength(1);
   expect(sent[0]).toContain("raw-control");
+  expect(delivery.pending()).toBe(0);
+});
+
+test("the serial live reader hands off later raw input while an earlier notice read is pending", async () => {
+  const cursor = makeSeqCursor(0);
+  const sent: string[] = [];
+  const skipped: string[] = [];
+  let finish!: () => void;
+  const delivery = makeDeliverer(
+    { lane: "codex", repo: "/repo" },
+    async (body) => {
+      sent.push(body);
+      return 0;
+    },
+    async () => false,
+    undefined,
+    undefined,
+    (lines, ok) => {
+      if (ok) cursor.release(lines.map((l) => l.seq));
+    },
+    async (lines) => {
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      return refreshAdvisoryLines(lines, snapshot({ partnerStandardFlow: false }));
+    },
+    (lines) => {
+      skipped.push(...lines.map((l) => l.id));
+      cursor.release(lines.map((l) => l.seq));
+    },
+  );
+  // Match the production stdout loop: each handle is awaited before reading
+  // the next event, rather than starting concurrent add calls in the test.
+  for (const message of [
+    notice(),
+    { id: "later-raw", from: "owner", thread: "owner", text: "@coco next", seq: 3 },
+  ]) {
+    const line = lineOf(JSON.stringify(event(message)))!;
+    cursor.hold(line.seq);
+    await delivery.add(line);
+  }
+  expect(typeof finish).toBe("function");
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toContain("later-raw");
+  expect(cursor.value()).toBeLessThan(3);
+  expect(delivery.pending()).toBe(1);
+  finish();
+  await delivery.settled();
+  expect(skipped).toEqual(["brief-1"]);
+  expect(cursor.value()).toBe(3);
+  expect(delivery.pending()).toBe(0);
+});
+
+test("independent advisory checks preserve notice order", async () => {
+  const checked: string[] = [];
+  const sent: string[] = [];
+  let finish!: () => void;
+  const delivery = makeDeliverer(
+    { lane: "codex", repo: "/repo" },
+    async (body) => {
+      sent.push(body);
+      return 0;
+    },
+    async () => false,
+    undefined,
+    undefined,
+    undefined,
+    async (lines) => {
+      checked.push(lines[0].id);
+      if (lines[0].id === "brief-1")
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+      return lines;
+    },
+  );
+  await delivery.add(lineOf(JSON.stringify(event(notice())))!);
+  await delivery.add(lineOf(JSON.stringify(event(notice({ id: "brief-2", seq: 4 }))))!);
+  expect(checked).toEqual(["brief-1"]);
+  expect(sent).toEqual([]);
+  finish();
+  await delivery.settled();
+  expect(checked).toEqual(["brief-1", "brief-2"]);
+  expect(sent).toHaveLength(2);
+  expect(sent[0]).toContain("brief-1");
+  expect(sent[1]).toContain("brief-2");
   expect(delivery.pending()).toBe(0);
 });
 

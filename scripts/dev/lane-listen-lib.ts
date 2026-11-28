@@ -558,6 +558,58 @@ export function makeDeliverer(
   const pending: Line[] = [];
   let first = true;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let advisoryTail = Promise.resolve();
+  let advisoryPending = 0;
+  const sendParts = async (lines: Line[], interrupt: boolean) => {
+    let code: number | undefined;
+    const room = SEND_MAX_CHARS - (first ? firstLines(o.lane, o.repo, o).join("\n").length + 1 : 0);
+    const unnamed = { answerUnnamed: o.answerUnnamed };
+    for (const part of chunkLines(o.lane, lines, room, unnamed)) {
+      const withRules = first;
+      // Reserve the first header before yielding: a raw send may run while
+      // the independent advisory queue is finishing its live read.
+      first = false;
+      try {
+        code = await send(handoffBrief(o.lane, part, o.repo, withRules, unnamed), interrupt);
+      } catch {
+        code = 1;
+      }
+      log({ type: "delivered", lane: o.lane, ids: part.map((l) => l.id), interrupt, ay: code });
+      const ok = code === 0 || code === 4;
+      if (!ok) log({ type: "lost", lane: o.lane, ids: part.map((l) => l.id), ay: code });
+      sent(part, ok);
+    }
+    return code;
+  };
+  const queueAdvisories = (group: Line[]) => {
+    if (!group.length || !prepare) return;
+    advisoryPending += group.length;
+    advisoryTail = advisoryTail
+      .then(async () => {
+        let ready: Line[];
+        try {
+          ready = await prepare(group);
+        } catch {
+          ready = refreshAdvisoryLines(group, undefined);
+        }
+        const kept = new Set(ready.map((l) => l.id));
+        const skipped = group.filter((l) => !kept.has(l.id));
+        if (skipped.length) {
+          log({ type: "advisory-skipped", lane: o.lane, ids: skipped.map((l) => l.id) });
+          discarded(skipped);
+        }
+        await sendParts(ready, false);
+      })
+      .catch(() => {
+        // Keep failed work held for normal recovery. Do not turn an optional
+        // notification failure into an unhandled live-stream rejection.
+        log({ type: "lost", lane: o.lane, ids: group.map((l) => l.id), ay: 1 });
+        sent(group, false);
+      })
+      .finally(() => {
+        advisoryPending -= group.length;
+      });
+  };
   const flush = async (interrupt = false): Promise<number | undefined> => {
     if (!pending.length) return undefined;
     if (!interrupt && (await busy())) {
@@ -570,42 +622,14 @@ export function makeDeliverer(
       return undefined;
     }
     const batch = pending.splice(0, pending.length);
-    // `ay send` refuses a message over 1024 characters (its wrapper takes ~150),
-    // and a refused batch was simply lost (2026-11-14 23:xx, four of coco's).
-    // So a long batch goes as several messages, each under SEND_MAX_CHARS.
-    let code: number | undefined;
-    // The first message also carries firstLines: its parts leave room for them.
-    const room = SEND_MAX_CHARS - (first ? firstLines(o.lane, o.repo, o).join("\n").length + 1 : 0);
-    const unnamed = { answerUnnamed: o.answerUnnamed };
-    // Originals and direct replies never wait for an advisory's live read.
-    const groups = prepare
-      ? [batch.filter((l) => !l.advisory), batch.filter((l) => l.advisory)]
-      : [batch];
-    for (const group of groups) {
-      if (!group.length) continue;
-      let ready = group;
-      if (prepare && group[0]?.advisory) {
-        try {
-          ready = await prepare(group);
-        } catch {
-          ready = refreshAdvisoryLines(group, undefined);
-        }
-        const kept = new Set(ready.map((l) => l.id));
-        const skipped = group.filter((l) => !kept.has(l.id));
-        if (skipped.length) {
-          log({ type: "advisory-skipped", lane: o.lane, ids: skipped.map((l) => l.id) });
-          discarded(skipped);
-        }
-      }
-      for (const part of chunkLines(o.lane, ready, room, unnamed)) {
-        code = await send(handoffBrief(o.lane, part, o.repo, first, unnamed), interrupt);
-        first = false;
-        log({ type: "delivered", lane: o.lane, ids: part.map((l) => l.id), interrupt, ay: code });
-        const ok = code === 0 || code === 4;
-        if (!ok) log({ type: "lost", lane: o.lane, ids: part.map((l) => l.id), ay: code });
-        sent(part, ok);
-      }
-    }
+    if (!prepare) return sendParts(batch, interrupt);
+    const code = await sendParts(
+      batch.filter((l) => !l.advisory),
+      interrupt,
+    );
+    // Never await this chain from add/handle: a notice arriving before the next
+    // raw line must not hold the serial stdout reader for its network timeout.
+    queueAdvisories(batch.filter((l) => l.advisory));
     return code;
   };
   return {
@@ -613,7 +637,8 @@ export function makeDeliverer(
       pending.push(l);
       return flush(urgentLine(o.lane, l));
     },
-    pending: () => pending.length,
+    pending: () => pending.length + advisoryPending,
+    settled: () => advisoryTail,
   };
 }
 
