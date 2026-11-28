@@ -66,7 +66,11 @@ export async function downloadModelAssets(o: {
   assets: readonly ModelAsset[];
   cacheName: string;
   estimatedMb: number;
-  confirm?: (details: { estimatedMb: number; risk: ModelDownloadRisk }) => boolean | Promise<boolean>;
+  confirm?: (details: {
+    estimatedMb: number;
+    risk: ModelDownloadRisk;
+    signal?: AbortSignal;
+  }) => boolean | Promise<boolean>;
   network?: () => ModelNetwork;
   cache?: () => Promise<Pick<Cache, "match" | "put" | "delete">>;
   fetch?: typeof fetch;
@@ -122,7 +126,7 @@ export async function downloadModelAssets(o: {
     if (risk !== "unmetered") {
       // No confirmation UI, a UI failure, or refusal: keep cloud STT, fetch nothing.
       let yes = false;
-      try { yes = (await o.confirm?.({ estimatedMb, risk })) === true; } catch {}
+      try { yes = (await o.confirm?.({ estimatedMb, risk, signal: controller.signal })) === true; } catch {}
       if (!yes) throw new ModelDownloadBlocked();
     }
     changed();
