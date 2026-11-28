@@ -297,12 +297,8 @@ async function checkHost(
   l: EventsLimits,
 ): Promise<"ok" | "unresolved" | "private_address" | "host_not_allowed"> {
   if (!hostAllowed(url, l.callbackHosts)) return "host_not_allowed";
-  let host: string;
-  try {
-    host = new URL(url).hostname;
-  } catch {
-    return "unresolved";
-  }
+  // hostAllowed is false for a URL that does not parse, so this cannot throw.
+  const host = new URL(url).hostname;
   return addressVerdict(await d.resolve(host).catch(() => null));
 }
 
@@ -363,7 +359,8 @@ async function post(
 ): Promise<{ attempt: Attempt; text?: string; tooLarge?: true }> {
   const ac = new AbortController();
   let timedOut = false;
-  let onAbort: (e: Error) => void = () => {};
+  // Assigned synchronously by the Promise executor below.
+  let onAbort!: (e: Error) => void;
   const aborted = new Promise<never>((_, reject) => {
     onAbort = reject;
   });

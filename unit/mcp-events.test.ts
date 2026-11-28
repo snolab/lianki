@@ -5,7 +5,7 @@
  * remote MCP server's forwarding. Synthetic data only: example.com accounts,
  * fake callback hosts, tokens minted in an in-memory D1.
  */
-import { beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { createTestD1, type TestD1Database } from "../lib/d1/testDb";
 import { testSchema } from "../lib/d1/testSchema";
 import type { D1Like } from "../lib/d1/types";
@@ -35,7 +35,7 @@ import {
   mentionEvents,
   type EventsDeps,
 } from "../lib/mcp-events/server";
-import { resolveDoh } from "../lib/mcp-events/deps";
+import { DOH_URL, eventsDeps, resolveDoh } from "../lib/mcp-events/deps";
 import { addressVerdict, dohAddresses, hostAllowed, publicAddress } from "../lib/mcp-events/rules";
 import { handle, type Env } from "../workers/mcp/src/mcp";
 
@@ -994,5 +994,196 @@ describe("re-review fix 3: a stream cancel that never settles holds nothing up",
     respond = () => new Response(stuck(['{"ch'], false));
     const out = (await subscribe()).body as { error: { data?: unknown } };
     expect(out.error.data).toEqual({ reason: "timeout" });
+  });
+});
+
+describe("subscribe: refusals and rotation", () => {
+  const SECRET2 = `whsec_${b64encode(new Uint8Array(32).map((_, i) => 100 + i))}`;
+  const OTHER = "https://receiver.example.net/mcp-events/cb_2";
+  const code = (a: { body: unknown }) => (a.body as { error: { code: number } }).error.code;
+
+  test("an unknown events method is not found, before the token is read", async () => {
+    expect(code(await eventsRpc(deps(), "not-a-token", { method: "events/poll" }))).toBe(-32601);
+    expect(code(await eventsRpc(deps(), ownerToken, null))).toBe(-32601);
+  });
+
+  test("subscribe calls past the hourly limit: -32005 with retryAfterMs", async () => {
+    limits = { ...limits, subscribePerHour: 1 };
+    expect((await subscribe()).body).toHaveProperty("result");
+    const out = (await subscribe()).body as unknown as {
+      error: { code: number; data: { retryAfterMs: number } };
+    };
+    expect(out.error.code).toBe(-32005);
+    expect(out.error.data.retryAfterMs).toBeGreaterThan(0);
+  });
+
+  test("no sealing secret on the server: -32603, nothing contacted", async () => {
+    const out = await eventsRpc(deps({ sealSecret: undefined }), ownerToken, {
+      method: "events/subscribe",
+      params: subscribeParams(),
+    });
+    expect(code(out)).toBe(-32603);
+    expect(sent).toEqual([]);
+  });
+
+  test("a token at its cap is refused before the callback is contacted", async () => {
+    limits = { ...limits, maxPerToken: 1 };
+    await subscribe();
+    sent = [];
+    const p = subscribeParams({ delivery: { mode: "webhook", url: OTHER, secret: SECRET } });
+    expect(code(await subscribe(ownerToken, p))).toBe(-32005);
+    expect(sent).toEqual([]);
+  });
+
+  test("a resolver that throws is unresolved; a non-JSON echo fails the challenge", async () => {
+    const r = await eventsRpc(
+      deps({
+        resolve: async () => {
+          throw new Error("resolver down");
+        },
+      }),
+      ownerToken,
+      { method: "events/subscribe", params: subscribeParams() },
+    );
+    expect((r.body as { error: { data: unknown } }).error.data).toEqual({ reason: "unresolved" });
+    respond = () => new Response("not json");
+    const bad = (await subscribe()).body as { error: { data: unknown } };
+    expect(bad.error.data).toEqual({ reason: "challenge_failed" });
+  });
+
+  test("a new secret re-verifies; both sign during the overlap, then only the new one", async () => {
+    await subscribe();
+    const p = subscribeParams({ delivery: { mode: "webhook", url: CALLBACK, secret: SECRET2 } });
+    sent = [];
+    expect((await subscribe(ownerToken, p)).body).toHaveProperty("result");
+    expect(sent).toHaveLength(1); // verified again, with the new secret
+    const row = db
+      .raw()
+      .prepare("SELECT prev_secret_sealed, prev_until_ms FROM mcp_event_subscription")
+      .get() as { prev_secret_sealed: string | null; prev_until_ms: number };
+    expect(row.prev_secret_sealed).not.toBeNull();
+    expect(row.prev_until_ms).toBe(now + limits.rotationOverlapMs);
+
+    sent = [];
+    expect((await mentionEvents(deps(), ownerLine("@Arden"))).delivered).toBe(1);
+    const s = sent[0];
+    const ts = Number(s.headers.get("webhook-timestamp"));
+    const id = s.headers.get("webhook-id")!;
+    const newKey = signingKey(SECRET2)!;
+    expect(s.headers.get("webhook-signature")).toBe(
+      `${await signature(newKey, id, ts, s.body)} ${await signature(keyBytes, id, ts, s.body)}`,
+    );
+
+    now += limits.rotationOverlapMs + 1;
+    sent = [];
+    expect((await mentionEvents(deps(), ownerLine("@Arden", "l2"))).delivered).toBe(1);
+    const t = Number(sent[0].headers.get("webhook-timestamp"));
+    expect(sent[0].headers.get("webhook-signature")).toBe(
+      await signature(newKey, sent[0].headers.get("webhook-id")!, t, sent[0].body),
+    );
+  });
+});
+
+describe("delivery: edges", () => {
+  test("a row whose thread is not the token's own thread is skipped", async () => {
+    await subscribe();
+    db.raw().exec("UPDATE mcp_event_subscription SET thread = 'user2'");
+    sent = [];
+    const r = await mentionEvents(deps(), { ...ownerLine("@Arden"), thread: "user2" });
+    expect(r).toEqual({ delivered: 0, skipped: 1, dropped: 0 });
+    expect(sent).toEqual([]);
+  });
+
+  test("never throws: a failing dependency is logged and the report returned", async () => {
+    await subscribe();
+    const log = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const r = await mentionEvents(
+        deps({
+          flagOn: async () => {
+            throw new Error("flags unreadable");
+          },
+        }),
+        ownerLine("@Arden"),
+      );
+      expect(r).toEqual({ delivered: 0, skipped: 0, dropped: 0 });
+      expect(log).toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  test("an unread answer body is cancelled even when cancel throws or rejects", async () => {
+    await subscribe();
+    const cancels = [
+      () => {
+        throw new Error("locked");
+      },
+      () => Promise.reject(new Error("errored")),
+    ];
+    for (const [i, cancel] of cancels.entries()) {
+      const r = await mentionEvents(
+        deps({
+          fetch: async () => ({ status: 200, body: { cancel } }) as unknown as Response,
+        }),
+        ownerLine("@Arden", `c${i}`),
+      );
+      expect(r.delivered).toBe(1);
+    }
+  });
+});
+
+describe("live deps (deps.ts)", () => {
+  test("resolveDoh: a fetch that throws is a resolver failure", async () => {
+    expect(
+      await resolveDoh("receiver.example.net", async () => {
+        throw new Error("offline");
+      }),
+    ).toBeNull();
+  });
+
+  test("eventsDeps: flag and limits from D1, the global fetch, DoH, the clock, sleep", async () => {
+    const live = eventsDeps(D(), SEAL);
+    expect(live.db).toBe(D());
+    expect(live.sealSecret).toBe(SEAL);
+    expect(await live.flagOn()).toBe(FLAGS[MCP_EVENTS_FLAG].default);
+    expect(await live.limits()).toEqual(eventsLimits(defaultConfig()));
+    const before = Date.now();
+    expect(live.now()).toBeGreaterThanOrEqual(before);
+    await live.sleep(1);
+
+    const asked: string[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const u = String(url);
+      asked.push(u);
+      if (u.startsWith(DOH_URL)) {
+        const type = new URL(u).searchParams.get("type");
+        return Response.json({
+          Status: 0,
+          Answer: type === "A" ? [{ type: 1, data: "203.0.114.7" }] : [],
+        });
+      }
+      return new Response("hi");
+    }) as typeof fetch;
+    try {
+      expect(await (await live.fetch(CALLBACK, { method: "POST" })).text()).toBe("hi");
+      expect(await live.resolve("receiver.example.net")).toEqual(["203.0.114.7"]);
+    } finally {
+      globalThis.fetch = real;
+    }
+    expect(asked[0]).toBe(CALLBACK);
+    expect(asked.filter((u) => u.startsWith(DOH_URL))).toHaveLength(2);
+  });
+
+  test("eventsDeps fails closed: unreadable flags are off, unreadable config is the defaults", async () => {
+    const broken = {
+      prepare() {
+        throw new Error("D1 down");
+      },
+    } as unknown as D1Like;
+    const live = eventsDeps(broken, undefined);
+    expect(await live.flagOn()).toBe(false);
+    expect(await live.limits()).toEqual(eventsLimits(defaultConfig()));
   });
 });
