@@ -1,6 +1,6 @@
 /**
  * MCP Events, the D1 and network part (docs/mcp-events.md;
- * db/migrations/0085_mcp_events.sql). Two entry points:
+ * db/migrations/0089_mcp_events.sql). Two entry points:
  *
  * - `eventsRpc`: events/probe, events/list, events/subscribe and
  *   events/unsubscribe for one API token, from POST /api/mcp-events (which

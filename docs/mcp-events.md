@@ -13,7 +13,7 @@ OpenAI's [MCP Events](https://developers.openai.com/plugins/build/mcp-events.md)
 Code: `lib/mcp-events/rules.ts` (pure), `lib/mcp-events/server.ts` (D1,
 network), `lib/mcp-events/deps.ts`, `app/api/mcp-events/route.ts`,
 `workers/mcp/src/mcp.ts` (forwarding), `worker.ts` `DebugSessions.chatLog` (the
-trigger), `db/migrations/0085_mcp_events.sql`. Tests: `unit/mcp-events.test.ts`.
+trigger), `db/migrations/0089_mcp_events.sql`. Tests: `unit/mcp-events.test.ts`.
 
 ## Does our server support it?
 
@@ -105,7 +105,7 @@ to the main Worker over `SESSIONS.chatLog` (`op: "put"`, lib/chat-log.ts), with
 as before, then runs `mentionEvents` in `waitUntil`, so the hub's answer is
 never held up.
 
-## Storage: D1 `mcp_event_subscription` (migration 0085)
+## Storage: D1 `mcp_event_subscription` (migration 0089)
 
 | column                                | meaning                                                                                                                                              |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -118,7 +118,7 @@ never held up.
 | `expires_at_ms`, `verified_at_ms`     | lifetime; when the callback last proved itself                                                                                                       |
 | `last_event_at_ms`, `failures`        | delivery bookkeeping                                                                                                                                 |
 
-The next migration number was 0085 (prod had 0084_mcp_oauth). Not applied
+Migration 0089 (0085–0088 are taken on prod and in open PRs). Not applied
 anywhere yet. It is applied with the usual D1 migration step before the flag
 is turned on.
 
@@ -326,7 +326,7 @@ live, so a rename takes effect at the next line.
 
 ## Rollout
 
-1. Apply migration 0085 to D1 (owner step; not done).
+1. Apply migration 0089 to D1 (owner step; not done).
 2. Deploy main and lianki-mcp.
 3. Turn `mcp.events` on at https://lianki.com/dev/flags#mcp.events. Check
    `mcp.eventsCallbackHosts` at /dev/config.
