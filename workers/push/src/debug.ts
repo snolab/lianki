@@ -1,3 +1,10 @@
+import { SitePermissionAuthority } from "../../../lib/site-permission-authority";
+import {
+  SITE_ACTION_PATH,
+  SITE_ACTION_HEADER,
+  verifySiteAction,
+} from "../../../lib/site-permission-ticket";
+import { readSitePermissionAuthorityInput } from "../../../lib/site-permission-wire";
 import {
   PAGE_CHAT_HTTP_INTERNAL_PATH,
   PAGE_CHAT_HTTP_HEADER,
@@ -1134,6 +1141,7 @@ export class DebugHub {
   });
   /** `lianki chat`: API-token sockets and calls, each in its account's own thread (token-chat.ts). */
   private tokens: TokenChat;
+  private sitePermissionAuthority?: SitePermissionAuthority;
   private pageHttpPublic?: string;
   private pageHttpGate: Promise<unknown> = Promise.resolve();
   private pageHttpPending = new Map<
@@ -3019,6 +3027,39 @@ export class DebugHub {
   }
 
   /** The binding-only route accepts a signed single-use operation, never page-selected authority. */
+  private async sitePermissions(req: Request): Promise<Response> {
+    const json = (body: unknown, status = 200) =>
+      Response.json(body, { status, headers: { "cache-control": "private, no-store" } });
+    if (
+      req.method !== "POST" ||
+      new URL(req.url).hostname !== "lianki-push" ||
+      !this.pageHttpPublic
+    )
+      return json({ ok: false, error: "invalid" }, 403);
+    const action = await readSitePermissionAuthorityInput(req);
+    if (!action || action === "too-large") return json({ ok: false, error: "invalid" }, 400);
+    try {
+      const claims = await verifySiteAction(
+        req.headers.get(SITE_ACTION_HEADER) ?? "",
+        await importTicketPublicKey(this.pageHttpPublic),
+        action,
+        this.now(),
+      );
+      if (!claims) return json({ ok: false, error: "invalid" }, 403);
+      this.sitePermissionAuthority ??= new SitePermissionAuthority(this.ctx.storage, {
+        now: () => this.now(),
+      });
+      return json(
+        await this.sitePermissionAuthority.execute(claims.sub, action, {
+          jti: claims.jti,
+          exp: claims.exp,
+        }),
+      );
+    } catch {
+      return json({ ok: false, error: "unavailable" }, 503);
+    }
+  }
+
   private async pageChatHttp(req: Request): Promise<Response> {
     const json = (body: PageChatHttpResult, status = 200) =>
       Response.json(body, {
@@ -3174,6 +3215,7 @@ export class DebugHub {
         { headers: { "cache-control": "no-store" } },
       );
     this.work.touch();
+    if (url.pathname === SITE_ACTION_PATH) return this.sitePermissions(req);
     if (url.pathname === PAGE_CHAT_HTTP_INTERNAL_PATH) return this.pageChatHttp(req);
     if (url.pathname.startsWith("/internal/friends")) return this.friendsApi(req, url);
     if (url.pathname === SUB_THREADS_PATH) return this.subThreadsApi(url);
